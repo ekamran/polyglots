@@ -1,0 +1,55 @@
+import type Database from 'better-sqlite3'
+import type { GlossaryEntry, Locale } from '../types.js'
+
+interface GlossaryRow {
+  locale: string
+  source_term: string
+  translation: string
+  part_of_speech: string | null
+  notes: string | null
+}
+
+function toEntry(row: GlossaryRow): GlossaryEntry {
+  const entry: GlossaryEntry = { locale: row.locale, sourceTerm: row.source_term, translation: row.translation }
+  if (row.part_of_speech !== null) entry.partOfSpeech = row.part_of_speech
+  if (row.notes !== null) entry.notes = row.notes
+  return entry
+}
+
+export function replaceGlossary(db: Database.Database, locale: Locale, entries: GlossaryEntry[]): void {
+  const del = db.prepare('DELETE FROM glossary WHERE locale = ?')
+  const ins = db.prepare(`
+    INSERT INTO glossary (locale, source_term, translation, part_of_speech, notes, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `)
+  const updatedAt = new Date().toISOString()
+  db.transaction(() => {
+    del.run(locale)
+    for (const e of entries) {
+      ins.run(locale, e.sourceTerm, e.translation, e.partOfSpeech ?? null, e.notes ?? null, updatedAt)
+    }
+  })()
+}
+
+function escapeLike(term: string): string {
+  return term.replace(/[\\%_]/g, (c) => `\\${c}`)
+}
+
+export function lookupGlossary(db: Database.Database, term: string, locale: Locale): GlossaryEntry[] {
+  const trimmed = term.trim()
+  if (trimmed.length === 0) return []
+  const exact = db
+    .prepare<[string, string], GlossaryRow>(
+      `SELECT locale, source_term, translation, part_of_speech, notes FROM glossary
+       WHERE locale = ? AND source_term = ? COLLATE NOCASE ORDER BY id`,
+    )
+    .all(locale, trimmed)
+  const partial = db
+    .prepare<[string, string, string], GlossaryRow>(
+      `SELECT locale, source_term, translation, part_of_speech, notes FROM glossary
+       WHERE locale = ? AND source_term LIKE ? ESCAPE '\\' AND source_term <> ? COLLATE NOCASE
+       ORDER BY length(source_term), id`,
+    )
+    .all(locale, `%${escapeLike(trimmed)}%`, trimmed)
+  return [...exact, ...partial].map(toEntry)
+}

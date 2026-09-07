@@ -1,0 +1,161 @@
+#!/usr/bin/env node
+// Stand-in for the real `claude` CLI in print mode. Written with dynamic
+// import() only so it runs whether Node treats this extensionless file as
+// CommonJS or ESM. Reads the prompt from stdin, like `claude -p` with no
+// positional prompt.
+
+const argv = process.argv.slice(2)
+const mode = process.env.FAKE_CLAUDE_MODE || 'ok'
+
+const requiredFlags = [
+  '-p',
+  '--output-format',
+  '--json-schema',
+  '--mcp-config',
+  '--strict-mcp-config',
+  '--restricted',
+  '--allowedTools',
+  '--permission-prompts',
+  '--no-session-persistence',
+]
+
+function fail(message) {
+  process.stderr.write(`fake-claude: ${message}\n`)
+  process.exit(2)
+}
+
+function valueOf(flag) {
+  const i = argv.indexOf(flag)
+  return i === -1 ? undefined : argv[i + 1]
+}
+
+function readStdin() {
+  return new Promise((resolve, reject) => {
+    let data = ''
+    process.stdin.setEncoding('utf8')
+    process.stdin.on('data', (chunk) => (data += chunk))
+    process.stdin.on('end', () => resolve(data))
+    process.stdin.on('error', reject)
+  })
+}
+
+function parseEntries(prompt) {
+  const entries = []
+  for (const line of prompt.split('\n')) {
+    const m = /^\d+\. (\{.*\})$/.exec(line)
+    if (m) entries.push(JSON.parse(m[1]))
+  }
+  return entries
+}
+
+function buildResults(entries, nplurals) {
+  return entries.map((e) => {
+    const forms = e.msgidPlural ? nplurals : 1
+    const text = []
+    for (let i = 0; i < forms; i++) text.push('[tr] ' + (i === 0 ? e.msgid : e.msgidPlural))
+    return { id: e.id, text, fuzzy: e.msgid.includes('Hook'), reason: 'fake' }
+  })
+}
+
+function envelope(payload, extra) {
+  return JSON.stringify({
+    type: 'result',
+    subtype: 'success',
+    is_error: false,
+    result: JSON.stringify(payload),
+    structured_output: payload,
+    ...extra,
+  })
+}
+
+async function main() {
+  const fs = await import('node:fs')
+
+  if (process.env.FAKE_CLAUDE_ARGS_OUT) fs.writeFileSync(process.env.FAKE_CLAUDE_ARGS_OUT, JSON.stringify(argv))
+  if (process.env.FAKE_CLAUDE_ENV_OUT) fs.writeFileSync(process.env.FAKE_CLAUDE_ENV_OUT, JSON.stringify(process.env))
+  if (process.env.FAKE_CLAUDE_PID_OUT) fs.writeFileSync(process.env.FAKE_CLAUDE_PID_OUT, String(process.pid))
+  if (process.env.FAKE_CLAUDE_SIGNAL_OUT) {
+    const signalOut = process.env.FAKE_CLAUDE_SIGNAL_OUT
+    process.on('SIGTERM', () => {
+      fs.writeFileSync(signalOut, 'SIGTERM')
+      if (mode !== 'hang-ignore-sigterm') process.exit(143)
+    })
+  }
+
+  for (const flag of requiredFlags) if (!argv.includes(flag)) fail(`missing flag ${flag}`)
+  if (valueOf('--output-format') !== 'json') fail('expected --output-format json')
+  if (valueOf('--permission-prompts') !== 'none') fail('expected --permission-prompts none')
+  try {
+    JSON.parse(valueOf('--json-schema'))
+  } catch {
+    fail('--json-schema is not valid JSON')
+  }
+  if (argv.some((a) => a.includes('nplurals:'))) fail('prompt must arrive on stdin, not argv')
+
+  if (mode === 'hang' || mode === 'hang-ignore-sigterm') {
+    setTimeout(() => process.exit(0), 10_000)
+    return
+  }
+
+  const prompt = await readStdin()
+  if (process.env.FAKE_CLAUDE_STDIN_OUT) fs.writeFileSync(process.env.FAKE_CLAUDE_STDIN_OUT, prompt)
+  if (prompt.length === 0) fail('Input must be provided either through stdin or as a prompt argument')
+
+  const npluralsMatch = /nplurals: (\d+)/.exec(prompt)
+  const nplurals = npluralsMatch ? Number(npluralsMatch[1]) : 1
+  const entries = parseEntries(prompt)
+  if (entries.length === 0) fail('no entries found in prompt')
+  if (entries.some((e) => typeof e.id !== 'number' || 'key' in e)) fail('entries must carry an id and no key')
+
+  const payload = { results: buildResults(entries, nplurals) }
+
+  switch (mode) {
+    case 'ok':
+      process.stdout.write(envelope(payload) + '\n')
+      return
+    case 'result-only': {
+      const env = JSON.parse(envelope(payload))
+      delete env.structured_output
+      process.stdout.write(JSON.stringify(env) + '\n')
+      return
+    }
+    case 'malformed':
+      process.stdout.write('this is not { json at all\n')
+      return
+    case 'exit1':
+      process.stderr.write('fake claude failure: something went wrong\n')
+      process.exit(1)
+      break
+    case 'missing-id':
+      payload.results.splice(1, 1)
+      process.stdout.write(envelope(payload) + '\n')
+      return
+    case 'duplicate-id':
+      payload.results.push({ ...payload.results[0] })
+      process.stdout.write(envelope(payload) + '\n')
+      return
+    case 'unknown-id':
+      payload.results.push({ ...payload.results[0], id: 99 })
+      process.stdout.write(envelope(payload) + '\n')
+      return
+    case 'short-plural': {
+      const plural = payload.results.find((r) => r.text.length > 1)
+      if (plural) plural.text = plural.text.slice(0, 1)
+      process.stdout.write(envelope(payload) + '\n')
+      return
+    }
+    case 'empty-text':
+      payload.results[0].text = ['']
+      process.stdout.write(envelope(payload) + '\n')
+      return
+    case 'is-error':
+      process.stdout.write(
+        JSON.stringify({ type: 'result', subtype: 'error', is_error: true, result: 'fake error result' }) + '\n',
+      )
+      return
+    default:
+      fail(`unknown FAKE_CLAUDE_MODE ${mode}`)
+  }
+}
+
+main().catch((err) => fail(String(err && err.stack ? err.stack : err)))

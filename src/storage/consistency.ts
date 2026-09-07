@@ -1,0 +1,40 @@
+import type Database from 'better-sqlite3'
+import type { ConsistencyEntry, Locale } from '../types.js'
+
+export type Clock = () => Date
+
+const DAY_MS = 86_400_000
+
+export function getConsistency(
+  db: Database.Database,
+  text: string,
+  locale: Locale,
+  ttlDays: number,
+  now: Clock = () => new Date(),
+): ConsistencyEntry[] | undefined {
+  const row = db
+    .prepare<[string, string], { results_json: string; fetched_at: string }>(
+      'SELECT results_json, fetched_at FROM consistency_cache WHERE source_text = ? AND locale = ?',
+    )
+    .get(text, locale)
+  if (!row) return undefined
+  const fetchedAt = Date.parse(row.fetched_at)
+  if (Number.isNaN(fetchedAt) || now().getTime() - fetchedAt > ttlDays * DAY_MS) return undefined
+  return JSON.parse(row.results_json) as ConsistencyEntry[]
+}
+
+export function setConsistency(
+  db: Database.Database,
+  text: string,
+  locale: Locale,
+  entries: ConsistencyEntry[],
+  now: Clock = () => new Date(),
+): void {
+  db.prepare(
+    `INSERT INTO consistency_cache (source_text, locale, results_json, fetched_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT (source_text, locale) DO UPDATE SET
+       results_json = excluded.results_json,
+       fetched_at = excluded.fetched_at`,
+  ).run(text, locale, JSON.stringify(entries), now().toISOString())
+}

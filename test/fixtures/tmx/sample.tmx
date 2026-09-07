@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE tmx SYSTEM "tmx14.dtd">
+<tmx version="1.4">
+  <header creationtool="Poedit" creationtoolversion="3.5.2" segtype="sentence" o-tmf="PoeditTM" adminlang="en" srclang="en" datatype="plaintext"/>
+  <body>
+    <tu>
+      <tuv xml:lang="en">
+        <seg>Save changes</seg>
+      </tuv>
+      <tuv xml:lang="tr">
+        <seg>Değişiklikleri kaydet</seg>
+      </tuv>
+    </tu>
+    <tu>
+      <tuv xml:lang="en">
+        <seg>Terms &amp; Conditions &lt;b&gt;apply&lt;/b&gt;</seg>
+      </tuv>
+      <tuv xml:lang="tr">
+        <seg>Şartlar &amp; Koşullar &lt;b&gt;geçerlidir&lt;/b&gt;</seg>
+      </tuv>
+    </tu>
+    <tu>
+      <tuv xml:lang="en">
+        <seg>Welcome, <ph x="1">%s</ph>!</seg>
+      </tuv>
+      <tuv xml:lang="tr">
+        <seg>Hoş geldin, <ph x="1">%s</ph>!</seg>
+      </tuv>
+    </tu>
+    <tu>
+      <tuv xml:lang="en">
+        <seg> Read more </seg>
+      </tuv>
+      <tuv xml:lang="tr">
+        <seg> Devamını oku </seg>
+      </tuv>
+    </tu>
+    <tu>
+      <tuv xml:lang="en">
+        <seg>Only source side</seg>
+      </tuv>
+    </tu>
+    <tu>
+      <tuv xml:lang="en">
+        <seg>Empty target</seg>
+      </tuv>
+      <tuv xml:lang="tr">
+        <seg></seg>
+      </tuv>
+    </tu>
+    <tu>
+      <tuv xml:lang="en">
+        <seg>Settings</seg>
+      </tuv>
+      <tuv xml:lang="de">
+        <seg>Einstellungen</seg>
+      </tuv>
+    </tu>
+    <tu>
+      <prop type="x-context">verb</prop>
+      <tuv xml:lang="en">
+        <seg>Post</seg>
+      </tuv>
+      <tuv xml:lang="tr">
+        <seg>Gönder</seg>
+      </tuv>
+    </tu>
+  </body>
+</tmx>

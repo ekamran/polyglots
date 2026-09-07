@@ -1,0 +1,44 @@
+{
+  "name": "polyglots",
+  "version": "0.1.0",
+  "description": "Translate WordPress .po files into Turkish with machine drafts and AI review",
+  "type": "module",
+  "bin": {
+    "polyglots": "./dist/cli.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "dev": "tsx src/cli.ts"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "better-sqlite3": "^13.0.3",
+    "cheerio": "^1.2.0",
+    "commander": "^15.0.0",
+    "deepl-node": "^1.28.0",
+    "dotenv": "^17.4.2",
+    "fast-xml-parser": "^5.11.1",
+    "gettext-parser": "^9.1.1",
+    "ink": "^7.1.1",
+    "ink-select-input": "^6.2.0",
+    "ink-text-input": "^6.0.0",
+    "openai": "^7.10.0",
+    "react": "^19.2.8",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/gettext-parser": "^9.0.0",
+    "@types/node": "^26.5.0",
+    "@types/react": "^19.2.18",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
+  }
+}

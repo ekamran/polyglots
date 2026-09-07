@@ -1,0 +1,87 @@
+import { DeepLClient, QuotaExceededError, TooManyRequestsError } from 'deepl-node'
+import type { SourceLanguageCode, TargetLanguageCode, TranslateTextOptions } from 'deepl-node'
+import { chunk } from '../batch.js'
+import type { DraftEngine, DraftResult, Locale, TranslationUnit } from '../types.js'
+import { DraftQuotaError, DraftRateLimitError } from './errors.js'
+import { warnMissingPlaceholders, type WarningSink } from './placeholders.js'
+
+export interface DeepLClientLike {
+  translateText(
+    texts: string[],
+    sourceLang: SourceLanguageCode | null,
+    targetLang: TargetLanguageCode,
+    options?: TranslateTextOptions,
+  ): Promise<ReadonlyArray<{ readonly text: string }>>
+}
+
+export interface DeepLEngineOptions {
+  apiKey: string
+  client?: DeepLClientLike
+  onWarning?: WarningSink
+}
+
+// DeepL's /v2/translate accepts at most 50 `text` parameters per request.
+export const DEEPL_MAX_TEXTS_PER_REQUEST = 50
+
+// DeepL rejects a region on every target except these families, and rejects the bare en/pt/zh codes.
+export function toDeepLTarget(locale: Locale): TargetLanguageCode {
+  const [lang = '', region] = locale.toLowerCase().split(/[-_]/, 2)
+  switch (lang) {
+    case 'en':
+      return region === 'us' || region === undefined ? 'en-US' : 'en-GB'
+    case 'pt':
+      return region === 'br' ? 'pt-BR' : 'pt-PT'
+    case 'zh':
+      return region === 'tw' || region === 'hk' || region === 'mo' || region === 'hant' ? 'zh-HANT' : 'zh-HANS'
+    case 'es':
+      return region === undefined || region === 'es' ? 'es' : 'es-419'
+    default:
+      return lang as TargetLanguageCode
+  }
+}
+
+function mapDeepLError(err: unknown): unknown {
+  if (err instanceof QuotaExceededError) return new DraftQuotaError('deepl', err.message, err)
+  if (err instanceof TooManyRequestsError) return new DraftRateLimitError('deepl', err.message, err)
+  return err
+}
+
+export function createDeepLEngine(opts: DeepLEngineOptions): DraftEngine {
+  const client: DeepLClientLike = opts.client ?? new DeepLClient(opts.apiKey)
+
+  return {
+    name: 'deepl',
+    async translate(units: TranslationUnit[], locale: Locale, nplurals: number): Promise<DraftResult[]> {
+      if (units.length === 0) return []
+
+      const texts = units.flatMap((u) => (u.msgidPlural === undefined ? [u.msgid] : [u.msgid, u.msgidPlural]))
+      const target = toDeepLTarget(locale)
+
+      const translated: string[] = []
+      for (const part of chunk(texts, DEEPL_MAX_TEXTS_PER_REQUEST)) {
+        let out: ReadonlyArray<{ readonly text: string }>
+        try {
+          out = await client.translateText(part, 'en', target, { preserveFormatting: true })
+        } catch (err) {
+          throw mapDeepLError(err)
+        }
+        if (out.length !== part.length) {
+          throw new Error(`deepl: expected ${part.length} translations, got ${out.length}`)
+        }
+        for (const t of out) translated.push(t.text)
+      }
+
+      let i = 0
+      return units.map((u) => {
+        const singular = translated[i++]!
+        warnMissingPlaceholders('deepl', u.key, u.msgid, singular, opts.onWarning)
+        if (u.msgidPlural === undefined) return { key: u.key, drafts: [singular] }
+
+        const plural = translated[i++]!
+        warnMissingPlaceholders('deepl', u.key, u.msgidPlural, plural, opts.onWarning)
+        const drafts = [singular, ...Array.from({ length: Math.max(nplurals - 1, 0) }, () => plural)]
+        return { key: u.key, drafts }
+      })
+    },
+  }
+}
