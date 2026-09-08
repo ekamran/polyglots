@@ -94,18 +94,47 @@ describe('mcp tools', () => {
   })
 
   it('consistency_lookup fetches on a miss and caches non-empty results', async () => {
-    const entries: ConsistencyEntry[] = [{ translation: 'Ayarlar', count: 5, projects: ['wp/dev'] }]
+    const entries: ConsistencyEntry[] = [{ translation: 'Ayarlar', count: 5 }]
     fetchConsistency.mockResolvedValueOnce(entries)
 
     const first = await client.callTool({ name: 'consistency_lookup', arguments: { text: 'Settings' } })
     expect(JSON.parse(textOf(first))).toEqual(entries)
     expect(fetchConsistency).toHaveBeenCalledTimes(1)
-    expect(fetchConsistency).toHaveBeenCalledWith('Settings', 'tr')
+    expect(fetchConsistency).toHaveBeenCalledWith('Settings', 'tr', undefined, 'core')
     expect(getConsistency(db, 'Settings', 'tr', 30)).toEqual(entries)
 
     const second = await client.callTool({ name: 'consistency_lookup', arguments: { text: 'Settings' } })
     expect(JSON.parse(textOf(second))).toEqual(entries)
     expect(fetchConsistency).toHaveBeenCalledTimes(1)
+  })
+
+  it('consistency_lookup widens to all projects only when asked, cached apart from core', async () => {
+    const core: ConsistencyEntry[] = [{ translation: 'Kenar çubuğu', count: 25 }]
+    const wide: ConsistencyEntry[] = [{ translation: 'Yan Menü', count: 82 }]
+    fetchConsistency.mockResolvedValueOnce(core).mockResolvedValueOnce(wide)
+
+    const first = await client.callTool({ name: 'consistency_lookup', arguments: { text: 'Sidebar' } })
+    const second = await client.callTool({
+      name: 'consistency_lookup',
+      arguments: { text: 'Sidebar', scope: 'all' },
+    })
+
+    expect(JSON.parse(textOf(first))).toEqual(core)
+    expect(JSON.parse(textOf(second))).toEqual(wide)
+    expect(fetchConsistency).toHaveBeenNthCalledWith(1, 'Sidebar', 'tr', undefined, 'core')
+    expect(fetchConsistency).toHaveBeenNthCalledWith(2, 'Sidebar', 'tr', undefined, 'all')
+    expect(getConsistency(db, 'Sidebar', 'tr', 30, 'core')).toEqual(core)
+    expect(getConsistency(db, 'Sidebar', 'tr', 30, 'all')).toEqual(wide)
+  })
+
+  it('consistency_lookup rejects a scope outside core/all', async () => {
+    const result = (await client.callTool({
+      name: 'consistency_lookup',
+      arguments: { text: 'Sidebar', scope: 'plugins' },
+    })) as TextResult
+    expect(result.isError).toBe(true)
+    expect(result.content[0]?.text).toContain('scope')
+    expect(fetchConsistency).not.toHaveBeenCalled()
   })
 
   it('consistency_lookup never caches an empty result', async () => {
@@ -130,7 +159,7 @@ describe('mcp tools', () => {
     const byName = Object.fromEntries(tools.map((t) => [t.name, t.inputSchema as Record<string, unknown>]))
     expect(Object.keys(byName.glossary_lookup!.properties as object).sort()).toEqual(['locale', 'term'])
     expect(byName.glossary_lookup!.required).toEqual(['term'])
-    expect(Object.keys(byName.consistency_lookup!.properties as object).sort()).toEqual(['locale', 'text'])
+    expect(Object.keys(byName.consistency_lookup!.properties as object).sort()).toEqual(['locale', 'scope', 'text'])
     expect(byName.consistency_lookup!.required).toEqual(['text'])
     expect(Object.keys(byName.tm_lookup!.properties as object).sort()).toEqual(['limit', 'locale', 'text'])
     expect(byName.tm_lookup!.required).toEqual(['text'])
@@ -145,9 +174,9 @@ describe('mcp tools', () => {
     const tm = await client.callTool({ name: 'tm_lookup', arguments: { text: 'Save changes', locale: 'De' } })
     expect(JSON.parse(textOf(tm))).toHaveLength(1)
 
-    fetchConsistency.mockResolvedValueOnce([{ translation: 'x', count: 1, projects: [] }])
+    fetchConsistency.mockResolvedValueOnce([{ translation: 'x', count: 1 }])
     await client.callTool({ name: 'consistency_lookup', arguments: { text: 'Settings', locale: 'TR_tr' } })
-    expect(fetchConsistency).toHaveBeenCalledWith('Settings', 'tr-tr')
+    expect(fetchConsistency).toHaveBeenCalledWith('Settings', 'tr-tr', undefined, 'core')
     expect(getConsistency(db, 'Settings', 'tr-tr', 30)).toHaveLength(1)
   })
 
@@ -161,7 +190,7 @@ describe('mcp tools', () => {
       order.push(text)
       await new Promise((r) => setTimeout(r, 20))
       inflight -= 1
-      return [{ translation: `${text}-tr`, count: 1, projects: [] }]
+      return [{ translation: `${text}-tr`, count: 1 }]
     })
 
     const results = await Promise.all(
@@ -175,7 +204,7 @@ describe('mcp tools', () => {
   })
 
   it('consistency_lookup keeps serving after a queued fetch rejects', async () => {
-    fetchConsistency.mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce([{ translation: 'ok', count: 1, projects: [] }])
+    fetchConsistency.mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce([{ translation: 'ok', count: 1 }])
     const [bad, good] = await Promise.all([
       client.callTool({ name: 'consistency_lookup', arguments: { text: 'bad' } }),
       client.callTool({ name: 'consistency_lookup', arguments: { text: 'good' } }),
@@ -187,7 +216,7 @@ describe('mcp tools', () => {
   it('normalizes the default locale from deps once, so config values like TR_tr hit the same rows as tr-tr', async () => {
     const raw = new McpServer({ name: 'raw', version: '0.0.0' })
     const rawFetch = vi.fn<(text: string, locale: string) => Promise<ConsistencyEntry[]>>().mockResolvedValue([
-      { translation: 'x', count: 1, projects: [] },
+      { translation: 'x', count: 1 },
     ])
     registerTools(raw, { db, locale: 'De', ttlDays: 30, fetchConsistency: rawFetch })
     const [ct, st] = InMemoryTransport.createLinkedPair()
@@ -200,7 +229,7 @@ describe('mcp tools', () => {
       const tm = await rawClient.callTool({ name: 'tm_lookup', arguments: { text: 'Save changes' } })
       expect(JSON.parse(textOf(tm))).toEqual([{ source: 'Save changes', target: 'Änderungen speichern', locale: 'de', score: 1 }])
       await rawClient.callTool({ name: 'consistency_lookup', arguments: { text: 'Settings' } })
-      expect(rawFetch).toHaveBeenCalledWith('Settings', 'de')
+      expect(rawFetch).toHaveBeenCalledWith('Settings', 'de', undefined, 'core')
       expect(getConsistency(db, 'Settings', 'de', 30)).toHaveLength(1)
     } finally {
       await rawClient.close()
@@ -209,10 +238,10 @@ describe('mcp tools', () => {
   })
 
   it('consistency_lookup passes an explicit locale to the fetcher and cache', async () => {
-    const entries: ConsistencyEntry[] = [{ translation: 'Einstellungen', count: 2, projects: [] }]
+    const entries: ConsistencyEntry[] = [{ translation: 'Einstellungen', count: 2 }]
     fetchConsistency.mockResolvedValueOnce(entries)
     await client.callTool({ name: 'consistency_lookup', arguments: { text: 'Settings', locale: 'de' } })
-    expect(fetchConsistency).toHaveBeenCalledWith('Settings', 'de')
+    expect(fetchConsistency).toHaveBeenCalledWith('Settings', 'de', undefined, 'core')
     expect(getConsistency(db, 'Settings', 'de', 30)).toEqual(entries)
     expect(getConsistency(db, 'Settings', 'tr', 30)).toBeUndefined()
   })

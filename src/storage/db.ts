@@ -49,17 +49,27 @@ CREATE INDEX IF NOT EXISTS glossary_locale_term ON glossary (locale, source_term
 CREATE TABLE IF NOT EXISTS consistency_cache (
   source_text TEXT NOT NULL,
   locale TEXT NOT NULL,
+  scope TEXT NOT NULL,
   results_json TEXT NOT NULL,
   fetched_at TEXT NOT NULL,
-  PRIMARY KEY (source_text, locale)
+  PRIMARY KEY (source_text, locale, scope)
 );
 `
+
+// Rows cached before `scope` existed hold unfiltered all-project results under what is now
+// the core-scoped key. The cache is disposable, so drop it rather than migrate the rows.
+function dropPreScopeCache(db: Database.Database): void {
+  const columns = db.pragma('table_info(consistency_cache)') as Array<{ name: string }>
+  if (columns.length > 0 && !columns.some(c => c.name === 'scope')) {
+    db.exec('DROP TABLE consistency_cache;')
+  }
+}
 
 export function openDb(path: string = dbFile()): Database.Database {
   mkdirSync(dirname(path), { recursive: true })
   const db = new Database(path)
   db.pragma('journal_mode = WAL')
-  db.pragma('foreign_keys = ON')
+  dropPreScopeCache(db)
   db.exec(MIGRATIONS)
   return db
 }

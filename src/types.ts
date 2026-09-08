@@ -55,10 +55,11 @@ export interface GlossaryEntry {
   notes?: string
 }
 
+export type ConsistencyScope = 'core' | 'all'
+
 export interface ConsistencyEntry {
   translation: string
   count: number
-  projects: string[]
 }
 
 export interface PolyglotsConfig {

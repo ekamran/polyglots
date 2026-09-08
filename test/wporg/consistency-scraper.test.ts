@@ -11,10 +11,14 @@ const fixture = (name: string): string =>
   readFileSync(join(import.meta.dirname, '..', 'fixtures', 'wporg', name), 'utf8')
 
 describe('buildConsistencyUrl', () => {
-  it('maps a bare locale to the default set and encodes the search text', () => {
+  it('defaults to the WordPress core project and encodes the search text', () => {
     expect(buildConsistencyUrl('Settings', 'tr')).toBe(
-      'https://translate.wordpress.org/consistency/?search=Settings&set=tr%2Fdefault&project=',
+      'https://translate.wordpress.org/consistency/?search=Settings&set=tr%2Fdefault&project=1',
     )
+  })
+
+  it('drops the project filter for the "all" scope', () => {
+    expect(new URL(buildConsistencyUrl('Settings', 'tr', 'all')).searchParams.get('project')).toBe('')
   })
 
   it('encodes spaces, ampersands and unicode', () => {
@@ -40,18 +44,8 @@ describe('parseConsistencyHtml', () => {
     expect(entries.map((e) => e.translation)).toEqual(['Ayarlar', 'Ayarları', 'ayarlar', 'Kurgu'])
     expect(entries.map((e) => e.count)).toEqual([494, 3, 2, 1])
 
-    const top = entries[0]!
-    expect(top.projects.length).toBe(494)
-    expect(top.projects).toContain(
-      'Plugins - 001 Prime Strategy Translate Accelerator - Development (trunk)',
-    )
-    expect(top.projects).toContain(
-      'Plugins - 404 to 301 – Redirect Manager, 301 Redirection, 404 Error Logs & 404 Monitoring - Development (trunk)',
-    )
-    for (const e of entries) {
-      expect(e.projects.length).toBe(e.count)
-      expect(e.projects.every((p) => p.length > 0)).toBe(true)
-    }
+    expect(entries[0]).toEqual({ translation: 'Ayarlar', count: 494 })
+    for (const e of entries) expect(Object.keys(e).sort()).toEqual(['count', 'translation'])
   })
 
   it('returns [] for a no-results page', () => {
@@ -82,7 +76,7 @@ describe('parseConsistencyHtml', () => {
         </tr>
       </tbody></table>`
     expect(parseConsistencyHtml(html)).toEqual([
-      { translation: 'A & B', count: 2, projects: ['Plugins - X', 'Themes - Y'] },
+      { translation: 'A & B', count: 2 },
     ])
   })
 })
@@ -96,7 +90,18 @@ describe('fetchConsistency', () => {
     }
     const entries = await fetchConsistency('Settings', 'tr', fake)
     expect(calls).toEqual([buildConsistencyUrl('Settings', 'tr')])
+    expect(calls[0]).toContain('project=1')
     expect(entries[0]).toMatchObject({ translation: 'Ayarlar', count: 494 })
+  })
+
+  it('requests the unfiltered URL for the "all" scope', async () => {
+    const calls: string[] = []
+    const fake = async (url: string) => {
+      calls.push(url)
+      return fixture('consistency-settings-tr.html')
+    }
+    await fetchConsistency('Settings', 'tr', fake, 'all')
+    expect(calls).toEqual([buildConsistencyUrl('Settings', 'tr', 'all')])
   })
 
   it('propagates fetch errors', async () => {

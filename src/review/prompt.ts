@@ -32,7 +32,7 @@ nplurals: ${nplurals}
 
 Rules:
 - Follow the official WordPress ${language} glossary. Call the glossary_lookup tool for any term that might be in it (WordPress UI vocabulary, post/page/plugin/theme/block/widget terminology, etc.) before deciding on wording.
-- Call consistency_lookup when you are unsure how the ${language} community translates a phrase.
+- Call consistency_lookup only when the glossary has no answer for the wording in question. It reports how WordPress core already translates that exact string, which is authoritative; do not call it just to confirm a term the glossary already settled.
 - Call tm_lookup to find near-matches in the translation memory and stay consistent with them.
 - Preserve placeholders exactly as in the source: %s, %d, %1$s, %2$d, {x}, {{x}}, and similar. Do not add, drop, reorder or reformat them.
 - Preserve HTML tags and their attributes exactly.
