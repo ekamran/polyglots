@@ -1,0 +1,74 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import React from 'react'
+import { cleanup } from 'ink-testing-library'
+import { saveConfig } from '../../src/config.js'
+import { CommandsProvider } from '../../src/tui/commands.js'
+import { ImportTm } from '../../src/tui/screens/ImportTm.js'
+import { fakeCommands, keys, makeHome, tick, waitForText, render, type Home } from './helpers.js'
+
+let home: Home
+let cwd: string
+let tmxFile: string
+
+beforeEach(async () => {
+  home = await makeHome()
+  cwd = join(home.path, 'work')
+  await mkdir(cwd)
+  tmxFile = join(cwd, 'poedit.tmx')
+  await writeFile(tmxFile, '')
+  await writeFile(join(cwd, 'plugin-tr.po'), '')
+})
+
+afterEach(async () => {
+  cleanup()
+  await home.cleanup()
+})
+
+function mount(commands = fakeCommands(), onBack: () => void = () => undefined) {
+  return render(
+    <CommandsProvider value={commands}>
+      <ImportTm cwd={cwd} onBack={onBack} />
+    </CommandsProvider>,
+  )
+}
+
+describe('ImportTm', () => {
+  it('lists only .tmx files, imports the picked one with the configured locale and reports', async () => {
+    saveConfig({ defaultLocale: 'de' })
+    const commands = fakeCommands()
+    let back = 0
+    const { lastFrame, stdin } = mount(commands, () => back++)
+    await waitForText(lastFrame, 'poedit.tmx')
+    expect(lastFrame()).not.toContain('plugin-tr.po')
+
+    stdin.write(keys.down)
+    await tick()
+    stdin.write(keys.enter)
+    await waitForText(lastFrame, /Imported 3 entries \(2 new or updated\) from 1 file/)
+    expect(lastFrame()).toContain('poedit.tmx')
+    expect(commands.importTmx).toHaveBeenCalledTimes(1)
+    const [files, opts] = vi.mocked(commands.importTmx).mock.calls[0]!
+    expect(files).toEqual([tmxFile])
+    expect(opts.locale).toBe('de')
+
+    stdin.write(keys.enter)
+    await tick()
+    expect(back).toBe(1)
+  })
+
+  it('shows the error when the import fails', async () => {
+    const commands = fakeCommands({
+      importTmx: vi.fn(async () => {
+        throw new Error('Invalid TMX: missing <tmx> root element')
+      }),
+    })
+    const { lastFrame, stdin } = mount(commands)
+    await waitForText(lastFrame, 'poedit.tmx')
+    stdin.write(keys.down)
+    await tick()
+    stdin.write(keys.enter)
+    await waitForText(lastFrame, 'Invalid TMX: missing <tmx> root element')
+  })
+})

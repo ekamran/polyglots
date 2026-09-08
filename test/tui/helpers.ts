@@ -1,0 +1,174 @@
+import { EventEmitter } from 'node:events'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import type { ReactElement } from 'react'
+import { render as inkRender } from 'ink-testing-library'
+import { vi } from 'vitest'
+import { loadConfig, loadSecrets, saveSecret } from '../../src/config.js'
+import type { TmImportOptions } from '../../src/commands/tm-import.js'
+import type { TranslateEvent, TranslateOptions, TranslateSummary } from '../../src/commands/translate.js'
+import type { TuiCommands } from '../../src/tui/commands.js'
+
+const ANSI = /\[[0-9;]*m/g
+const strip = (s: string | undefined): string => (s ?? '').replace(ANSI, '')
+const CSI = /\x1b\[[0-9;?]*[A-Za-z]/g
+const stripAll = (s: string | undefined): string => (s ?? '').replace(CSI, '')
+
+export function render(tree: ReactElement) {
+  const instance = inkRender(tree)
+  return {
+    stdin: instance.stdin,
+    unmount: instance.unmount,
+    rerender: instance.rerender,
+    lastFrame: (): string => strip(instance.lastFrame()),
+    get frames(): string[] {
+      return instance.frames.map(strip)
+    },
+  }
+}
+
+// Minimal stand-ins for process.stdin/stdout, modelled on ink-testing-library's, for driving runTui().
+export class FakeStdout extends EventEmitter {
+  isTTY = true
+  readonly frames: string[] = []
+  private last: string | undefined
+  get columns(): number {
+    return 100
+  }
+  // Ink writes cursor and synchronized-output markers as separate chunks around each frame;
+  // only chunks with visible text count as frames.
+  write = (chunk: string): boolean => {
+    this.frames.push(chunk)
+    if (stripAll(chunk).trim().length > 0) this.last = stripAll(chunk)
+    return true
+  }
+  lastFrame = (): string | undefined => this.last
+  asStream(): NodeJS.WriteStream {
+    return this as unknown as NodeJS.WriteStream
+  }
+}
+
+export class FakeStdin extends EventEmitter {
+  isTTY = true
+  private data: string | null = null
+  write = (data: string): void => {
+    this.data = data
+    this.emit('readable')
+    this.emit('data', data)
+  }
+  read = (): string | null => {
+    const { data } = this
+    this.data = null
+    return data
+  }
+  setEncoding(): void {}
+  setRawMode(): void {}
+  resume(): void {}
+  pause(): void {}
+  ref(): void {}
+  unref(): void {}
+  asStream(): NodeJS.ReadStream {
+    return this as unknown as NodeJS.ReadStream
+  }
+}
+
+export const keys = {
+  up: '[A',
+  down: '[B',
+  left: '[D',
+  right: '[C',
+  enter: '\r',
+  backspace: '',
+  esc: '',
+  tab: '\t',
+}
+
+export const tick = (ms = 0): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+
+// Ink holds a bare ESC for 20ms to disambiguate it from escape sequences.
+export const ESC_DELAY = 40
+
+export async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
+  const start = Date.now()
+  while (!predicate()) {
+    if (Date.now() - start > timeoutMs) throw new Error('waitFor: timed out')
+    await tick(5)
+  }
+}
+
+export async function waitForText(frame: () => string | undefined, text: string | RegExp): Promise<void> {
+  const matches = (): boolean => {
+    const f = frame() ?? ''
+    return typeof text === 'string' ? f.includes(text) : text.test(f)
+  }
+  try {
+    await waitFor(matches)
+  } catch {
+    throw new Error(`waitForText: ${String(text)} not found in frame:\n${frame()}`)
+  }
+  // Ink re-attaches its stdin listener in a passive effect after the frame is painted;
+  // input written before that effect flushes would be dropped.
+  await tick()
+}
+
+export const flat = (frame: string | undefined): string => (frame ?? '').replace(/\s+/g, ' ')
+
+export interface Home {
+  path: string
+  cleanup(): Promise<void>
+}
+
+const savedEnv = { ...process.env }
+
+export async function makeHome(): Promise<Home> {
+  const path = await mkdtemp(join(tmpdir(), 'polyglots-tui-'))
+  process.env.POLYGLOTS_HOME = path
+  delete process.env.DEEPL_API_KEY
+  delete process.env.OPENAI_API_KEY
+  return {
+    path,
+    cleanup: async () => {
+      for (const key of Object.keys(process.env)) if (!(key in savedEnv)) delete process.env[key]
+      Object.assign(process.env, savedEnv)
+      delete process.env.POLYGLOTS_HOME
+      await rm(path, { recursive: true, force: true })
+    },
+  }
+}
+
+export function summaryOf(file: string, patch: Partial<TranslateSummary> = {}): TranslateSummary {
+  return { file, total: 10, pending: 4, fromTm: 1, translated: 3, fuzzy: 1, skipped: 0, ...patch }
+}
+
+export function scriptedTranslate(events: (file: string) => TranslateEvent[]): TuiCommands['translateFile'] {
+  return async (opts: TranslateOptions) => {
+    let summary: TranslateSummary = summaryOf(opts.file)
+    for (const e of events(opts.file)) {
+      if (e.type === 'done') summary = e.summary
+      opts.onProgress?.(e)
+      await tick()
+    }
+    return summary
+  }
+}
+
+export function fakeCommands(overrides: Partial<TuiCommands> = {}): TuiCommands {
+  return {
+    translateFile: vi.fn(async (opts: TranslateOptions) => {
+      const summary = summaryOf(opts.file)
+      opts.onProgress?.({ type: 'start', file: opts.file, total: summary.total, pending: summary.pending })
+      opts.onProgress?.({ type: 'done', summary })
+      return summary
+    }),
+    importTmx: vi.fn(async (files: string[], opts: TmImportOptions) => {
+      for (const file of files) opts.onProgress?.({ file, entries: 3, upserted: 2 })
+      return { files: files.length, entries: 3 * files.length, upserted: 2 * files.length }
+    }),
+    syncGlossary: vi.fn(async () => ({ entries: 42 })),
+    loadConfig,
+    loadSecrets,
+    saveSecret,
+    ...overrides,
+  }
+}
