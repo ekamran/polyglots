@@ -293,6 +293,71 @@ describe('glossary sync', () => {
   })
 })
 
+describe('glossary export', () => {
+  interface FakeExport {
+    fn: CliDeps['exportGlossary'] & object
+    calls: Array<{ locale: string; file?: string; delimiter?: string }>
+  }
+
+  function fakeExport(outcome: { entries: number; csv: string; file?: string } | Error): FakeExport {
+    const calls: Array<{ locale: string; file?: string; delimiter?: string }> = []
+    return {
+      calls,
+      async fn(opts) {
+        calls.push({ locale: opts.locale, file: opts.file, delimiter: opts.delimiter })
+        if (outcome instanceof Error) throw outcome
+        return outcome
+      },
+    }
+  }
+
+  it('writes to the given path and reports the count', async () => {
+    const h = harness()
+    const exp = fakeExport({ entries: 511, csv: 'x', file: '/tmp/g.csv' })
+    const code = await h.run(['glossary', 'export', '/tmp/g.csv'], { exportGlossary: exp.fn })
+    expect(code).toBe(0)
+    expect(exp.calls).toEqual([{ locale: 'tr', file: '/tmp/g.csv', delimiter: ';' }])
+    expect(h.stdout.text).toBe('Exported 511 glossary terms (tr) to /tmp/g.csv\n')
+  })
+
+  it('prints the csv to stdout when no path is given', async () => {
+    const h = harness()
+    const exp = fakeExport({ entries: 2, csv: 'Term;Translation;Notes\na;b;c\n' })
+    const code = await h.run(['glossary', 'export'], { exportGlossary: exp.fn })
+    expect(code).toBe(0)
+    expect(exp.calls).toEqual([{ locale: 'tr', file: undefined, delimiter: ';' }])
+    expect(h.stdout.text).toBe('Term;Translation;Notes\na;b;c\n')
+  })
+
+  it('forwards --locale and --delimiter', async () => {
+    const h = harness()
+    const exp = fakeExport({ entries: 1, csv: 'x', file: 'g.csv' })
+    const code = await h.run(['glossary', 'export', 'g.csv', '--locale', 'PT-BR', '--delimiter', ','], {
+      exportGlossary: exp.fn,
+    })
+    expect(code).toBe(0)
+    expect(exp.calls).toEqual([{ locale: 'pt-br', file: 'g.csv', delimiter: ',' }])
+  })
+
+  it('rejects a delimiter that is not a comma or semicolon', async () => {
+    const h = harness()
+    const exp = fakeExport({ entries: 1, csv: 'x' })
+    const code = await h.run(['glossary', 'export', '--delimiter', '|'], { exportGlossary: exp.fn })
+    expect(code).toBe(2)
+    expect(exp.calls).toEqual([])
+    expect(h.stderr.text).toContain('delimiter')
+  })
+
+  it('exits 1 with the message when nothing is cached for the locale', async () => {
+    const h = harness()
+    const exp = fakeExport(new Error('No cached glossary for locale "de"; run: polyglots glossary sync --locale de'))
+    const code = await h.run(['glossary', 'export', '--locale', 'de'], { exportGlossary: exp.fn })
+    expect(code).toBe(1)
+    expect(h.stderr.text).toContain('No cached glossary for locale "de"')
+    expect(h.stdout.text).toBe('')
+  })
+})
+
 describe('tm import', () => {
   it('forwards --project and the config default locale to the importer', async () => {
     await mkdir(join(home, 'config'), { recursive: true })

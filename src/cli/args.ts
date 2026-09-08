@@ -1,6 +1,7 @@
 import { existsSync, globSync, statSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { normalizeLocale } from '../tmx/parse.js'
+import type { CsvDelimiter } from '../commands/glossary-export.js'
 import type { Locale, Secrets } from '../types.js'
 
 export class UsageError extends Error {
@@ -82,6 +83,11 @@ export type DraftEngineName = (typeof DRAFT_ENGINES)[number]
 export function parseDraftEngine(raw: string): DraftEngineName {
   if (raw === 'deepl' || raw === 'openai') return raw
   throw new UsageError(`--draft-engine must be one of ${DRAFT_ENGINES.join(', ')}, got "${raw}"`)
+}
+
+export function parseCsvDelimiter(raw: string): CsvDelimiter {
+  if (raw === ';' || raw === ',') return raw
+  throw new UsageError(`--delimiter must be ";" or ",", got "${raw}"`)
 }
 
 const ENGINE_SECRET: Record<DraftEngineName, keyof Secrets> = {

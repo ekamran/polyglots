@@ -31,6 +31,16 @@ export function replaceGlossary(db: Database.Database, locale: Locale, entries: 
   })()
 }
 
+export function allGlossary(db: Database.Database, locale: Locale): GlossaryEntry[] {
+  return db
+    .prepare<[string], GlossaryRow>(
+      `SELECT locale, source_term, translation, part_of_speech, notes FROM glossary
+       WHERE locale = ? ORDER BY source_term COLLATE NOCASE, part_of_speech, id`,
+    )
+    .all(locale)
+    .map(toEntry)
+}
+
 function escapeLike(term: string): string {
   return term.replace(/[\\%_]/g, (c) => `\\${c}`)
 }

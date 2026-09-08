@@ -6,6 +6,7 @@ import { Writable } from 'node:stream'
 import { text } from 'node:stream/consumers'
 import { fileURLToPath } from 'node:url'
 import { Command, CommanderError } from 'commander'
+import { exportGlossary } from './commands/glossary-export.js'
 import { syncGlossary } from './commands/glossary-sync.js'
 import { importTmx } from './commands/tm-import.js'
 import { translateFile, type TranslateSummary } from './commands/translate.js'
@@ -14,6 +15,7 @@ import {
   UsageError,
   expandFileArgs,
   isSecretName,
+  parseCsvDelimiter,
   parseDraftEngine,
   parseLocaleArg,
   parsePositiveInt,
@@ -45,6 +47,7 @@ export interface CliDeps {
   translate?: typeof translateFile
   importTmx?: typeof importTmx
   syncGlossary?: typeof syncGlossary
+  exportGlossary?: typeof exportGlossary
   runTui?: RunTui
 }
 
@@ -53,6 +56,7 @@ interface Cli {
   translate: typeof translateFile
   importTmx: typeof importTmx
   syncGlossary: typeof syncGlossary
+  exportGlossary: typeof exportGlossary
   runTui: RunTui
   config: () => PolyglotsConfig
   out(line: string): void
@@ -77,6 +81,7 @@ function createCli(deps: CliDeps): Cli {
     translate: deps.translate ?? translateFile,
     importTmx: deps.importTmx ?? importTmx,
     syncGlossary: deps.syncGlossary ?? syncGlossary,
+    exportGlossary: deps.exportGlossary ?? exportGlossary,
     runTui: deps.runTui ?? loadTui,
     config: () => (cached ??= loadConfig()),
     out: (line) => streams.stdout.write(`${line}\n`),
@@ -335,6 +340,18 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
       const locale = parseLocaleArg(flags.locale ?? cli.config().defaultLocale)
       const result = await cli.syncGlossary({ locale })
       cli.out(`Synced ${result.entries} glossary entries for ${locale}.`)
+    })
+  glossary
+    .command('export [file]')
+    .description('Write the cached glossary as a Poedit-compatible CSV (stdout when no file is given)')
+    .option('--locale <locale>', `Glossary locale (default: ${shown.defaultLocale})`)
+    .option('--delimiter <char>', 'Column separator, ";" or "," (default: ;)')
+    .action(async (file: string | undefined, flags: { locale?: string; delimiter?: string }) => {
+      const locale = parseLocaleArg(flags.locale ?? cli.config().defaultLocale)
+      const delimiter = parseCsvDelimiter(flags.delimiter ?? ';')
+      const result = await cli.exportGlossary({ locale, file, delimiter })
+      if (result.file) cli.out(`Exported ${result.entries} glossary terms (${locale}) to ${result.file}`)
+      else cli.streams.stdout.write(result.csv)
     })
 
   const cfg = program.command('config').description('Settings and API keys')
