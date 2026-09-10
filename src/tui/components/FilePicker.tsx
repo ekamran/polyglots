@@ -11,9 +11,19 @@ export interface FilePickerProps {
   limit?: number
 }
 
+export type EntryKind = 'dir' | 'file'
+
 interface Entry {
   path: string
-  kind: 'dir' | 'file'
+  kind: EntryKind
+}
+
+// A matching file stays yellow even while selected: the ❯ indicator and the bold
+// weight already mark the cursor, so colour is free to keep meaning "this is the
+// thing you came here to pick".
+export function itemColor(kind: EntryKind | undefined, isSelected: boolean): string | undefined {
+  if (kind === 'file') return 'yellow'
+  return isSelected ? 'cyan' : undefined
 }
 
 interface Listing {
@@ -63,6 +73,21 @@ export function FilePicker({ dir, extensions, onPick, limit = 15 }: FilePickerPr
   const listing = useMemo(() => list(cwd, extensions), [cwd, extensions])
   const hasFiles = listing.items.some((i) => i.value.kind === 'file')
 
+  // ink-select-input hands its item component only the label, so the kind is
+  // looked up by label; a directory's label carries a trailing slash, so a file
+  // and a folder of the same name never collide.
+  const ItemView = useMemo(() => {
+    const kinds = new Map(listing.items.map((i) => [i.label, i.value.kind]))
+    return function Item({ isSelected, label }: { isSelected?: boolean; label: string }) {
+      const selected = isSelected === true
+      return (
+        <Text color={itemColor(kinds.get(label), selected)} bold={selected}>
+          {label}
+        </Text>
+      )
+    }
+  }, [listing])
+
   return (
     <Box flexDirection="column">
       <Text>
@@ -73,6 +98,7 @@ export function FilePicker({ dir, extensions, onPick, limit = 15 }: FilePickerPr
       {!hasFiles && <Text dimColor>(no {extensions.join('/')} files here)</Text>}
       <SelectInput
         items={listing.items}
+        itemComponent={ItemView}
         limit={limit}
         onSelect={(item) => (item.value.kind === 'dir' ? setCwd(item.value.path) : onPick(item.value.path))}
       />

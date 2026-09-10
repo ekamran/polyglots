@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import React from 'react'
 import { cleanup } from 'ink-testing-library'
-import { FilePicker } from '../../src/tui/components/FilePicker.js'
+import { FilePicker, itemColor } from '../../src/tui/components/FilePicker.js'
 import { keys, render, tick, waitForText } from './helpers.js'
 
 let root: string
@@ -24,6 +24,21 @@ beforeEach(async () => {
 afterEach(async () => {
   cleanup()
   await rm(root, { recursive: true, force: true })
+})
+
+describe('itemColor', () => {
+  it('paints matching files yellow so they stand out among folders', () => {
+    expect(itemColor('file', false)).toBe('yellow')
+  })
+
+  it('keeps a file yellow while selected, since the indicator already shows selection', () => {
+    expect(itemColor('file', true)).toBe('yellow')
+  })
+
+  it('leaves directories uncoloured until selected', () => {
+    expect(itemColor('dir', false)).toBeUndefined()
+    expect(itemColor('dir', true)).toBe('cyan')
+  })
 })
 
 describe('FilePicker', () => {
