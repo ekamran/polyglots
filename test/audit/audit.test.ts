@@ -148,6 +148,9 @@ describe('buildAuditPrompt', () => {
     const prompt = buildAuditPrompt(candidates, 'tr', 2)
     expect(prompt).toMatch(/institution/i)
     expect(prompt).toMatch(/place|person/i)
+    // A work title (Suç ve Ceza) is correctly title-cased and no rule can tell it
+    // from a calque, so the model is the only thing standing between it and a flag.
+    expect(prompt).toMatch(/titles of works/i)
   })
 
   it('states the locale team standards and names the lookup tools', () => {
