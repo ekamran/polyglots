@@ -363,7 +363,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
     .command('review <file>')
     .description('Audit a submitted .po and write out only the entries that need work')
     .option('--locale <locale>', `Review locale (default: ${shown.defaultLocale})`)
-    .option('--out-dir <dir>', 'Where to write the outputs (default: beside the input)')
+    .option('--out-dir <dir>', 'Where to write the problems file (default: beside the input)')
     .option('--no-ai', 'Run the deterministic checks only, skipping AI adjudication')
     .option('--batch-size <n>', 'Entries per AI batch')
     .action(async (raw: string, flags: { locale?: string; outDir?: string; ai?: boolean; batchSize?: string }) => {
