@@ -13,6 +13,9 @@ export type TranslateEvent =
   | { type: 'start'; file: string; total: number; pending: number }
   | { type: 'tm-hit'; count: number }
   | { type: 'batch-start'; index: number; of: number; size: number }
+  // Emitted between the two long calls in a batch. The bar cannot move inside a
+  // batch, so this and the elapsed clock are the only signs the run is alive.
+  | { type: 'batch-phase'; index: number; phase: 'drafting' | 'reviewing'; at: number }
   | { type: 'batch-done'; index: number; translated: number; fuzzy: number }
   | { type: 'batch-skipped'; index: number; size: number; reason: string }
   | { type: 'warning'; message: string }
@@ -169,6 +172,7 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
     for (const [i, batch] of batches.entries()) {
       const index = i + 1
       emit({ type: 'batch-start', index, of: batches.length, size: batch.length })
+      emit({ type: 'batch-phase', index, phase: 'drafting', at: Date.now() })
 
       let drafts: Drafts | undefined
       let results: ReviewResult[] | undefined
@@ -176,6 +180,7 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
       for (let attempt = 0; attempt < 2 && results === undefined; attempt++) {
         try {
           drafts ??= await draft(batch, engine, locale, po.nplurals)
+          emit({ type: 'batch-phase', index, phase: 'reviewing', at: Date.now() })
           results = await reviewDrafts(batch, drafts, review, opts, locale, po.nplurals, mcpConfigPath)
         } catch (err) {
           if (isStopError(err)) {

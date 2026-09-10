@@ -157,6 +157,49 @@ describe('createProgressReporter', () => {
   })
 })
 
+describe('batch phase reporting', () => {
+  it('shows which half of the batch is running', () => {
+    let state = applyEvent(initialProgress, { type: 'start', file: 'a.po', total: 10, pending: 10 })
+    state = applyEvent(state, { type: 'batch-start', index: 1, of: 2, size: 5 })
+    state = applyEvent(state, { type: 'batch-phase', index: 1, phase: 'drafting', at: 1000 })
+    expect(formatProgress(state, 1000)).toMatch(/drafting/)
+
+    state = applyEvent(state, { type: 'batch-phase', index: 1, phase: 'reviewing', at: 5000 })
+    expect(formatProgress(state, 5000)).toMatch(/reviewing/)
+    expect(formatProgress(state, 5000)).not.toMatch(/drafting/)
+  })
+
+  // The bar cannot move inside a batch, so the seconds are what tells the user the
+  // run is alive rather than stuck on a subprocess.
+  it('counts the seconds a phase has been running', () => {
+    let state = applyEvent(initialProgress, { type: 'start', file: 'a.po', total: 10, pending: 10 })
+    state = applyEvent(state, { type: 'batch-phase', index: 1, phase: 'reviewing', at: 1000 })
+
+    expect(formatProgress(state, 1000)).toMatch(/reviewing 0s/)
+    expect(formatProgress(state, 43_000)).toMatch(/reviewing 42s/)
+  })
+
+  it('drops the phase once the batch finishes', () => {
+    let state = applyEvent(initialProgress, { type: 'start', file: 'a.po', total: 10, pending: 10 })
+    state = applyEvent(state, { type: 'batch-phase', index: 1, phase: 'reviewing', at: 1000 })
+    state = applyEvent(state, { type: 'batch-done', index: 1, translated: 5, fuzzy: 1 })
+    expect(formatProgress(state, 9000)).not.toMatch(/reviewing/)
+  })
+
+  it('announces each phase on a non-tty so a redirected log still shows life', () => {
+    const out = { isTTY: false, text: '', write(c: string) { this.text += c; return true } }
+    const report = createProgressReporter(out)
+    report({ type: 'start', file: 'a.po', total: 10, pending: 10 })
+    report({ type: 'batch-start', index: 1, of: 2, size: 5 })
+    report({ type: 'batch-phase', index: 1, phase: 'drafting', at: 1000 })
+    report({ type: 'batch-phase', index: 1, phase: 'reviewing', at: 2000 })
+    report.finish()
+
+    expect(out.text).toMatch(/drafting/)
+    expect(out.text).toMatch(/reviewing/)
+  })
+})
+
 describe('createReviewProgressReporter', () => {
   function sink() {
     let text = ''

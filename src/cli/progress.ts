@@ -1,6 +1,8 @@
 import type { TranslateEvent } from '../commands/translate.js'
 import type { ReviewEvent } from '../types.js'
 
+export type BatchPhase = 'drafting' | 'reviewing'
+
 export interface ProgressState {
   file: string
   total: number
@@ -9,6 +11,7 @@ export interface ProgressState {
   fuzzy: number
   skipped: number
   batch?: { index: number; of: number }
+  phase?: { name: BatchPhase; since: number }
 }
 
 export const initialProgress: ProgressState = {
@@ -29,9 +32,16 @@ export function applyEvent(state: ProgressState, event: TranslateEvent): Progres
     case 'tm-hit':
       return { ...state, done: state.done + event.count }
     case 'batch-start':
-      return { ...state, batch: { index: event.index, of: event.of } }
+      return { ...state, batch: { index: event.index, of: event.of }, phase: undefined }
+    case 'batch-phase':
+      return { ...state, phase: { name: event.phase, since: event.at } }
     case 'batch-done':
-      return { ...state, done: state.done + event.translated, fuzzy: state.fuzzy + event.fuzzy }
+      return {
+        ...state,
+        done: state.done + event.translated,
+        fuzzy: state.fuzzy + event.fuzzy,
+        phase: undefined,
+      }
     case 'batch-skipped':
       return { ...state, done: state.done + event.size, skipped: state.skipped + event.size }
     default:
@@ -39,13 +49,16 @@ export function applyEvent(state: ProgressState, event: TranslateEvent): Progres
   }
 }
 
-export function formatProgress(state: ProgressState): string {
+export function formatProgress(state: ProgressState, now: number = Date.now()): string {
   const ratio = state.pending === 0 ? 1 : Math.min(1, state.done / state.pending)
   const filled = ratio === 1 ? BAR_WIDTH : Math.min(BAR_WIDTH - 1, Math.round(ratio * BAR_WIDTH))
   const bar = `[${'#'.repeat(filled)}${'-'.repeat(BAR_WIDTH - filled)}]`
   const parts = [`${bar} ${state.done}/${state.pending}`]
   if (state.batch) {
     parts.push(`batch ${state.batch.index}/${state.batch.of}`, `fuzzy ${state.fuzzy}`)
+  }
+  if (state.phase) {
+    parts.push(`${state.phase.name} ${Math.max(0, Math.round((now - state.phase.since) / 1000))}s`)
   }
   return parts.join('  ')
 }
@@ -56,6 +69,8 @@ export function noticeFor(event: TranslateEvent, state: ProgressState = initialP
       return `Translating ${event.file}: ${event.pending} of ${event.total} entries selected`
     case 'warning':
       return `warning: ${event.message}`
+    case 'batch-phase':
+      return `batch ${event.index}/${state.batch?.of ?? '?'} ${event.phase}…`
     case 'batch-skipped':
       return `batch ${event.index}/${state.batch?.of ?? '?'} skipped (${event.size} entries): ${event.reason}`
     default:
@@ -68,6 +83,7 @@ function advancesBar(event: TranslateEvent): boolean {
     case 'tm-hit':
       return event.count > 0
     case 'batch-start':
+    case 'batch-phase':
     case 'batch-done':
     case 'batch-skipped':
       return true
@@ -88,12 +104,36 @@ export interface ProgressReporter {
   finish(): void
 }
 
+// A batch is two long calls, so the bar sits still for tens of seconds. On a
+// terminal the line is redrawn on a timer while a phase runs, which keeps the
+// elapsed clock moving and shows the run has not wedged. The timer is unref'd so
+// it can never hold the process open.
+const TICK_MS = 1000
+
 export function createProgressReporter(stream: ProgressStream): ProgressReporter {
   let state = initialProgress
   let liveLine = false
+  let ticker: NodeJS.Timeout | undefined
   const tty = stream.isTTY === true
 
+  const stopTicking = () => {
+    if (!ticker) return
+    clearInterval(ticker)
+    ticker = undefined
+  }
+
+  const startTicking = () => {
+    if (!tty || ticker) return
+    ticker = setInterval(() => {
+      if (!state.phase) return
+      stream.write(`${CLEAR_LINE}${formatProgress(state)}`)
+      liveLine = true
+    }, TICK_MS)
+    ticker.unref?.()
+  }
+
   const clearLive = () => {
+    stopTicking()
     if (!liveLine) return
     stream.write(CLEAR_LINE)
     liveLine = false
@@ -121,6 +161,8 @@ export function createProgressReporter(stream: ProgressStream): ProgressReporter
       stream.write(`${CLEAR_LINE}${line}`)
       liveLine = true
     }
+    if (state.phase) startTicking()
+    else stopTicking()
   }
 
   return Object.assign(report, { finish: clearLive })

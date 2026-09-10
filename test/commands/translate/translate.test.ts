@@ -76,7 +76,18 @@ describe('translateFile: selection', () => {
     })
     expect(events[0]).toEqual({ type: 'start', file: ws.file, total: 12, pending: 7 })
     expect(events.at(-1)).toEqual({ type: 'done', summary })
-    expect(events.map((e) => e.type)).toEqual(['start', 'tm-hit', 'batch-start', 'batch-done', 'saved', 'done'])
+    // batch-phase twice: drafting, then reviewing, so the bar has something to say
+    // during the two long calls a batch makes.
+    expect(events.map((e) => e.type)).toEqual([
+      'start',
+      'tm-hit',
+      'batch-start',
+      'batch-phase',
+      'batch-phase',
+      'batch-done',
+      'saved',
+      'done',
+    ])
   })
 
   it('reprocesses every entry in all mode', async () => {
@@ -139,7 +150,17 @@ describe('translateFile: exact TM fast path', () => {
 
     expect(ofType(events, 'tm-hit')).toEqual([{ type: 'tm-hit', count: 2 }])
     expect(summary).toMatchObject({ pending: 7, fromTm: 2, translated: 5, skipped: 0 })
-    expect(events.map((e) => e.type)).toEqual(['start', 'tm-hit', 'saved', 'batch-start', 'batch-done', 'saved', 'done'])
+    expect(events.map((e) => e.type)).toEqual([
+      'start',
+      'tm-hit',
+      'saved',
+      'batch-start',
+      'batch-phase',
+      'batch-phase',
+      'batch-done',
+      'saved',
+      'done',
+    ])
   })
 
   it('falls through to the engine when only one plural form is in the TM', async () => {
