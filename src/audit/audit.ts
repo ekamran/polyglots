@@ -11,6 +11,7 @@ export interface Verdict {
   findings: Finding[]
   reason: string
   unreviewed?: boolean
+  needsReview?: boolean
 }
 
 export type Adjudicator = (
@@ -69,9 +70,12 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
       continue
     }
     if (opts.noAi) {
+      // Nothing adjudicates a suspect without the model, so a soft finding is
+      // reported for a human to look at rather than asserted as a problem.
       verdicts.set(entry.key, {
         key: entry.key,
-        problem: findings.length > 0,
+        problem: false,
+        ...(findings.length > 0 ? { needsReview: true } : {}),
         findings,
         reason: ruleReason(findings),
       })

@@ -161,6 +161,7 @@ export function reviewSummaryOf(file: string, patch: Partial<ReviewSummary> = {}
     skipped: 2,
     reviewed: 8,
     problems: 3,
+    needsReview: 0,
     approvable: 5,
     unreviewed: 0,
     byRule: { 'title-case': 2, glossary: 1 },

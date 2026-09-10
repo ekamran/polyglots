@@ -383,9 +383,12 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
         `Reviewed ${summary.reviewed} entries (${summary.skipped} not submitted): ` +
           `${summary.problems} flagged, ${summary.approvable} approvable.`,
       )
+      if (summary.needsReview > 0) {
+        cli.out(`${summary.needsReview} entries need your eye; see the report. Re-run without --no-ai to have them adjudicated.`)
+      }
       if (summary.unreviewed > 0) cli.out(`${summary.unreviewed} entries could not be reviewed and were flagged.`)
       if (summary.problemsFile) cli.out(`Problems: ${summary.problemsFile}`)
-      else cli.out('Nothing flagged; the whole submission looks approvable.')
+      else if (summary.needsReview === 0) cli.out('Nothing flagged; the whole submission looks approvable.')
       cli.out(`Report:   ${summary.reportFile}`)
     })
 

@@ -145,6 +145,30 @@ describe('reviewFile', () => {
     expect(summary.problems).toBeGreaterThan(0)
   })
 
+  it('keeps soft findings out of the problems file under noAi', async () => {
+    const summary = await run({ noAi: true })
+
+    // %s comments is a placeholder error; Open the sidebar is only a glossary suspect.
+    expect(summary.problems).toBe(1)
+    expect(summary.needsReview).toBe(1)
+    expect(summary.approvable).toBe(1)
+
+    const problems = await loadPo(summary.problemsFile!)
+    expect(problems.auditEntries().map((e) => e.msgid)).toEqual(['%s comments'])
+  })
+
+  it('lists the soft findings in the report under their own heading', async () => {
+    const summary = await run({ noAi: true })
+    const report = await readFile(summary.reportFile, 'utf8')
+    expect(report).toMatch(/needs your eye/i)
+    expect(report).toContain('Open the sidebar')
+  })
+
+  it('reports zero needsReview when the model adjudicates', async () => {
+    const summary = await run()
+    expect(summary.needsReview).toBe(0)
+  })
+
   it('counts entries whose review failed as unreviewed problems', async () => {
     const adjudicate = vi.fn().mockRejectedValue(new Error('claude exited with exit code 1'))
     const summary = await run({ adjudicate })

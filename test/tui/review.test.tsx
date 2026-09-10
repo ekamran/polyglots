@@ -90,6 +90,21 @@ describe('reduceReviewProgress', () => {
   })
 })
 
+describe('ReviewProgress needs-your-eye', () => {
+  it('does not claim the submission is approvable while entries need a human', () => {
+    const summary = reviewSummaryOf('plugin-tr.po', { problems: 0, needsReview: 5, approvable: 0 })
+    delete (summary as { problemsFile?: string }).problemsFile
+    const { lastFrame } = render(<ReviewProgress events={[{ type: 'start', file: 'plugin-tr.po', total: 5, reviewable: 5 }, { type: 'done', summary }]} />)
+    expect(lastFrame() ?? '').not.toMatch(/looks approvable/i)
+  })
+
+  it('reports entries only the human can judge after a rules-only run', () => {
+    const summary = reviewSummaryOf('plugin-tr.po', { problems: 2, needsReview: 7, approvable: 40 })
+    const { lastFrame } = render(<ReviewProgress events={[{ type: 'start', file: 'plugin-tr.po', total: 49, reviewable: 49 }, { type: 'done', summary }]} />)
+    expect(lastFrame() ?? '').toMatch(/7 need/i)
+  })
+})
+
 describe('ReviewProgress', () => {
   it('renders a bar over batches with a running problem count', async () => {
     const { lastFrame } = render(<ReviewProgress events={events.slice(0, 4)} />)

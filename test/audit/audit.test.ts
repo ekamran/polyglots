@@ -78,13 +78,33 @@ describe('auditEntries', () => {
     expect(verdict!.findings.map((f) => f.rule)).toEqual(['ai:meaning'])
   })
 
-  it('skips the AI entirely when noAi is set, keeping rule findings as problems', async () => {
+  it('never calls the AI when noAi is set', async () => {
     const adjudicate = vi.fn()
     const verdicts = await auditEntries({ entries: [clean, suspect], ...base({ noAi: true }), adjudicate })
 
     expect(adjudicate).not.toHaveBeenCalled()
     expect(verdicts.find((v) => v.key === 'a')!.problem).toBe(false)
-    expect(verdicts.find((v) => v.key === 'c')!.problem).toBe(true)
+    expect(verdicts).toHaveLength(2)
+  })
+
+  // Without the model nothing adjudicates a suspect, so a soft finding must not
+  // masquerade as a confirmed problem.
+  it('separates hard errors from soft findings under noAi', async () => {
+    const adjudicate = vi.fn()
+    const verdicts = await auditEntries({ entries: [clean, hardError, suspect], ...base({ noAi: true }), adjudicate })
+    const byKey = new Map(verdicts.map((v) => [v.key, v]))
+
+    expect(byKey.get('b')).toMatchObject({ problem: true })
+    expect(byKey.get('b')!.needsReview).toBeFalsy()
+    expect(byKey.get('c')).toMatchObject({ problem: false, needsReview: true })
+    expect(byKey.get('a')).toMatchObject({ problem: false })
+    expect(byKey.get('a')!.needsReview).toBeFalsy()
+  })
+
+  it('never marks a verdict needsReview when the model is in the loop', async () => {
+    const adjudicate = vi.fn().mockResolvedValue([{ id: 1, problem: false, categories: [], reason: 'ok' }])
+    const [verdict] = await auditEntries({ entries: [suspect], ...base(), adjudicate })
+    expect(verdict!.needsReview).toBeFalsy()
   })
 
   it('batches candidates by batchSize', async () => {

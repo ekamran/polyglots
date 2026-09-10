@@ -44,7 +44,7 @@ function submitted(entry: AuditEntry): boolean {
 function tally(verdicts: Verdict[]): Record<string, number> {
   const counts: Record<string, number> = {}
   for (const verdict of verdicts) {
-    if (!verdict.problem) continue
+    if (!verdict.problem && !verdict.needsReview) continue
     for (const rule of new Set(verdict.findings.map((f) => f.rule))) {
       counts[rule] = (counts[rule] ?? 0) + 1
     }
@@ -52,7 +52,24 @@ function tally(verdicts: Verdict[]): Record<string, number> {
   return counts
 }
 
-function buildReport(file: string, summary: ReviewSummary, problems: Verdict[], byKey: Map<string, AuditEntry>): string {
+function entrySection(verdict: Verdict, byKey: Map<string, AuditEntry>): string[] {
+  const entry = byKey.get(verdict.key)
+  if (!entry) return []
+  const lines = [`### ${entry.msgid}`]
+  if (entry.msgctxt) lines.push(`Context: \`${entry.msgctxt}\``)
+  lines.push(`Submitted: ${entry.msgstr.filter(Boolean).join(' / ')}`)
+  for (const finding of verdict.findings) lines.push(`- **${finding.rule}**: ${finding.message}`)
+  lines.push('')
+  return lines
+}
+
+function buildReport(
+  file: string,
+  summary: ReviewSummary,
+  problems: Verdict[],
+  needsReview: Verdict[],
+  byKey: Map<string, AuditEntry>,
+): string {
   const lines = [
     `# Translation review: ${basename(file)}`,
     '',
@@ -62,10 +79,11 @@ function buildReport(file: string, summary: ReviewSummary, problems: Verdict[], 
     `- Flagged: ${summary.problems}`,
     `- Approvable: ${summary.approvable}`,
   ]
+  if (summary.needsReview > 0) lines.push(`- Needs your eye: ${summary.needsReview}`)
   if (summary.unreviewed > 0) lines.push(`- Could not be reviewed: ${summary.unreviewed}`)
   lines.push('')
 
-  if (problems.length === 0) {
+  if (problems.length === 0 && needsReview.length === 0) {
     lines.push('Nothing was flagged; the whole submission looks approvable.', '')
     return lines.join('\n')
   }
@@ -74,16 +92,22 @@ function buildReport(file: string, summary: ReviewSummary, problems: Verdict[], 
   for (const [rule, count] of Object.entries(summary.byRule).sort((a, b) => b[1] - a[1])) {
     lines.push(`- ${rule}: ${count}`)
   }
-  lines.push('', '## Flagged entries', '')
+  if (problems.length > 0) {
+    lines.push('', '## Flagged entries', '')
+    for (const verdict of problems) lines.push(...entrySection(verdict, byKey))
+  }
 
-  for (const verdict of problems) {
-    const entry = byKey.get(verdict.key)
-    if (!entry) continue
-    lines.push(`### ${entry.msgid}`)
-    if (entry.msgctxt) lines.push(`Context: \`${entry.msgctxt}\``)
-    lines.push(`Submitted: ${entry.msgstr.filter(Boolean).join(' / ')}`)
-    for (const finding of verdict.findings) lines.push(`- **${finding.rule}**: ${finding.message}`)
-    lines.push('')
+  if (needsReview.length > 0) {
+    lines.push(
+      '',
+      '## Needs your eye',
+      '',
+      'Checks that could not be decided mechanically. They are NOT in the problems',
+      'file: glance at these and fix any that are real, or run again without',
+      '`--no-ai` to have them adjudicated.',
+      '',
+    )
+    for (const verdict of needsReview) lines.push(...entrySection(verdict, byKey))
   }
   return lines.join('\n')
 }
@@ -139,6 +163,7 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
   })
 
   const problems = verdicts.filter((v) => v.problem)
+  const needsReview = verdicts.filter((v) => v.needsReview)
   const paths = outputPaths(opts.file, opts.outDir)
   const byKey = new Map(reviewable.map((e) => [e.key, e]))
 
@@ -148,7 +173,8 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
     skipped: all.length - reviewable.length,
     reviewed: reviewable.length,
     problems: problems.length,
-    approvable: reviewable.length - problems.length,
+    needsReview: needsReview.length,
+    approvable: reviewable.length - problems.length - needsReview.length,
     unreviewed: verdicts.filter((v) => v.unreviewed).length,
     byRule: tally(verdicts),
     reportFile: paths.report,
@@ -164,7 +190,7 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
     emit({ type: 'written', file: paths.problems })
   }
 
-  await writeFile(paths.report, buildReport(opts.file, summary, problems, byKey), 'utf8')
+  await writeFile(paths.report, buildReport(opts.file, summary, problems, needsReview, byKey), 'utf8')
   emit({ type: 'written', file: paths.report })
   emit({ type: 'done', summary })
   return summary

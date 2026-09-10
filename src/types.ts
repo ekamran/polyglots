@@ -74,6 +74,9 @@ export interface ReviewSummary {
   skipped: number
   reviewed: number
   problems: number
+  // Soft findings nothing adjudicated, only possible under --no-ai: reported for
+  // a human to glance at rather than written into the problems file.
+  needsReview: number
   approvable: number
   unreviewed: number
   byRule: Record<string, number>

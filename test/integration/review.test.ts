@@ -120,8 +120,14 @@ describe('review end to end', () => {
 
   it('clears entries the rules only suspected but the model approved', async () => {
     const withAi = await run()
-    const rulesOnly = await run({ noAi: true })
-    expect(withAi.problems).toBeLessThan(rulesOnly.problems)
+    const rulesOnly = await run({ noAi: true, outDir: join(home, 'rules-only-compare') })
+
+    // Rules alone cannot decide a suspect, so it is reported as needing a human
+    // rather than asserted as a problem. The model resolves each one, and fewer
+    // survive than the rules raised in total.
+    expect(rulesOnly.needsReview).toBeGreaterThan(0)
+    expect(withAi.needsReview).toBe(0)
+    expect(withAi.problems).toBeLessThan(rulesOnly.problems + rulesOnly.needsReview)
   })
 
   it('writes a report naming the categories and the offending sources', async () => {
