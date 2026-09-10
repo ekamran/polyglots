@@ -11,6 +11,9 @@ export interface ApplyResult {
   key: string
   text: string[]
   fuzzy: boolean
+  // Why the reviewer left it fuzzy. Written as a translator comment so the note
+  // travels with the entry into PoEdit.
+  reason?: string
 }
 
 const KEY_SEPARATOR = '\u0004'
@@ -116,6 +119,20 @@ export function sourceOrder(text: string): Map<string, number> {
   return order
 }
 
+const NOTE_PREFIX = 'polyglots: '
+
+// Our own notes are rewritten on every pass rather than appended, so resuming a
+// run cannot stack duplicates, and a note disappears once its reason does.
+// Comments that came from the source or from a contributor are left alone.
+function setNotes(entry: GetTextTranslation, notes: string[]): void {
+  const kept = splitLines(entry.comments?.translator).filter((line) => !line.startsWith(NOTE_PREFIX))
+  const all = [...notes.map((n) => `${NOTE_PREFIX}${n}`), ...kept]
+  const comments = { ...entry.comments }
+  if (all.length > 0) comments.translator = all.join('\n')
+  else delete comments.translator
+  entry.comments = comments
+}
+
 function decode(buffer: Buffer, charset: string): string {
   try {
     return new TextDecoder(charset).decode(buffer)
@@ -188,15 +205,10 @@ export class PoFile {
           delete this.raw.translations[ctx][msgid]
           continue
         }
-        const notes = reasons.map((r) => `polyglots: ${r}`).join('\n')
-        const existing = entry.comments?.translator
+        setNotes(entry, reasons)
         const flags = flagList(entry).filter((f) => f !== 'fuzzy')
         flags.push('fuzzy')
-        entry.comments = {
-          ...entry.comments,
-          translator: existing ? `${notes}\n${existing}` : notes,
-          flag: flags.join(', '),
-        }
+        entry.comments = { ...entry.comments, flag: flags.join(', ') }
       }
       if (ctx !== '' && Object.keys(this.raw.translations[ctx]).length === 0) {
         delete this.raw.translations[ctx]
@@ -213,6 +225,9 @@ export class PoFile {
       } else {
         entry.msgstr = [result.text[0] ?? '']
       }
+      const reason = result.fuzzy ? result.reason?.trim() : undefined
+      setNotes(entry, reason ? [reason] : [])
+
       const flags = flagList(entry).filter((f) => f !== 'fuzzy')
       if (result.fuzzy) flags.push('fuzzy')
       if (flags.length === 0) {
