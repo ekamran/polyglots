@@ -132,8 +132,13 @@ describe('A. full pipeline: fake engine + real reviewBatch + fake claude + gener
     }
   })
 
-  // gettext-parser re-emits `#  Keep the brand name untranslated.` as `# Keep ...` (leading
-  // whitespace of translator comments is not preserved), so this entry is not byte-identical.
+  // Accepted, not pending (2026-09-11): gettext-parser re-emits
+  // `#  Keep the brand name untranslated.` as `# Keep ...`, dropping the leading
+  // whitespace of translator comments, so this one entry is not byte-identical.
+  // Fixing it would mean post-processing the compiled output or replacing the
+  // compiler, for an indentation nobody relies on. The test stays as a live record
+  // of the limitation: if gettext-parser ever preserves it, this starts passing
+  // and tells us.
   it.fails('keeps a translated entry with a translator comment byte-identical on disk', async () => {
     await run()
     const before = ws.original.toString('utf8')
