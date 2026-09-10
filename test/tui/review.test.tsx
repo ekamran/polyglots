@@ -47,7 +47,6 @@ const events: ReviewEvent[] = [
   { type: 'batch-start', index: 2, of: 2, size: 44 },
   { type: 'batch-failed', index: 2, size: 44, reason: 'claude exited with code 1' },
   { type: 'written', file: '/tmp/work/submission-problems.po' },
-  { type: 'written', file: '/tmp/work/submission-report.md' },
   {
     type: 'done',
     summary: reviewSummaryOf(FILE, {
@@ -59,7 +58,6 @@ const events: ReviewEvent[] = [
       unreviewed: 44,
       byRule: { 'title-case': 9, glossary: 7, placeholder: 4 },
       problemsFile: '/tmp/work/submission-problems.po',
-      reportFile: '/tmp/work/submission-report.md',
     }),
   },
 ]
@@ -91,17 +89,10 @@ describe('reduceReviewProgress', () => {
 })
 
 describe('ReviewProgress needs-your-eye', () => {
-  it('does not claim the submission is approvable while entries need a human', () => {
-    const summary = reviewSummaryOf('plugin-tr.po', { problems: 0, needsReview: 5, approvable: 0 })
-    delete (summary as { problemsFile?: string }).problemsFile
-    const { lastFrame } = render(<ReviewProgress events={[{ type: 'start', file: 'plugin-tr.po', total: 5, reviewable: 5 }, { type: 'done', summary }]} />)
-    expect(lastFrame() ?? '').not.toMatch(/looks approvable/i)
-  })
-
   it('reports entries only the human can judge after a rules-only run', () => {
     const summary = reviewSummaryOf('plugin-tr.po', { problems: 2, needsReview: 7, approvable: 40 })
     const { lastFrame } = render(<ReviewProgress events={[{ type: 'start', file: 'plugin-tr.po', total: 49, reviewable: 49 }, { type: 'done', summary }]} />)
-    expect(lastFrame() ?? '').toMatch(/7 need/i)
+    expect(lastFrame() ?? '').toMatch(/7 of those are unadjudicated/i)
   })
 })
 
@@ -121,7 +112,7 @@ describe('ReviewProgress', () => {
     expect(lastFrame()).toContain('Batch 2 failed (44 entries): claude exited with code 1')
   })
 
-  it('renders the summary with the rule breakdown and both paths', async () => {
+  it('renders the summary with the rule breakdown and the problems path', async () => {
     const { lastFrame } = render(<ReviewProgress events={events} />)
     await tick()
     const frame = flat(lastFrame())
@@ -131,7 +122,7 @@ describe('ReviewProgress', () => {
     expect(frame).toContain('title-case 9')
     expect(frame).toContain('glossary 7')
     expect(frame).toContain('/tmp/work/submission-problems.po')
-    expect(frame).toContain('/tmp/work/submission-report.md')
+    expect(frame).not.toContain('-report.md')
   })
 
   it('says the submission is clean when nothing was flagged', async () => {
@@ -148,7 +139,6 @@ describe('ReviewProgress', () => {
           unreviewed: 0,
           byRule: {},
           problemsFile: undefined,
-          reportFile: '/tmp/work/submission-report.md',
         }),
       },
     ]

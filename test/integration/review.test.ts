@@ -130,22 +130,18 @@ describe('review end to end', () => {
     expect(withAi.problems).toBeLessThan(rulesOnly.problems + rulesOnly.needsReview)
   })
 
-  it('writes a report naming the categories and the offending sources', async () => {
+  it('names the categories it found in the summary', async () => {
     const summary = await run()
-    const report = await readFile(summary.reportFile, 'utf8')
-
-    expect(report).toContain('# Translation review')
-    expect(report).toContain('BAD meaning here')
-    expect(report).toMatch(/ai:meaning/)
-    expect(report).toContain(`Flagged: ${summary.problems}`)
+    expect(Object.keys(summary.byRule)).toEqual(expect.arrayContaining(['ai:meaning']))
+    expect(summary.problems).toBeGreaterThan(0)
   })
 
-  it('reports a suspect the model cleared only in the rules-only run', async () => {
+  it('carries a suspect into the file only when the model did not clear it', async () => {
     const rulesOnly = await run({ noAi: true, outDir: join(home, 'rules-only') })
-    const report = await readFile(rulesOnly.reportFile, 'utf8')
+    const text = await readFile(rulesOnly.problemsFile!, 'utf8')
 
-    expect(report).toContain('Save All Settings')
-    expect(report).toMatch(/title-case/)
+    expect(text).toContain('Save All Settings')
+    expect(text).toMatch(/polyglots:.*title case/i)
   })
 
   it('flags everything as unreviewed when the model cannot be reached', async () => {

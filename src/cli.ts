@@ -379,17 +379,21 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
         claudeBin: process.env.POLYGLOTS_CLAUDE_BIN || undefined,
         onProgress: report,
       }).finally(() => report.finish())
+      // Undecided entries are written to the file alongside decided ones, so the
+      // flagged count is both; needsReview then qualifies how many are guesses.
+      const flagged = summary.problems + summary.needsReview
       cli.out(
         `Reviewed ${summary.reviewed} entries (${summary.skipped} not submitted): ` +
-          `${summary.problems} flagged, ${summary.approvable} approvable.`,
+          `${flagged} flagged, ${summary.approvable} approvable.`,
       )
       if (summary.needsReview > 0) {
-        cli.out(`${summary.needsReview} entries need your eye; see the report. Re-run without --no-ai to have them adjudicated.`)
+        cli.out(
+          `${summary.needsReview} of those are unadjudicated guesses; re-run without --no-ai to have them decided.`,
+        )
       }
       if (summary.unreviewed > 0) cli.out(`${summary.unreviewed} entries could not be reviewed and were flagged.`)
       if (summary.problemsFile) cli.out(`Problems: ${summary.problemsFile}`)
-      else if (summary.needsReview === 0) cli.out('Nothing flagged; the whole submission looks approvable.')
-      cli.out(`Report:   ${summary.reportFile}`)
+      else cli.out('Nothing flagged; the whole submission looks approvable.')
     })
 
   const glossary = program.command('glossary').description('translate.wordpress.org glossary cache')

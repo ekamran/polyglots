@@ -112,21 +112,22 @@ export function ReviewProgress({ events }: { events: ReviewEvent[] }) {
       {summary && (
         <Box flexDirection="column" marginTop={1}>
           <Text bold>
-            Done. {summary.problems} problems, {summary.approvable} approvable, {summary.skipped} not submitted
+            Done. {summary.problems + summary.needsReview} problems, {summary.approvable} approvable,{' '}
+            {summary.skipped} not submitted
             {summary.unreviewed > 0 ? `, ${summary.unreviewed} unreviewed` : ''}.
           </Text>
           {summary.needsReview > 0 && (
             <Text color="yellow">
-              {summary.needsReview} need your eye; see the report. Re-run without “skip AI checks” to have them
-              adjudicated.
+              {summary.needsReview} of those are unadjudicated guesses; re-run without “skip AI checks” to have them
+              decided.
             </Text>
           )}
           {breakdown.length > 0 && <Text>{breakdown.join(' · ')}</Text>}
-          {summary.problemsFile && <Text>Fix them with: polyglots translate {summary.problemsFile}</Text>}
-          {!summary.problemsFile && summary.needsReview === 0 && (
+          {summary.problemsFile ? (
+            <Text>Fix them with: polyglots translate {summary.problemsFile}</Text>
+          ) : (
             <Text color="green">Nothing flagged; the whole submission looks approvable.</Text>
           )}
-          <Text dimColor>Report: {summary.reportFile}</Text>
         </Box>
       )}
     </Box>

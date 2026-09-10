@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir } from 'node:fs/promises'
 import { basename, dirname, extname, join } from 'node:path'
 import type Database from 'better-sqlite3'
 import type { ClaudeRunOptions } from '../claude/run.js'
@@ -21,10 +21,9 @@ export interface ReviewOptions extends Partial<ClaudeRunOptions> {
   onProgress?: (event: ReviewEvent) => void
 }
 
-function outputPaths(file: string, outDir?: string): { problems: string; report: string } {
+function problemsPath(file: string, outDir?: string): string {
   const dir = outDir ?? dirname(file)
-  const stem = basename(file, extname(file))
-  return { problems: join(dir, `${stem}-problems.po`), report: join(dir, `${stem}-report.md`) }
+  return join(dir, `${basename(file, extname(file))}-problems.po`)
 }
 
 function readGlossary(locale: Locale, injected?: Database.Database) {
@@ -50,66 +49,6 @@ function tally(verdicts: Verdict[]): Record<string, number> {
     }
   }
   return counts
-}
-
-function entrySection(verdict: Verdict, byKey: Map<string, AuditEntry>): string[] {
-  const entry = byKey.get(verdict.key)
-  if (!entry) return []
-  const lines = [`### ${entry.msgid}`]
-  if (entry.msgctxt) lines.push(`Context: \`${entry.msgctxt}\``)
-  lines.push(`Submitted: ${entry.msgstr.filter(Boolean).join(' / ')}`)
-  for (const finding of verdict.findings) lines.push(`- **${finding.rule}**: ${finding.message}`)
-  lines.push('')
-  return lines
-}
-
-function buildReport(
-  file: string,
-  summary: ReviewSummary,
-  problems: Verdict[],
-  needsReview: Verdict[],
-  byKey: Map<string, AuditEntry>,
-): string {
-  const lines = [
-    `# Translation review: ${basename(file)}`,
-    '',
-    `- Entries in file: ${summary.total}`,
-    `- Not submitted (skipped): ${summary.skipped}`,
-    `- Reviewed: ${summary.reviewed}`,
-    `- Flagged: ${summary.problems}`,
-    `- Approvable: ${summary.approvable}`,
-  ]
-  if (summary.needsReview > 0) lines.push(`- Needs your eye: ${summary.needsReview}`)
-  if (summary.unreviewed > 0) lines.push(`- Could not be reviewed: ${summary.unreviewed}`)
-  lines.push('')
-
-  if (problems.length === 0 && needsReview.length === 0) {
-    lines.push('Nothing was flagged; the whole submission looks approvable.', '')
-    return lines.join('\n')
-  }
-
-  lines.push('## Issues by category', '')
-  for (const [rule, count] of Object.entries(summary.byRule).sort((a, b) => b[1] - a[1])) {
-    lines.push(`- ${rule}: ${count}`)
-  }
-  if (problems.length > 0) {
-    lines.push('', '## Flagged entries', '')
-    for (const verdict of problems) lines.push(...entrySection(verdict, byKey))
-  }
-
-  if (needsReview.length > 0) {
-    lines.push(
-      '',
-      '## Needs your eye',
-      '',
-      'Checks that could not be decided mechanically. They are NOT in the problems',
-      'file: glance at these and fix any that are real, or run again without',
-      '`--no-ai` to have them adjudicated.',
-      '',
-    )
-    for (const verdict of needsReview) lines.push(...entrySection(verdict, byKey))
-  }
-  return lines.join('\n')
 }
 
 // Names the locale team maintains in config.json, keyed by language subtag so a
@@ -164,8 +103,10 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
 
   const problems = verdicts.filter((v) => v.problem)
   const needsReview = verdicts.filter((v) => v.needsReview)
-  const paths = outputPaths(opts.file, opts.outDir)
-  const byKey = new Map(reviewable.map((e) => [e.key, e]))
+  // Both go into the file: every entry now carries its reasons as comments, so an
+  // unadjudicated guess is legible as one rather than looking like a hard error.
+  const flagged = [...problems, ...needsReview]
+  const target = problemsPath(opts.file, opts.outDir)
 
   const summary: ReviewSummary = {
     file: opts.file,
@@ -177,21 +118,18 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
     approvable: reviewable.length - problems.length - needsReview.length,
     unreviewed: verdicts.filter((v) => v.unreviewed).length,
     byRule: tally(verdicts),
-    reportFile: paths.report,
   }
 
   if (opts.outDir) await mkdir(opts.outDir, { recursive: true })
 
-  if (problems.length > 0) {
-    const annotations = new Map(problems.map((v) => [v.key, v.findings.map((f) => f.message)]))
+  if (flagged.length > 0) {
+    const annotations = new Map(flagged.map((v) => [v.key, v.findings.map((f) => f.message)]))
     po.keepOnly(annotations)
-    await po.save(paths.problems)
-    summary.problemsFile = paths.problems
-    emit({ type: 'written', file: paths.problems })
+    await po.save(target)
+    summary.problemsFile = target
+    emit({ type: 'written', file: target })
   }
 
-  await writeFile(paths.report, buildReport(opts.file, summary, problems, needsReview, byKey), 'utf8')
-  emit({ type: 'written', file: paths.report })
   emit({ type: 'done', summary })
   return summary
 }

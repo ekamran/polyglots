@@ -56,18 +56,17 @@ describe('reviewFile', () => {
     return reviewFile({ file, locale: 'tr', db, adjudicate: clearAll, ...overrides })
   }
 
-  it('derives both output names from the input file', async () => {
+  it('derives the output name from the input file', async () => {
     const summary = await run()
     expect(summary.problemsFile).toBe(join(home, 'plugin-tr-problems.po'))
-    expect(summary.reportFile).toBe(join(home, 'plugin-tr-report.md'))
+    expect(await readdir(home)).not.toContain('plugin-tr-report.md')
   })
 
-  it('honours outDir while keeping the derived names', async () => {
+  it('honours outDir while keeping the derived name', async () => {
     const outDir = join(home, 'out')
     const summary = await run({ outDir })
     expect(summary.problemsFile).toBe(join(outDir, 'plugin-tr-problems.po'))
-    expect(summary.reportFile).toBe(join(outDir, 'plugin-tr-report.md'))
-    expect(await readdir(outDir)).toContain('plugin-tr-problems.po')
+    expect(await readdir(outDir)).toEqual(['plugin-tr-problems.po'])
   })
 
   it('skips entries with nothing submitted and counts them', async () => {
@@ -96,22 +95,19 @@ describe('reviewFile', () => {
     expect(summary.approvable).toBe(2)
   })
 
-  it('groups the report by rule', async () => {
+  it('groups findings by rule in the summary', async () => {
     const summary = await run()
     expect(summary.byRule).toMatchObject({ placeholder: 1 })
-    const report = await readFile(summary.reportFile, 'utf8')
-    expect(report).toContain('placeholder')
-    expect(report).toContain('%s comments')
   })
 
-  it('writes no po file when nothing is flagged, but still writes the report', async () => {
+  it('writes nothing at all when the submission is clean', async () => {
     await writeFile(file, PO.replace('msgstr "yorumlar"', 'msgstr "%s yorum"'), 'utf8')
     const summary = await run()
 
     expect(summary.problems).toBe(0)
     expect(summary.problemsFile).toBeUndefined()
     expect(await readdir(home)).not.toContain('plugin-tr-problems.po')
-    expect(await readFile(summary.reportFile, 'utf8')).toMatch(/nothing/i)
+    expect(await readdir(home)).not.toContain('plugin-tr-report.md')
   })
 
   it('flags what the AI reports as a problem', async () => {
@@ -145,7 +141,9 @@ describe('reviewFile', () => {
     expect(summary.problems).toBeGreaterThan(0)
   })
 
-  it('keeps soft findings out of the problems file under noAi', async () => {
+  // Both kinds go into the file now that every entry carries its reasons as
+  // comments, so an unadjudicated guess is legible rather than looking certain.
+  it('writes soft findings into the problems file with their reasons under noAi', async () => {
     const summary = await run({ noAi: true })
 
     // %s comments is a placeholder error; Open the sidebar is only a glossary suspect.
@@ -154,14 +152,10 @@ describe('reviewFile', () => {
     expect(summary.approvable).toBe(1)
 
     const problems = await loadPo(summary.problemsFile!)
-    expect(problems.auditEntries().map((e) => e.msgid)).toEqual(['%s comments'])
-  })
+    expect(problems.auditEntries().map((e) => e.msgid)).toEqual(['%s comments', 'Open the sidebar'])
 
-  it('lists the soft findings in the report under their own heading', async () => {
-    const summary = await run({ noAi: true })
-    const report = await readFile(summary.reportFile, 'utf8')
-    expect(report).toMatch(/needs your eye/i)
-    expect(report).toContain('Open the sidebar')
+    const text = await readFile(summary.problemsFile!, 'utf8')
+    expect(text).toMatch(/polyglots:.*glossary/i)
   })
 
   it('reports zero needsReview when the model adjudicates', async () => {

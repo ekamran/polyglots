@@ -363,7 +363,6 @@ describe('review', () => {
       unreviewed: 0,
       byRule: { placeholder: 3, 'title-case': 11 },
       problemsFile: '/tmp/plugin-tr-problems.po',
-      reportFile: '/tmp/plugin-tr-report.md',
       ...overrides,
     }
   }
@@ -396,7 +395,16 @@ describe('review', () => {
     expect(h.stdout.text).toContain('14 flagged')
     expect(h.stdout.text).toContain('102 approvable')
     expect(h.stdout.text).toContain('/tmp/plugin-tr-problems.po')
-    expect(h.stdout.text).toContain('/tmp/plugin-tr-report.md')
+    expect(h.stdout.text).not.toContain('report')
+  })
+
+  it('counts undecided entries as flagged, since they are written to the file too', async () => {
+    const h = harness()
+    const review = fakeReview(summary({ problems: 0, needsReview: 5, approvable: 0 }))
+    await h.run(['review', file, '--no-ai'], { reviewFile: review.fn })
+
+    expect(h.stdout.text).toContain('5 flagged')
+    expect(h.stdout.text).not.toContain('0 flagged')
   })
 
   it('reports the needs-your-eye count from a rules-only run', async () => {
@@ -406,16 +414,7 @@ describe('review', () => {
 
     expect(code).toBe(0)
     expect(h.stdout.text).toContain('11')
-    expect(h.stdout.text).toMatch(/needs? your eye/i)
-  })
-
-  it('does not call a submission approvable while entries still need a human', async () => {
-    const h = harness()
-    const review = fakeReview(summary({ problems: 0, needsReview: 5, approvable: 0, problemsFile: undefined }))
-    await h.run(['review', file, '--no-ai'], { reviewFile: review.fn })
-
-    expect(h.stdout.text).toMatch(/needs? your eye/i)
-    expect(h.stdout.text).not.toMatch(/looks approvable/i)
+    expect(h.stdout.text).toMatch(/unadjudicated guesses/i)
   })
 
   it('says so when nothing was flagged and names no po file', async () => {

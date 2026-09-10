@@ -81,7 +81,6 @@ export interface ReviewSummary {
   unreviewed: number
   byRule: Record<string, number>
   problemsFile?: string
-  reportFile: string
 }
 
 export type ReviewEvent =
