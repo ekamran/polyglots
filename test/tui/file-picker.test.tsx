@@ -40,9 +40,29 @@ describe('FilePicker', () => {
     expect(frame).not.toContain('.hidden.po')
   })
 
+  // With many folders in a directory, listing them first buries the .po files the
+  // picker exists to find, so matching files come first and .. stays pinned on top.
+  it('lists matching files above directories, with .. first', async () => {
+    await writeFile(join(root, 'another-tr.po'), '')
+    const { lastFrame } = render(<FilePicker dir={root} extensions={['.po']} onPick={() => undefined} />)
+    await tick()
+    const lines = (lastFrame() ?? '').split('\n').map((l) => l.replace(/[^\x20-\x7E]/g, '').trim())
+
+    const at = (needle: string) => lines.findIndex((l) => l.includes(needle))
+    expect(at('..')).toBeGreaterThanOrEqual(0)
+    expect(at('another-tr.po')).toBeGreaterThan(at('..'))
+    expect(at('plugin-tr.po')).toBeGreaterThan(at('another-tr.po'))
+    expect(at('languages/')).toBeGreaterThan(at('plugin-tr.po'))
+    expect(at('src/')).toBeGreaterThan(at('languages/'))
+  })
+
   it('enters a subdirectory and picks a file with enter', async () => {
     const picked: string[] = []
     const { lastFrame, stdin } = render(<FilePicker dir={root} extensions={['.po']} onPick={(p) => picked.push(p)} />)
+    await tick()
+    // Order at root is .. / plugin-tr.po / languages/ / src/, so the first
+    // directory now sits below the matching files.
+    stdin.write(keys.down)
     await tick()
     stdin.write(keys.down)
     await tick()

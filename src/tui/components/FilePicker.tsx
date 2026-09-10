@@ -50,9 +50,11 @@ function list(cwd: string, extensions: string[]): Listing {
     error = err instanceof Error ? err.message : String(err)
   }
 
+  // Matching files come before directories: a plugin checkout can hold dozens of
+  // folders, and listing those first buries the one file the picker exists to find.
   const byName = (a: string, b: string) => a.localeCompare(b)
-  for (const name of dirs.sort(byName)) items.push({ key: name, label: `${name}/`, value: { path: join(cwd, name), kind: 'dir' } })
   for (const name of files.sort(byName)) items.push({ key: name, label: name, value: { path: join(cwd, name), kind: 'file' } })
+  for (const name of dirs.sort(byName)) items.push({ key: name, label: `${name}/`, value: { path: join(cwd, name), kind: 'dir' } })
   return { items, error }
 }
 
