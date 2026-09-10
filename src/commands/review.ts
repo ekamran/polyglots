@@ -5,6 +5,7 @@ import type { ClaudeRunOptions } from '../claude/run.js'
 import { auditEntries, type Adjudicator, type Verdict } from '../audit/audit.js'
 import { writeMcpConfig, MCP_ENV } from '../mcp/config.js'
 import { loadPo } from '../po/po-file.js'
+import { loadConfig } from '../config.js'
 import { allGlossary, openDb } from '../storage/index.js'
 import type { AuditEntry, Locale, ReviewEvent, ReviewSummary } from '../types.js'
 
@@ -14,6 +15,7 @@ export interface ReviewOptions extends Partial<ClaudeRunOptions> {
   outDir?: string
   noAi?: boolean
   batchSize?: number
+  properNouns?: string[]
   db?: Database.Database
   adjudicate?: Adjudicator
   onProgress?: (event: ReviewEvent) => void
@@ -86,6 +88,19 @@ function buildReport(file: string, summary: ReviewSummary, problems: Verdict[], 
   return lines.join('\n')
 }
 
+// Names the locale team maintains in config.json, keyed by language subtag so a
+// regional locale (pt-br) still picks up the language's list.
+function configuredProperNouns(locale: Locale): string[] {
+  let all: Record<string, string[]>
+  try {
+    all = loadConfig().properNouns
+  } catch {
+    return []
+  }
+  const language = locale.toLowerCase().split(/[-_]/)[0] ?? locale
+  return [...(all[locale] ?? []), ...(language === locale ? [] : (all[language] ?? []))]
+}
+
 export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
   const glossary = readGlossary(opts.locale, opts.db)
   if (glossary.length === 0) {
@@ -103,11 +118,14 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
   const mcpConfigPath =
     opts.mcpConfigPath ?? (opts.noAi ? '' : await writeMcpConfig({ env: { [MCP_ENV.locale]: opts.locale } }))
 
+  const properNouns = opts.properNouns ?? configuredProperNouns(opts.locale)
+
   const verdicts = await auditEntries({
     entries: reviewable,
     locale: opts.locale,
     nplurals: po.nplurals,
     glossary,
+    properNouns,
     mcpConfigPath,
     ...(opts.noAi === undefined ? {} : { noAi: opts.noAi }),
     ...(opts.batchSize ? { batchSize: opts.batchSize } : {}),

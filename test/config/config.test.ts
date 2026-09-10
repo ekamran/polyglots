@@ -50,6 +50,7 @@ describe('loadConfig', () => {
       defaultDraftEngine: 'deepl',
       batchSize: 25,
       consistencyTtlDays: 30,
+      properNouns: {},
     })
   })
 

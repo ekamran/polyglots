@@ -161,6 +161,22 @@ describe('reviewFile', () => {
     expect(events.some((e) => e.type === 'written')).toBe(true)
   })
 
+  // Run with noAi so rule findings land in the summary directly; with the model in
+  // the loop a cleared suspect would make this pass whether or not it was wired.
+  it('passes configured proper nouns to the rules so a name is not flagged', async () => {
+    await writeFile(
+      file,
+      PO.replace('msgstr "Yan menüyü aç"', 'msgstr "Türk Dil Kurumu tarafından onaylandı"'),
+      'utf8',
+    )
+
+    const without = await run({ noAi: true, outDir: join(home, 'a') })
+    expect(without.byRule['title-case']).toBe(1)
+
+    const withNames = await run({ noAi: true, outDir: join(home, 'b'), properNouns: ['Türk Dil Kurumu'] })
+    expect(withNames.byRule['title-case']).toBeUndefined()
+  })
+
   it('fails with a sync hint when the locale has no cached glossary', async () => {
     await expect(run({ locale: 'de' })).rejects.toThrow(/glossary sync/)
   })

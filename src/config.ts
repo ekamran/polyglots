@@ -10,6 +10,7 @@ export const DEFAULT_CONFIG: PolyglotsConfig = {
   defaultDraftEngine: 'deepl',
   batchSize: 25,
   consistencyTtlDays: 30,
+  properNouns: {},
 }
 
 const configSchema = z.object({
@@ -17,6 +18,7 @@ const configSchema = z.object({
   defaultDraftEngine: z.enum(['deepl', 'openai']),
   batchSize: z.number().int().positive(),
   consistencyTtlDays: z.number().int().nonnegative(),
+  properNouns: z.record(z.string(), z.array(z.string())),
 })
 
 const SECRET_KEYS: ReadonlyArray<keyof Secrets> = ['DEEPL_API_KEY', 'OPENAI_API_KEY']

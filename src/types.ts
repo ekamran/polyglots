@@ -102,6 +102,9 @@ export interface PolyglotsConfig {
   defaultDraftEngine: 'deepl' | 'openai'
   batchSize: number
   consistencyTtlDays: number
+  // Per-locale names the built-in lists cannot cover (places, people,
+  // institutions, historical events). Entries may be multi-word.
+  properNouns: Record<string, string[]>
 }
 
 export interface Secrets {

@@ -144,6 +144,12 @@ describe('buildAuditPrompt', () => {
     expect(buildAuditPrompt(candidates, 'tr', 2)).toContain('glossary term not used')
   })
 
+  it('tells the model which proper-noun categories are legitimately capitalized', () => {
+    const prompt = buildAuditPrompt(candidates, 'tr', 2)
+    expect(prompt).toMatch(/institution/i)
+    expect(prompt).toMatch(/place|person/i)
+  })
+
   it('states the locale team standards and names the lookup tools', () => {
     const prompt = buildAuditPrompt(candidates, 'tr', 2)
     expect(prompt).toMatch(/title case/i)

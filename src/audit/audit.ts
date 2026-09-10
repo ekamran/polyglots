@@ -30,6 +30,7 @@ export interface AuditOptions extends Partial<ClaudeRunOptions> {
   locale: Locale
   nplurals: number
   glossary: GlossaryEntry[]
+  properNouns?: string[]
   noAi?: boolean
   batchSize?: number
   adjudicate?: Adjudicator
@@ -53,6 +54,7 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
     glossary: opts.glossary,
     nplurals: opts.nplurals,
     entries: opts.entries,
+    ...(opts.properNouns ? { properNouns: opts.properNouns } : {}),
   })
 
   const verdicts = new Map<string, Verdict>()

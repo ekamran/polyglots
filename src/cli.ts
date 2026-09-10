@@ -26,7 +26,7 @@ import {
 import { createProgressReporter, createReviewProgressReporter } from './cli/progress.js'
 import { loadPo } from './po/po-file.js'
 import type { RunTuiOptions } from './tui/index.js'
-import type { PolyglotsConfig } from './types.js'
+import type { Locale, PolyglotsConfig } from './types.js'
 
 const EXIT_OK = 0
 const EXIT_ERROR = 1
@@ -236,14 +236,38 @@ function coerceConfigValue(key: keyof PolyglotsConfig, raw: string): PolyglotsCo
       return parseDraftEngine(raw)
     case 'defaultLocale':
       return parseLocaleArg(raw)
+    case 'properNouns':
+      throw new UsageError('properNouns is a per-locale list; add entries with: polyglots config add-name <name>')
   }
+}
+
+function formatConfigValue(key: keyof PolyglotsConfig, value: PolyglotsConfig[keyof PolyglotsConfig]): string {
+  if (key !== 'properNouns') return String(value)
+  const byLocale = value as Record<string, string[]>
+  const locales = Object.keys(byLocale).sort()
+  if (locales.length === 0) return '(none)'
+  return locales.map((locale) => `${locale}: ${byLocale[locale]!.join(', ')}`).join(' | ')
+}
+
+function configAddName(cli: Cli, name: string, locale: Locale): number {
+  const trimmed = name.trim()
+  if (!trimmed) throw new UsageError('name must not be empty')
+  const existing = cli.config().properNouns
+  const current = existing[locale] ?? []
+  if (current.some((n) => n === trimmed)) {
+    cli.out(`${JSON.stringify(trimmed)} is already listed for ${locale}.`)
+    return EXIT_OK
+  }
+  saveConfig({ properNouns: { ...existing, [locale]: [...current, trimmed] } })
+  cli.out(`Added ${JSON.stringify(trimmed)} to the ${locale} proper-noun list.`)
+  return EXIT_OK
 }
 
 function configGet(cli: Cli, key: string | undefined): void {
   const config = cli.config()
   const secrets = loadSecrets()
   if (key === undefined) {
-    for (const k of CONFIG_KEYS) cli.out(`${k} = ${String(config[k])}`)
+    for (const k of CONFIG_KEYS) cli.out(`${k} = ${formatConfigValue(k, config[k])}`)
     cli.out(`DEEPL_API_KEY = ${maskSecret(secrets.DEEPL_API_KEY)}`)
     cli.out(`OPENAI_API_KEY = ${maskSecret(secrets.OPENAI_API_KEY)}`)
     return
@@ -397,6 +421,14 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
     .command('set <key> <value>')
     .description(`Change a setting (${CONFIG_KEYS.join(', ')})`)
     .action((key: string, value: string) => configSet(cli, key, value))
+  cfg
+    .command('add-name <name>')
+    .description('Add a proper noun the title-case check should never flag (places, people, institutions)')
+    .option('--locale <locale>', `Locale the name belongs to (default: ${shown.defaultLocale})`)
+    .action((name: string, flags: { locale?: string }) => {
+      const locale = parseLocaleArg(flags.locale ?? cli.config().defaultLocale)
+      setExitCode(configAddName(cli, name, locale))
+    })
   cfg
     .command('set-key <name> [value]')
     .description('Store DEEPL_API_KEY or OPENAI_API_KEY; omit the value to read it from stdin')

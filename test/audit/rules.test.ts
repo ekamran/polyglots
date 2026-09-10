@@ -191,6 +191,42 @@ describe('title-case rule, Turkish capitalization categories', () => {
   })
 })
 
+describe('title-case rule, user-supplied proper nouns', () => {
+  function withNouns(msgid: string, msgstr: string, properNouns: string[]) {
+    const e = entry(msgid, msgstr)
+    const ctx = buildRuleContext({ locale: 'tr', glossary: GLOSSARY, nplurals: 2, entries: [e], properNouns })
+    return runRules(e, ctx).map((f) => f.rule)
+  }
+
+  it('exempts a single-word name the user supplied', () => {
+    expect(withNouns('Server in Izmir', 'Sunucu İzmir konumunda', ['İzmir'])).not.toContain('title-case')
+  })
+
+  // TDK capitalizes every word of an institution name, so a correct one looks
+  // exactly like an English title-case calque unless it is matched as a phrase.
+  it('exempts every word of a multi-word institution name', () => {
+    expect(withNouns('Approved by TDK', 'Türk Dil Kurumu tarafından onaylandı', ['Türk Dil Kurumu'])).not.toContain(
+      'title-case',
+    )
+  })
+
+  it('exempts a phrase whose last word carries a Turkish suffix', () => {
+    expect(withNouns('TDK decision', 'Türk Dil Kurumu\'nun kararı', ['Türk Dil Kurumu'])).not.toContain('title-case')
+  })
+
+  it('does not exempt a phrase word used on its own', () => {
+    expect(withNouns('Language settings', 'Dil Ayarları', ['Türk Dil Kurumu'])).toContain('title-case')
+  })
+
+  it('matches the phrase case-insensitively in Turkish', () => {
+    expect(withNouns('Historic event', 'Bu Kurtuluş Savaşı dönemidir', ['kurtuluş savaşı'])).not.toContain('title-case')
+  })
+
+  it('still flags an ordinary calque when a name list is present', () => {
+    expect(withNouns('Save All Changes', 'Tüm Değişiklikleri Kaydet', ['İzmir'])).toContain('title-case')
+  })
+})
+
 describe('glossary rule', () => {
   it('flags a translation ignoring the approved term', () => {
     const e = entry('Sidebar', 'Yan menü')

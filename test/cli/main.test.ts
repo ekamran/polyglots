@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -290,6 +290,58 @@ describe('glossary sync', () => {
     expect(code).toBe(1)
     expect(h.stderr.text).toContain('Error: No glossary entries found for locale "tr"')
     expect(h.stdout.text).toBe('')
+  })
+})
+
+describe('config add-name', () => {
+  async function configJson() {
+    return JSON.parse(await readFile(join(home, 'config', 'config.json'), 'utf8'))
+  }
+
+  it('adds a name under the default locale', async () => {
+    const h = harness()
+    const code = await h.run(['config', 'add-name', 'Türk Dil Kurumu'])
+    expect(code).toBe(0)
+    expect((await configJson()).properNouns).toEqual({ tr: ['Türk Dil Kurumu'] })
+    expect(h.stdout.text).toContain('Türk Dil Kurumu')
+  })
+
+  it('does not duplicate a name already present', async () => {
+    const h = harness()
+    await h.run(['config', 'add-name', 'İzmir'])
+    const code = await h.run(['config', 'add-name', 'İzmir'])
+    expect(code).toBe(0)
+    expect((await configJson()).properNouns.tr).toEqual(['İzmir'])
+  })
+
+  it('honours --locale and keeps other locales intact', async () => {
+    const h = harness()
+    await h.run(['config', 'add-name', 'İzmir'])
+    const code = await h.run(['config', 'add-name', 'Berlin', '--locale', 'de'])
+    expect(code).toBe(0)
+    expect((await configJson()).properNouns).toEqual({ tr: ['İzmir'], de: ['Berlin'] })
+  })
+
+  it('rejects an empty name', async () => {
+    const h = harness()
+    const code = await h.run(['config', 'add-name', '   '])
+    expect(code).toBe(2)
+  })
+
+  it('lists configured names in config get', async () => {
+    const h = harness()
+    await h.run(['config', 'add-name', 'Türk Dil Kurumu'])
+    await h.run(['config', 'get'])
+    expect(h.stdout.text).toContain('properNouns')
+    expect(h.stdout.text).toContain('tr: Türk Dil Kurumu')
+    expect(h.stdout.text).not.toContain('[object Object]')
+  })
+
+  it('points config set at add-name instead of taking a raw value', async () => {
+    const h = harness()
+    const code = await h.run(['config', 'set', 'properNouns', 'İzmir'])
+    expect(code).toBe(2)
+    expect(h.stderr.text).toContain('add-name')
   })
 })
 
