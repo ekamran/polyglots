@@ -21,10 +21,16 @@ afterEach(async () => {
   await home.cleanup()
 })
 
-const MENU_ITEMS = ['Translate a .po file', 'Import Translation Memory (.tmx)', /Sync .*glossary/, 'Configure API keys']
+const MENU_ITEMS = [
+  'Translate a .po file',
+  'Review a submitted .po',
+  'Import Translation Memory (.tmx)',
+  /Sync .*glossary/,
+  'Configure API keys',
+]
 
 describe('Menu', () => {
-  it('lists the four actions with the first one highlighted', async () => {
+  it('lists the five actions with the first one highlighted', async () => {
     const { lastFrame } = render(<App commands={fakeCommands()} cwd={cwd} />)
     await tick()
     const frame = lastFrame() ?? ''
@@ -43,11 +49,23 @@ describe('Menu', () => {
     expect(lastFrame()).toContain(cwd)
   })
 
-  it('reaches the TM import picker with the arrow keys', async () => {
+  it('reaches the review picker with the arrow keys', async () => {
     const { lastFrame, stdin } = render(<App commands={fakeCommands()} cwd={cwd} />)
     await tick()
     stdin.write(keys.down)
     await tick()
+    stdin.write(keys.enter)
+    await waitForText(lastFrame, 'Review')
+    expect(lastFrame()).toContain('plugin.po')
+  })
+
+  it('reaches the TM import picker with the arrow keys', async () => {
+    const { lastFrame, stdin } = render(<App commands={fakeCommands()} cwd={cwd} />)
+    await tick()
+    for (let i = 0; i < 2; i++) {
+      stdin.write(keys.down)
+      await tick()
+    }
     stdin.write(keys.enter)
     await waitForText(lastFrame, /\.tmx/)
     expect(lastFrame()).not.toContain('plugin.po')
@@ -56,10 +74,10 @@ describe('Menu', () => {
   it('reaches the glossary sync screen', async () => {
     const { lastFrame, stdin } = render(<App commands={fakeCommands()} cwd={cwd} />)
     await tick()
-    stdin.write(keys.down)
-    await tick()
-    stdin.write(keys.down)
-    await tick()
+    for (let i = 0; i < 3; i++) {
+      stdin.write(keys.down)
+      await tick()
+    }
     stdin.write(keys.enter)
     await waitForText(lastFrame, /[Ll]ocale/)
     expect(lastFrame()).toContain('tr')
@@ -68,7 +86,7 @@ describe('Menu', () => {
   it('reaches the API key screen', async () => {
     const { lastFrame, stdin } = render(<App commands={fakeCommands()} cwd={cwd} />)
     await tick()
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 4; i++) {
       stdin.write(keys.down)
       await tick()
     }

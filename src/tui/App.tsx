@@ -5,6 +5,7 @@ import { ActivityProvider, createActivity, type Activity } from './hooks/activit
 import { ConfigureKeys } from './screens/ConfigureKeys.js'
 import { ImportTm } from './screens/ImportTm.js'
 import { Menu, type MenuAction } from './screens/Menu.js'
+import { Review } from './screens/Review.js'
 import { SyncGlossary } from './screens/SyncGlossary.js'
 import { Translate } from './screens/Translate.js'
 
@@ -32,6 +33,7 @@ export function App({ commands = defaultCommands, cwd = process.cwd(), activity,
       <CommandsProvider value={commands}>
         {screen === 'menu' && <Menu onSelect={setScreen} onQuit={quit} />}
         {screen === 'translate' && <Translate cwd={cwd} onBack={back} />}
+        {screen === 'review' && <Review cwd={cwd} onBack={back} />}
         {screen === 'import-tm' && <ImportTm cwd={cwd} onBack={back} />}
         {screen === 'sync-glossary' && <SyncGlossary onBack={back} />}
         {screen === 'configure-keys' && <ConfigureKeys onBack={back} />}

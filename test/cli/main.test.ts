@@ -293,6 +293,108 @@ describe('glossary sync', () => {
   })
 })
 
+describe('review', () => {
+  interface FakeReview {
+    fn: CliDeps['reviewFile'] & object
+    calls: Array<{ file: string; locale: string; outDir?: string; noAi?: boolean; batchSize?: number }>
+  }
+
+  function summary(overrides = {}) {
+    return {
+      file: 'plugin-tr.po',
+      total: 120,
+      skipped: 4,
+      reviewed: 116,
+      problems: 14,
+      approvable: 102,
+      unreviewed: 0,
+      byRule: { placeholder: 3, 'title-case': 11 },
+      problemsFile: '/tmp/plugin-tr-problems.po',
+      reportFile: '/tmp/plugin-tr-report.md',
+      ...overrides,
+    }
+  }
+
+  function fakeReview(outcome: ReturnType<typeof summary> | Error = summary()): FakeReview {
+    const calls: FakeReview['calls'] = []
+    return {
+      calls,
+      async fn(opts) {
+        calls.push({
+          file: opts.file,
+          locale: opts.locale,
+          outDir: opts.outDir,
+          noAi: opts.noAi,
+          batchSize: opts.batchSize,
+        })
+        if (outcome instanceof Error) throw outcome
+        return outcome
+      },
+    }
+  }
+
+  it('reviews the file and reports counts and both paths', async () => {
+    const h = harness()
+    const review = fakeReview()
+    const code = await h.run(['review', file], { reviewFile: review.fn })
+
+    expect(code).toBe(0)
+    expect(review.calls).toEqual([{ file, locale: 'tr', outDir: undefined, noAi: undefined, batchSize: undefined }])
+    expect(h.stdout.text).toContain('14 flagged')
+    expect(h.stdout.text).toContain('102 approvable')
+    expect(h.stdout.text).toContain('/tmp/plugin-tr-problems.po')
+    expect(h.stdout.text).toContain('/tmp/plugin-tr-report.md')
+  })
+
+  it('says so when nothing was flagged and names no po file', async () => {
+    const h = harness()
+    const review = fakeReview(summary({ problems: 0, approvable: 116, problemsFile: undefined, byRule: {} }))
+    const code = await h.run(['review', file], { reviewFile: review.fn })
+
+    expect(code).toBe(0)
+    expect(h.stdout.text).toMatch(/nothing flagged/i)
+    expect(h.stdout.text).not.toContain('-problems.po')
+  })
+
+  it('forwards --locale, --out-dir, --no-ai and --batch-size', async () => {
+    const h = harness()
+    const review = fakeReview()
+    const code = await h.run(
+      ['review', file, '--locale', 'PT-BR', '--out-dir', '/tmp/out', '--no-ai', '--batch-size', '10'],
+      { reviewFile: review.fn },
+    )
+
+    expect(code).toBe(0)
+    expect(review.calls).toEqual([{ file, locale: 'pt-br', outDir: '/tmp/out', noAi: true, batchSize: 10 }])
+  })
+
+  it('exits 2 when the file does not exist', async () => {
+    const h = harness()
+    const review = fakeReview()
+    const code = await h.run(['review', join(home, 'nope.po')], { reviewFile: review.fn })
+
+    expect(code).toBe(2)
+    expect(review.calls).toEqual([])
+  })
+
+  it('exits 1 with the message when the review throws', async () => {
+    const h = harness()
+    const review = fakeReview(new Error('No cached glossary for locale "tr"; run: polyglots glossary sync'))
+    const code = await h.run(['review', file], { reviewFile: review.fn })
+
+    expect(code).toBe(1)
+    expect(h.stderr.text).toContain('No cached glossary')
+  })
+
+  it('mentions unreviewed entries when some could not be checked', async () => {
+    const h = harness()
+    const review = fakeReview(summary({ unreviewed: 7 }))
+    await h.run(['review', file], { reviewFile: review.fn })
+    expect(h.stdout.text).toContain('7')
+    expect(h.stdout.text).toMatch(/unreviewed|could not be reviewed/i)
+  })
+})
+
 describe('glossary export', () => {
   interface FakeExport {
     fn: CliDeps['exportGlossary'] & object

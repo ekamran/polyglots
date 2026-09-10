@@ -1,4 +1,5 @@
 import type { TranslateEvent } from '../commands/translate.js'
+import type { ReviewEvent } from '../types.js'
 
 export interface ProgressState {
   file: string
@@ -118,6 +119,73 @@ export function createProgressReporter(stream: ProgressStream): ProgressReporter
     if (notice) stream.write(`${CLEAR_LINE}${notice}\n`)
     if (notice || advancesBar(event)) {
       stream.write(`${CLEAR_LINE}${line}`)
+      liveLine = true
+    }
+  }
+
+  return Object.assign(report, { finish: clearLive })
+}
+
+export interface ReviewProgressReporter {
+  (event: ReviewEvent): void
+  finish(): void
+}
+
+export function createReviewProgressReporter(stream: ProgressStream): ReviewProgressReporter {
+  let of = 0
+  let index = 0
+  let flagged = 0
+  let liveLine = false
+  const tty = stream.isTTY === true
+
+  const clearLive = () => {
+    if (!liveLine) return
+    stream.write(CLEAR_LINE)
+    liveLine = false
+  }
+
+  const line = (): string => {
+    const ratio = of === 0 ? 1 : Math.min(1, index / of)
+    const filled = ratio === 1 ? BAR_WIDTH : Math.min(BAR_WIDTH - 1, Math.round(ratio * BAR_WIDTH))
+    const bar = `[${'#'.repeat(filled)}${'-'.repeat(BAR_WIDTH - filled)}]`
+    return `${bar} batch ${index}/${of}  flagged ${flagged}`
+  }
+
+  const report = (event: ReviewEvent): void => {
+    let notice: string | undefined
+    switch (event.type) {
+      case 'start':
+        notice = `Reviewing ${event.file}: ${event.reviewable} of ${event.total} entries submitted`
+        break
+      case 'batch-start':
+        of = event.of
+        index = event.index
+        break
+      case 'batch-done':
+        flagged += event.problems
+        break
+      case 'batch-failed':
+        notice = `batch ${event.index} failed (${event.size} entries, flagged as unreviewed): ${event.reason}`
+        break
+      case 'written':
+        notice = `wrote ${event.file}`
+        break
+      default:
+        break
+    }
+
+    if (!tty) {
+      if (notice) stream.write(`${notice}\n`)
+      if (event.type === 'batch-done') stream.write(`${line()}\n`)
+      return
+    }
+    if (event.type === 'done') {
+      clearLive()
+      return
+    }
+    if (notice) stream.write(`${CLEAR_LINE}${notice}\n`)
+    if (notice || event.type === 'batch-start' || event.type === 'batch-done') {
+      stream.write(`${CLEAR_LINE}${line()}`)
       liveLine = true
     }
   }

@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 import { Command, CommanderError } from 'commander'
 import { exportGlossary } from './commands/glossary-export.js'
 import { syncGlossary } from './commands/glossary-sync.js'
+import { reviewFile } from './commands/review.js'
 import { importTmx } from './commands/tm-import.js'
 import { translateFile, type TranslateSummary } from './commands/translate.js'
 import { DEFAULT_CONFIG, loadConfig, loadSecrets, maskSecret, saveConfig, saveSecret } from './config.js'
@@ -22,7 +23,7 @@ import {
   parseSecretName,
   secretForEngine,
 } from './cli/args.js'
-import { createProgressReporter } from './cli/progress.js'
+import { createProgressReporter, createReviewProgressReporter } from './cli/progress.js'
 import { loadPo } from './po/po-file.js'
 import type { RunTuiOptions } from './tui/index.js'
 import type { PolyglotsConfig } from './types.js'
@@ -48,6 +49,7 @@ export interface CliDeps {
   importTmx?: typeof importTmx
   syncGlossary?: typeof syncGlossary
   exportGlossary?: typeof exportGlossary
+  reviewFile?: typeof reviewFile
   runTui?: RunTui
 }
 
@@ -57,6 +59,7 @@ interface Cli {
   importTmx: typeof importTmx
   syncGlossary: typeof syncGlossary
   exportGlossary: typeof exportGlossary
+  reviewFile: typeof reviewFile
   runTui: RunTui
   config: () => PolyglotsConfig
   out(line: string): void
@@ -82,6 +85,7 @@ function createCli(deps: CliDeps): Cli {
     importTmx: deps.importTmx ?? importTmx,
     syncGlossary: deps.syncGlossary ?? syncGlossary,
     exportGlossary: deps.exportGlossary ?? exportGlossary,
+    reviewFile: deps.reviewFile ?? reviewFile,
     runTui: deps.runTui ?? loadTui,
     config: () => (cached ??= loadConfig()),
     out: (line) => streams.stdout.write(`${line}\n`),
@@ -329,6 +333,36 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
         onProgress: (e) => cli.err(`${e.file}: ${e.entries} entries, ${e.upserted} upserted`),
       })
       cli.out(`Imported ${result.files} file(s): ${result.entries} entries, ${result.upserted} upserted (locale ${locale}).`)
+    })
+
+  program
+    .command('review <file>')
+    .description('Audit a submitted .po and write out only the entries that need work')
+    .option('--locale <locale>', `Review locale (default: ${shown.defaultLocale})`)
+    .option('--out-dir <dir>', 'Where to write the outputs (default: beside the input)')
+    .option('--no-ai', 'Run the deterministic checks only, skipping AI adjudication')
+    .option('--batch-size <n>', 'Entries per AI batch')
+    .action(async (raw: string, flags: { locale?: string; outDir?: string; ai?: boolean; batchSize?: string }) => {
+      const [target] = expandFileArgs([raw])
+      const locale = parseLocaleArg(flags.locale ?? cli.config().defaultLocale)
+      const report = createReviewProgressReporter(cli.streams.stderr)
+      const summary = await cli.reviewFile({
+        file: target!,
+        locale,
+        ...(flags.outDir ? { outDir: flags.outDir } : {}),
+        ...(flags.ai === false ? { noAi: true } : {}),
+        ...(flags.batchSize ? { batchSize: parsePositiveInt('--batch-size', flags.batchSize) } : {}),
+        claudeBin: process.env.POLYGLOTS_CLAUDE_BIN || undefined,
+        onProgress: report,
+      }).finally(() => report.finish())
+      cli.out(
+        `Reviewed ${summary.reviewed} entries (${summary.skipped} not submitted): ` +
+          `${summary.problems} flagged, ${summary.approvable} approvable.`,
+      )
+      if (summary.unreviewed > 0) cli.out(`${summary.unreviewed} entries could not be reviewed and were flagged.`)
+      if (summary.problemsFile) cli.out(`Problems: ${summary.problemsFile}`)
+      else cli.out('Nothing flagged; the whole submission looks approvable.')
+      cli.out(`Report:   ${summary.reportFile}`)
     })
 
   const glossary = program.command('glossary').description('translate.wordpress.org glossary cache')

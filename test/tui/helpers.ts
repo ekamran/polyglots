@@ -8,7 +8,8 @@ import { vi } from 'vitest'
 import { loadConfig, loadSecrets, saveSecret } from '../../src/config.js'
 import type { TmImportOptions } from '../../src/commands/tm-import.js'
 import type { TranslateEvent, TranslateOptions, TranslateSummary } from '../../src/commands/translate.js'
-import type { TuiCommands } from '../../src/tui/commands.js'
+import type { ReviewFileOptions, TuiCommands } from '../../src/tui/commands.js'
+import type { ReviewSummary } from '../../src/types.js'
 
 const ANSI = /\[[0-9;]*m/g
 const strip = (s: string | undefined): string => (s ?? '').replace(ANSI, '')
@@ -153,6 +154,22 @@ export function scriptedTranslate(events: (file: string) => TranslateEvent[]): T
   }
 }
 
+export function reviewSummaryOf(file: string, patch: Partial<ReviewSummary> = {}): ReviewSummary {
+  return {
+    file,
+    total: 10,
+    skipped: 2,
+    reviewed: 8,
+    problems: 3,
+    approvable: 5,
+    unreviewed: 0,
+    byRule: { 'title-case': 2, glossary: 1 },
+    problemsFile: `${file.replace(/\.po$/, '')}-problems.po`,
+    reportFile: `${file.replace(/\.po$/, '')}-report.md`,
+    ...patch,
+  }
+}
+
 export function fakeCommands(overrides: Partial<TuiCommands> = {}): TuiCommands {
   return {
     translateFile: vi.fn(async (opts: TranslateOptions) => {
@@ -166,6 +183,12 @@ export function fakeCommands(overrides: Partial<TuiCommands> = {}): TuiCommands 
       return { files: files.length, entries: 3 * files.length, upserted: 2 * files.length }
     }),
     syncGlossary: vi.fn(async () => ({ entries: 42 })),
+    reviewFile: vi.fn(async (opts: ReviewFileOptions) => {
+      const summary = reviewSummaryOf(opts.file)
+      opts.onProgress?.({ type: 'start', file: opts.file, total: summary.total, reviewable: summary.reviewed })
+      opts.onProgress?.({ type: 'done', summary })
+      return summary
+    }),
     loadConfig,
     loadSecrets,
     saveSecret,

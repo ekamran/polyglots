@@ -3,7 +3,7 @@ import { chmod, readFile, realpath, rename, stat, unlink, writeFile } from 'node
 import { basename, dirname, join } from 'node:path'
 import { po } from 'gettext-parser'
 import type { GetTextTranslation, GetTextTranslations } from 'gettext-parser'
-import type { TranslationUnit } from '../types.js'
+import type { AuditEntry, TranslationUnit } from '../types.js'
 
 export type UnitMode = 'pending' | 'all'
 
@@ -164,6 +164,44 @@ export class PoFile {
       out.push(toUnit(entry))
     }
     return out.sort((a, b) => this.rank(a.key) - this.rank(b.key))
+  }
+
+  auditEntries(): AuditEntry[] {
+    const out: AuditEntry[] = []
+    for (const entry of this.entries()) {
+      const unit = toUnit(entry)
+      out.push({ ...unit, msgstr: [...entry.msgstr], fuzzy: isFuzzy(entry) })
+    }
+    return out.sort((a, b) => this.rank(a.key) - this.rank(b.key))
+  }
+
+  // Reduces the file to the annotated entries, each marked fuzzy with its reasons
+  // attached, so `translate` picks them up (fuzzy is what it selects by default).
+  keepOnly(annotations: Map<string, string[]>): void {
+    for (const ctx of Object.keys(this.raw.translations)) {
+      for (const msgid of Object.keys(this.raw.translations[ctx])) {
+        if (ctx === '' && msgid === '') continue
+        const entry = this.raw.translations[ctx][msgid]
+        const key = unitKey(entry.msgid, entry.msgctxt)
+        const reasons = annotations.get(key)
+        if (!reasons) {
+          delete this.raw.translations[ctx][msgid]
+          continue
+        }
+        const notes = reasons.map((r) => `polyglots: ${r}`).join('\n')
+        const existing = entry.comments?.translator
+        const flags = flagList(entry).filter((f) => f !== 'fuzzy')
+        flags.push('fuzzy')
+        entry.comments = {
+          ...entry.comments,
+          translator: existing ? `${notes}\n${existing}` : notes,
+          flag: flags.join(', '),
+        }
+      }
+      if (ctx !== '' && Object.keys(this.raw.translations[ctx]).length === 0) {
+        delete this.raw.translations[ctx]
+      }
+    }
   }
 
   apply(results: ApplyResult[]): void {

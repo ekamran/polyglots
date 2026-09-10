@@ -55,6 +55,41 @@ export interface GlossaryEntry {
   notes?: string
 }
 
+export interface AuditEntry extends TranslationUnit {
+  msgstr: string[]
+  fuzzy: boolean
+}
+
+export type Severity = 'error' | 'suspect'
+
+export interface Finding {
+  rule: string
+  severity: Severity
+  message: string
+}
+
+export interface ReviewSummary {
+  file: string
+  total: number
+  skipped: number
+  reviewed: number
+  problems: number
+  approvable: number
+  unreviewed: number
+  byRule: Record<string, number>
+  problemsFile?: string
+  reportFile: string
+}
+
+export type ReviewEvent =
+  | { type: 'start'; file: string; total: number; reviewable: number }
+  | { type: 'rules-done'; flagged: number; suspects: number }
+  | { type: 'batch-start'; index: number; of: number; size: number }
+  | { type: 'batch-done'; index: number; problems: number }
+  | { type: 'batch-failed'; index: number; size: number; reason: string }
+  | { type: 'written'; file: string }
+  | { type: 'done'; summary: ReviewSummary }
+
 export type ConsistencyScope = 'core' | 'all'
 
 export interface ConsistencyEntry {

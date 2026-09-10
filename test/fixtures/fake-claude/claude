@@ -42,10 +42,38 @@ function readStdin() {
 function parseEntries(prompt) {
   const entries = []
   for (const line of prompt.split('\n')) {
-    const m = /^\d+\. (\{.*\})$/.exec(line)
-    if (m) entries.push(JSON.parse(m[1]))
+    // Translate prompts number their entries; audit prompts emit bare JSON objects.
+    const m = /^(?:\d+\. )?(\{.*\})$/.exec(line.trim())
+    if (m) {
+      try {
+        const parsed = JSON.parse(m[1])
+        if (typeof parsed.id === 'number') entries.push(parsed)
+      } catch {}
+    }
   }
   return entries
+}
+
+// The audit schema asks for a verdict per entry; the translate schema asks for text.
+function isAuditSchema() {
+  try {
+    const schema = JSON.parse(valueOf('--json-schema'))
+    return 'problem' in (schema.properties?.results?.items?.properties ?? {})
+  } catch {
+    return false
+  }
+}
+
+function buildAuditResults(entries) {
+  return entries.map((e) => {
+    const problem = String(e.source).includes('BAD')
+    return {
+      id: e.id,
+      problem,
+      categories: problem ? ['meaning'] : [],
+      reason: problem ? 'fake: source marked BAD' : 'fake: looks fine',
+    }
+  })
 }
 
 function buildResults(entries, nplurals) {
@@ -107,7 +135,7 @@ async function main() {
   if (entries.length === 0) fail('no entries found in prompt')
   if (entries.some((e) => typeof e.id !== 'number' || 'key' in e)) fail('entries must carry an id and no key')
 
-  const payload = { results: buildResults(entries, nplurals) }
+  const payload = { results: isAuditSchema() ? buildAuditResults(entries) : buildResults(entries, nplurals) }
 
   switch (mode) {
     case 'ok':
@@ -139,7 +167,7 @@ async function main() {
       process.stdout.write(envelope(payload) + '\n')
       return
     case 'short-plural': {
-      const plural = payload.results.find((r) => r.text.length > 1)
+      const plural = payload.results.find((r) => r.text && r.text.length > 1)
       if (plural) plural.text = plural.text.slice(0, 1)
       process.stdout.write(envelope(payload) + '\n')
       return

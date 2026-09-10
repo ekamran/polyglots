@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TranslateEvent } from '../../src/commands/translate.js'
-import { applyEvent, createProgressReporter, formatProgress, initialProgress, noticeFor } from '../../src/cli/progress.js'
+import { applyEvent, createProgressReporter, formatProgress, initialProgress, noticeFor, createReviewProgressReporter } from '../../src/cli/progress.js'
 
 const events: TranslateEvent[] = [
   { type: 'start', file: 'a.po', total: 300, pending: 210 },
@@ -154,5 +154,46 @@ describe('createProgressReporter', () => {
     report({ type: 'start', file: 'a.po', total: 3, pending: 3 })
     report({ type: 'tm-hit', count: 0 })
     expect(stream.chunks.join('')).toBe('Translating a.po: 3 of 3 entries selected\n')
+  })
+})
+
+describe('createReviewProgressReporter', () => {
+  function sink() {
+    let text = ''
+    return { isTTY: false, write: (c: string) => ((text += c), true), get text() { return text } }
+  }
+
+  it('reports the start line and a bar per batch on a non-tty', () => {
+    const out = sink()
+    const report = createReviewProgressReporter(out)
+    report({ type: 'start', file: 'a.po', total: 120, reviewable: 116 })
+    report({ type: 'batch-start', index: 1, of: 5, size: 25 })
+    report({ type: 'batch-done', index: 1, problems: 3 })
+    report.finish()
+
+    expect(out.text).toContain('Reviewing a.po')
+    expect(out.text).toContain('116')
+    expect(out.text).toMatch(/batch 1\/5/)
+    expect(out.text).toMatch(/flagged 3/)
+  })
+
+  it('accumulates flagged counts across batches', () => {
+    const out = sink()
+    const report = createReviewProgressReporter(out)
+    report({ type: 'start', file: 'a.po', total: 10, reviewable: 10 })
+    report({ type: 'batch-done', index: 1, problems: 2 })
+    report({ type: 'batch-done', index: 2, problems: 3 })
+    report.finish()
+    expect(out.text).toMatch(/flagged 5/)
+  })
+
+  it('announces a failed batch', () => {
+    const out = sink()
+    const report = createReviewProgressReporter(out)
+    report({ type: 'start', file: 'a.po', total: 10, reviewable: 10 })
+    report({ type: 'batch-failed', index: 2, size: 25, reason: 'claude exited with exit code 1' })
+    report.finish()
+    expect(out.text).toMatch(/batch 2/)
+    expect(out.text).toContain('exit code 1')
   })
 })
