@@ -6,7 +6,7 @@ import type { Locale } from '../../types.js'
 // them only in a specific date, a distinction no pattern can make, so listing
 // them trades the ability to flag a wrongly capitalized generic one for not
 // flagging every legitimate date.
-const TURKISH: string[] = [
+const TURKISH_DATE_ONLY: string[] = [
   'Pazartesi',
   'Salı',
   'Çarşamba',
@@ -26,6 +26,9 @@ const TURKISH: string[] = [
   'Ekim',
   'Kasım',
   'Aralık',
+]
+
+const TURKISH_ALWAYS: string[] = [
   'Türk',
   'Türkçe',
   'Türkiye',
@@ -59,11 +62,22 @@ const TURKISH: string[] = [
   'Kürt',
 ]
 
-const BY_LANGUAGE: Record<string, string[]> = { tr: TURKISH }
+export interface ProperNouns {
+  // Capitalized wherever they appear: languages, peoples.
+  always: string[]
+  // Capitalized only in a specific date (TDK madde Ç): day and month names.
+  dateOnly: string[]
+}
+
+const EMPTY: ProperNouns = { always: [], dateOnly: [] }
+
+const BY_LANGUAGE: Record<string, ProperNouns> = {
+  tr: { always: TURKISH_ALWAYS, dateOnly: TURKISH_DATE_ONLY },
+}
 
 // Suffixes attach directly to these (Mayıs'ta, Türkçeye), so a prefix match is
 // what identifies them, not equality.
-export function properNounsFor(locale: Locale): string[] {
+export function properNounsFor(locale: Locale): ProperNouns {
   const language = locale.toLowerCase().split(/[-_]/)[0] ?? locale
-  return BY_LANGUAGE[language] ?? []
+  return BY_LANGUAGE[language] ?? EMPTY
 }

@@ -152,9 +152,34 @@ describe('title-case rule, Turkish capitalization categories', () => {
     expect(rules(entry('Turkish users', 'Türk kullanıcılar'))).not.toContain('title-case')
   })
 
-  it('does not flag day and month names', () => {
-    expect(rules(entry('Every Monday', 'Her Pazartesi'))).not.toContain('title-case')
+  it('does not flag a day or month name in a specific date', () => {
     expect(rules(entry('Expires on 12 May', '12 Mayıs tarihinde sona erer'))).not.toContain('title-case')
+    expect(rules(entry('Conquest of Istanbul', '29 Mayıs 1453 Salı günü fetih'))).not.toContain('title-case')
+    expect(rules(entry('Starts on 25 June', 'Festival 25 Haziran\'da başlayacak'))).not.toContain('title-case')
+  })
+
+  // TDK madde Ç capitalizes a day or month name only in a specific date and keeps
+  // it lowercase in generic use, so a capital without a date is a real error.
+  it('flags a capitalized day or month name outside a specific date', () => {
+    expect(rules(entry('Every Monday', 'Her Pazartesi'))).toContain('title-case')
+    expect(rules(entry('We meet on Thursdays', 'Toplantıları Perşembe günleri yaparız'))).toContain('title-case')
+    expect(rules(entry('Schools open in September', 'Okullar Eylülde açılır'))).toContain('title-case')
+  })
+
+  it('treats a placeholder next to a month name as the date number', () => {
+    expect(rules(entry('Expires on %s May', '%s Mayıs tarihinde sona erer'))).not.toContain('title-case')
+    expect(rules(entry('Expires %1$s %2$s', 'Mayıs %1$s tarihinde'))).not.toContain('title-case')
+  })
+
+  // A placeholder used to vanish before tokenizing, which made the word after it
+  // look sentence-initial and hid a real mid-string capital.
+  it('does not let a leading placeholder hide a capitalized word', () => {
+    expect(rules(entry('Save %s', '%s Kaydet'))).toContain('title-case')
+    expect(rules(entry('%s comments', '%s Yorum'))).toContain('title-case')
+  })
+
+  it('keeps language and nation names exempt regardless of any date context', () => {
+    expect(rules(entry('Turkish users', 'Her gün Türk kullanıcılar'))).not.toContain('title-case')
   })
 
   it('still flags a genuine calque of English title case', () => {

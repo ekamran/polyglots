@@ -29,8 +29,10 @@ export function isAcronym(word: string, locale: Locale): boolean {
 function strip(value: string): string {
   return value
     .replace(/<[^>]*>/g, ' ')
-    .replace(/%(?:\d+\$)?(?:[-+ 0#]|'[\s\S])*\d*(?:\.\d+)?[bcdeEfFgGosuxX]/g, ' ')
-    .replace(/\{[A-Za-z_][\w.-]*\}|###[A-Za-z0-9_]+###/g, ' ')
+    // A placeholder next to a month name is almost always the date number, so it
+    // stands in as one rather than vanishing.
+    .replace(/%(?:\d+\$)?(?:[-+ 0#]|'[\s\S])*\d*(?:\.\d+)?[bcdeEfFgGosuxX]/g, ' 0 ')
+    .replace(/\{[A-Za-z_][\w.-]*\}|###[A-Za-z0-9_]+###/g, ' 0 ')
 }
 
 function clean(word: string): string {
@@ -47,15 +49,22 @@ export function words(value: string): string[] {
 // of the string, so a run-on UI string legitimately has several capitals.
 const SENTENCE_END = /[.!?:;…]$/
 
-export function nonInitialWords(value: string): string[] {
-  const out: string[] = []
+export interface Word {
+  text: string
+  initial: boolean
+}
+
+// Every word in order, each marked as sentence-initial or not, so a rule can look
+// at a word's neighbours (a date number, say) and not just the word itself.
+export function scan(value: string): Word[] {
+  const out: Word[] = []
   let atSentenceStart = true
 
   for (const raw of strip(value).split(/\s+/)) {
     if (!raw) continue
-    const word = clean(raw)
-    if (word) {
-      if (!atSentenceStart) out.push(word)
+    const text = clean(raw)
+    if (text) {
+      out.push({ text, initial: atSentenceStart })
       atSentenceStart = false
     }
     if (SENTENCE_END.test(raw)) atSentenceStart = true
@@ -63,13 +72,30 @@ export function nonInitialWords(value: string): string[] {
   return out
 }
 
-export function isTitleCase(value: string, locale: Locale, exempt: (word: string) => boolean): boolean {
-  if (words(value).length < 2) return false
-  const countable = nonInitialWords(value).filter((w) => /\p{L}/u.test(w) && !exempt(w) && !isAcronym(w, locale))
-  if (countable.length === 0) return false
-  return countable.every((w) => isUpperFirst(w, locale))
+export function nonInitialWords(value: string): string[] {
+  return scan(value)
+    .filter((w) => !w.initial)
+    .map((w) => w.text)
 }
 
-export function capitalizedWords(value: string, locale: Locale, exempt: (word: string) => boolean): string[] {
-  return nonInitialWords(value).filter((w) => isUpperFirst(w, locale) && !exempt(w) && !isAcronym(w, locale))
+export type Exempt = (word: string, index: number, all: Word[]) => boolean
+
+function countable(value: string, locale: Locale, exempt: Exempt): Word[] {
+  const all = scan(value)
+  return all.filter(
+    (w, i) => !w.initial && /\p{L}/u.test(w.text) && !exempt(w.text, i, all) && !isAcronym(w.text, locale),
+  )
+}
+
+export function isTitleCase(value: string, locale: Locale, exempt: Exempt): boolean {
+  if (words(value).length < 2) return false
+  const rest = countable(value, locale, exempt)
+  if (rest.length === 0) return false
+  return rest.every((w) => isUpperFirst(w.text, locale))
+}
+
+export function capitalizedWords(value: string, locale: Locale, exempt: Exempt): string[] {
+  return countable(value, locale, exempt)
+    .filter((w) => isUpperFirst(w.text, locale))
+    .map((w) => w.text)
 }
