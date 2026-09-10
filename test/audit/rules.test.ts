@@ -130,6 +130,42 @@ describe('title-case rule', () => {
   })
 })
 
+describe('title-case rule, Turkish capitalization categories', () => {
+  it('does not flag a word starting a new sentence', () => {
+    expect(rules(entry('It failed. Contact support.', 'Bir şey oldu. Ayrıntılar için destek ile görüşün.'))).not.toContain(
+      'title-case',
+    )
+  })
+
+  it('does not flag a word after a colon or question mark', () => {
+    expect(rules(entry('Note: check your settings', 'Not: Ayarlarınızı kontrol edin'))).not.toContain('title-case')
+    expect(rules(entry('Ready? Start now', 'Hazır mısınız? Şimdi başlayın'))).not.toContain('title-case')
+  })
+
+  it('does not flag an acronym carrying a Turkish suffix', () => {
+    expect(rules(entry('Download the PDF now', "Şimdi PDF'yi indir"))).not.toContain('title-case')
+    expect(rules(entry('Copy the URL', "Bağlantı URL'sini kopyala"))).not.toContain('title-case')
+  })
+
+  it('does not flag language and nationality names, which Turkish capitalizes', () => {
+    expect(rules(entry('Set the language to English', 'Uygulama dilini İngilizce yap'))).not.toContain('title-case')
+    expect(rules(entry('Turkish users', 'Türk kullanıcılar'))).not.toContain('title-case')
+  })
+
+  it('does not flag day and month names', () => {
+    expect(rules(entry('Every Monday', 'Her Pazartesi'))).not.toContain('title-case')
+    expect(rules(entry('Expires on 12 May', '12 Mayıs tarihinde sona erer'))).not.toContain('title-case')
+  })
+
+  it('still flags a genuine calque of English title case', () => {
+    expect(rules(entry('Save All Changes', 'Tüm Değişiklikleri Kaydet'))).toContain('title-case')
+  })
+
+  it('still flags a capitalized ordinary word mid-sentence', () => {
+    expect(rules(entry('Save changes', 'Değişiklikleri Kaydet'))).toContain('title-case')
+  })
+})
+
 describe('glossary rule', () => {
   it('flags a translation ignoring the approved term', () => {
     const e = entry('Sidebar', 'Yan menü')

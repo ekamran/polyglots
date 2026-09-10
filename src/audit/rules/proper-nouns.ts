@@ -1,0 +1,69 @@
+import type { Locale } from '../../types.js'
+
+// Categories TDK capitalizes that a brand allowlist does not cover: day and
+// month names, and the names of languages and peoples. Turkish keeps day and
+// month names lowercase in generic use (okullar eylülde açılır) and capitalizes
+// them only in a specific date, a distinction no pattern can make, so listing
+// them trades the ability to flag a wrongly capitalized generic one for not
+// flagging every legitimate date.
+const TURKISH: string[] = [
+  'Pazartesi',
+  'Salı',
+  'Çarşamba',
+  'Perşembe',
+  'Cuma',
+  'Cumartesi',
+  'Pazar',
+  'Ocak',
+  'Şubat',
+  'Mart',
+  'Nisan',
+  'Mayıs',
+  'Haziran',
+  'Temmuz',
+  'Ağustos',
+  'Eylül',
+  'Ekim',
+  'Kasım',
+  'Aralık',
+  'Türk',
+  'Türkçe',
+  'Türkiye',
+  'İngiliz',
+  'İngilizce',
+  'Almanca',
+  'Alman',
+  'Fransızca',
+  'Fransız',
+  'İspanyolca',
+  'İspanyol',
+  'İtalyanca',
+  'İtalyan',
+  'Rusça',
+  'Rus',
+  'Arapça',
+  'Arap',
+  'Japonca',
+  'Japon',
+  'Çince',
+  'Çin',
+  'Korece',
+  'Portekizce',
+  'Hollandaca',
+  'Lehçe',
+  'İbranice',
+  'Farsça',
+  'Yunanca',
+  'Yunan',
+  'Kürtçe',
+  'Kürt',
+]
+
+const BY_LANGUAGE: Record<string, string[]> = { tr: TURKISH }
+
+// Suffixes attach directly to these (Mayıs'ta, Türkçeye), so a prefix match is
+// what identifies them, not equality.
+export function properNounsFor(locale: Locale): string[] {
+  const language = locale.toLowerCase().split(/[-_]/)[0] ?? locale
+  return BY_LANGUAGE[language] ?? []
+}
