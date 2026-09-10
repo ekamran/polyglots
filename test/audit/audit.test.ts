@@ -188,6 +188,20 @@ describe('buildAuditPrompt', () => {
   // help-page headings; without this the model flags every one of them.
   // Measured on 11,232 approved core translations: the mirrored arm fires on
   // 0.69% of them, the standalone arm on 2.69%, so they are not equal evidence.
+  // Interpolated for German, "German does not use English Title Case" is simply
+  // false, so the guidance has to follow the profile rather than the language name.
+  it('omits the title-case guidance for a locale whose profile does not run it', () => {
+    const prompt = buildAuditPrompt(candidates, 'de', 2)
+    expect(prompt).not.toMatch(/does NOT use English Title Case/i)
+    expect(prompt).not.toMatch(/mirrors the English source/i)
+    expect(prompt).toContain('glossary_lookup')
+    expect(prompt).toMatch(/placeholder/i)
+  })
+
+  it('keeps the title-case guidance for Turkish', () => {
+    expect(buildAuditPrompt(candidates, 'tr', 2)).toMatch(/does NOT use English Title Case/i)
+  })
+
   it('tells the model how much to trust each title-case arm', () => {
     const prompt = buildAuditPrompt(candidates, 'tr', 2)
     expect(prompt).toMatch(/mirrors the English source/i)

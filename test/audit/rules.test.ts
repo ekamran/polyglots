@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AuditEntry, GlossaryEntry } from '../../src/types.js'
 import { buildRuleContext, runRules } from '../../src/audit/rules/index.js'
+import { profileFor } from '../../src/audit/rules/profiles.js'
 
 const GLOSSARY: GlossaryEntry[] = [
   { locale: 'tr', sourceTerm: 'sidebar', translation: 'kenar çubuğu', partOfSpeech: 'noun' },
@@ -28,6 +29,45 @@ function check(e: AuditEntry, all: AuditEntry[] = [e]) {
 
 const rules = (e: AuditEntry, all?: AuditEntry[]) => check(e, all).map((f) => f.rule)
 const severityOf = (e: AuditEntry, rule: string) => check(e).find((f) => f.rule === rule)?.severity
+
+describe('rule profiles', () => {
+  function forLocale(locale: string, msgid: string, msgstr: string) {
+    const e = { key: msgid, msgid, msgstr: [msgstr], comments: [], references: [], fuzzy: false }
+    const ctx = buildRuleContext({ locale, glossary: [], nplurals: 2, entries: [e] })
+    return runRules(e, ctx).map((f) => f.rule)
+  }
+
+  it('runs the Turkish-specific rules for tr', () => {
+    expect(profileFor('tr').rules.has('title-case')).toBe(true)
+    expect(profileFor('tr').rules.has('apostrophe')).toBe(true)
+  })
+
+  // German capitalizes every noun by rule, so title-case would flag correct
+  // translations wholesale. A locale with no profile gets the universal subset.
+  it('leaves title-case and apostrophe out for a locale with no profile', () => {
+    expect(profileFor('de').rules.has('title-case')).toBe(false)
+    expect(profileFor('de').rules.has('apostrophe')).toBe(false)
+  })
+
+  it('does not flag German noun capitalization', () => {
+    expect(forLocale('de', 'Save All Changes', 'Alle Änderungen Speichern')).not.toContain('title-case')
+  })
+
+  it('still runs the language-agnostic rules for a locale with no profile', () => {
+    expect(forLocale('de', '%s comments', 'Kommentare')).toContain('placeholder')
+    expect(forLocale('de', 'Read <a>more</a>', 'Mehr lesen')).toContain('html')
+  })
+
+  it('resolves a regional locale through its language subtag', () => {
+    expect(profileFor('tr-TR').rules.has('title-case')).toBe(true)
+    expect(profileFor('pt-br').rules.has('title-case')).toBe(false)
+  })
+
+  it('carries a glossary stem tolerance the profile can tune', () => {
+    expect(profileFor('tr').glossaryStemRatio).toBeGreaterThan(0)
+    expect(profileFor('de').glossaryStemRatio).toBeGreaterThan(0)
+  })
+})
 
 describe('placeholder rule', () => {
   it('flags a dropped placeholder as an error', () => {
