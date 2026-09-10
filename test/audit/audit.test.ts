@@ -42,6 +42,13 @@ describe('auditEntries', () => {
     expect(batch[0].hints.map((h: { rule: string }) => h.rule)).toContain('glossary')
   })
 
+  it('forwards the entry references to the adjudicator', async () => {
+    const withRefs = { ...suspect, references: ['includes/admin-menu.php:42'] }
+    const adjudicate = vi.fn().mockResolvedValue([{ id: 1, problem: false, categories: [], reason: 'ok' }])
+    await auditEntries({ entries: [withRefs], ...base(), adjudicate })
+    expect(adjudicate.mock.calls[0]![0][0]).toMatchObject({ references: ['includes/admin-menu.php:42'] })
+  })
+
   it('lets the AI clear a suspect the rules raised', async () => {
     const adjudicate = vi.fn().mockResolvedValue([{ id: 1, problem: false, categories: [], reason: 'correct form' }])
     const [verdict] = await auditEntries({ entries: [suspect], ...base(), adjudicate })
@@ -129,9 +136,13 @@ describe('auditEntries', () => {
 
 describe('buildAuditPrompt', () => {
   const candidates = [
-    { id: 1, key: 'c', msgid: 'Sidebar', msgstr: ['Yan menü'], comments: [], hints: [{ rule: 'glossary', severity: 'suspect' as const, message: 'glossary term not used' }] },
-    { id: 2, key: 'a', msgid: 'Save all changes', msgstr: ['Tüm değişiklikleri kaydet'], comments: [], hints: [] },
+    { id: 1, key: 'c', msgid: 'Sidebar', msgstr: ['Yan menü'], comments: [], references: [], hints: [{ rule: 'glossary', severity: 'suspect' as const, message: 'glossary term not used' }] },
+    { id: 2, key: 'a', msgid: 'Save all changes', msgstr: ['Tüm değişiklikleri kaydet'], comments: [], references: ['includes/admin-menu.php:42'], hints: [] },
   ]
+
+  it('passes the source references through as the clue to a string\'s role', () => {
+    expect(buildAuditPrompt(candidates, 'tr', 2)).toContain('admin-menu.php')
+  })
 
   it('numbers every entry and includes the submitted translation', () => {
     const prompt = buildAuditPrompt(candidates, 'tr', 2)
@@ -151,6 +162,15 @@ describe('buildAuditPrompt', () => {
     // A work title (Suç ve Ceza) is correctly title-cased and no rule can tell it
     // from a calque, so the model is the only thing standing between it and a flag.
     expect(prompt).toMatch(/titles of works/i)
+  })
+
+  // The locale team tolerates capitalization in menu and screen names and in
+  // help-page headings; without this the model flags every one of them.
+  it('tells the model not to raise title-case for menu labels and section headings', () => {
+    const prompt = buildAuditPrompt(candidates, 'tr', 2)
+    expect(prompt).toMatch(/menu label|screen name|section name/i)
+    expect(prompt).toMatch(/heading/i)
+    expect(prompt).toMatch(/command|button/i)
   })
 
   it('states the locale team standards and names the lookup tools', () => {

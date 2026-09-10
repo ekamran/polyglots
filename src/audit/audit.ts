@@ -85,6 +85,7 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
       ...(entry.msgidPlural ? { msgidPlural: entry.msgidPlural } : {}),
       msgstr: entry.msgstr,
       comments: entry.comments,
+      references: entry.references,
       hints: findings,
     })
   }
