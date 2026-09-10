@@ -166,6 +166,14 @@ describe('buildAuditPrompt', () => {
 
   // The locale team tolerates capitalization in menu and screen names and in
   // help-page headings; without this the model flags every one of them.
+  // Measured on 11,232 approved core translations: the mirrored arm fires on
+  // 0.69% of them, the standalone arm on 2.69%, so they are not equal evidence.
+  it('tells the model how much to trust each title-case arm', () => {
+    const prompt = buildAuditPrompt(candidates, 'tr', 2)
+    expect(prompt).toMatch(/mirrors the English source/i)
+    expect(prompt).toMatch(/weaker|weak evidence|less reliable/i)
+  })
+
   it('tells the model not to raise title-case for menu labels and section headings', () => {
     const prompt = buildAuditPrompt(candidates, 'tr', 2)
     expect(prompt).toMatch(/menu label|screen name|section name/i)
