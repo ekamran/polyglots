@@ -12,6 +12,10 @@ export interface AuditCandidate {
   comments: string[]
   references: string[]
   hints: Finding[]
+  // Carries a rules-side mechanical repair through the batch round trip, since
+  // toVerdict and unreviewed build a fresh Verdict per candidate and would
+  // otherwise lose it.
+  repaired?: { text: string[]; repairedBy: 'rules' }
 }
 
 function languageName(locale: Locale): string {

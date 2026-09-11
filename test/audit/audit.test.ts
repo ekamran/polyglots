@@ -274,6 +274,40 @@ describe('auditEntries', () => {
     const verdicts = await auditEntries({ entries: [clean, hardError, suspect], ...base(), adjudicate })
     expect(verdicts.map((v) => v.key)).toEqual(['a', 'b', 'c'])
   })
+
+  // An entry whose only fault is a dropped trailing space is a hard error today,
+  // which means it never reaches the model and can never be fixed at all.
+  it('repairs whitespace itself and lets the fixed text clear the rules', async () => {
+    const dropped = entry('w', 'Save changes ', 'Değişiklikleri kaydet')
+    const adjudicate = vi
+      .fn()
+      .mockResolvedValue([{ id: 1, problem: false, categories: [], reason: 'ok' }])
+    const verdicts = await auditEntries({ entries: [dropped], ...base(), adjudicate })
+
+    // It went to the model as an ordinary candidate, not as a condemned entry.
+    expect(adjudicate).toHaveBeenCalledTimes(1)
+    expect(verdicts[0]).toMatchObject({ key: 'w', text: ['Değişiklikleri kaydet '], repairedBy: 'rules' })
+  })
+
+  it('reports the mechanical repair as a finding, so the file says what changed', async () => {
+    const dropped = entry('w', 'Save changes ', 'Değişiklikleri kaydet')
+    const verdicts = await auditEntries({ entries: [dropped], ...base({ noAi: true }) })
+    expect(verdicts[0]!.findings.map((f) => f.rule)).toContain('repaired')
+  })
+
+  it('judges the repaired text, not the submitted text', async () => {
+    // Whitespace is the entry's only fault, so after repair nothing is wrong.
+    const dropped = entry('w', 'Save changes ', 'Değişiklikleri kaydet')
+    const verdicts = await auditEntries({ entries: [dropped], ...base({ noAi: true }) })
+    expect(verdicts[0]!.findings.map((f) => f.rule)).not.toContain('whitespace')
+  })
+
+  it('leaves an entry it cannot mechanically repair without text', async () => {
+    const adjudicate = vi.fn().mockResolvedValue([{ id: 1, problem: false, categories: [], reason: 'ok' }])
+    const verdicts = await auditEntries({ entries: [clean], ...base(), adjudicate })
+    expect(verdicts[0]!.text).toBeUndefined()
+    expect(verdicts[0]!.repairedBy).toBeUndefined()
+  })
 })
 
 describe('buildAuditPrompt', () => {
@@ -374,6 +408,7 @@ describe('mapAuditResults', () => {
     expect(mapAuditResults([{ id: 1, key: 'a' }], payload)[0]).toMatchObject({ fix: ['%s yorum'] })
   })
 
+  // Declining is a first-class answer, not a malformed response.
   it('accepts a result with no fix at all', () => {
     const payload = { results: [{ id: 1, problem: true, categories: ['meaning'], reason: 'x' }] }
     expect(mapAuditResults([{ id: 1, key: 'a' }], payload)[0]?.fix).toBeUndefined()

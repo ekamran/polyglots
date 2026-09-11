@@ -2,6 +2,7 @@ import { chunk } from '../batch.js'
 import { runClaude, type ClaudeRunOptions } from '../claude/run.js'
 import type { AuditEntry, Finding, GlossaryEntry, Locale } from '../types.js'
 import { buildAuditPrompt, type AuditCandidate } from './prompt.js'
+import { repairMechanically } from './repair.js'
 import { auditBatchJsonSchema, mapAuditResults, type AuditResult } from './schema.js'
 import { buildRuleContext, runRules } from './rules/index.js'
 
@@ -12,6 +13,11 @@ export interface Verdict {
   reason: string
   unreviewed?: boolean
   needsReview?: boolean
+  // The corrected translation, when a repair was made and accepted, and which
+  // side made it. The rules repair what is computable; the model repairs the
+  // rest.
+  text?: string[]
+  repairedBy?: 'rules' | 'model'
 }
 
 export type Adjudicator = (
@@ -77,23 +83,35 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
   const verdicts = new Map<string, Verdict>()
   const candidates: AuditCandidate[] = []
 
-  for (const entry of opts.entries) {
-    const findings = runRules(entry, ctx)
+  for (const original of opts.entries) {
+    // Repair what needs no judgment first, then let the rules judge the result.
+    // An entry whose only fault was whitespace comes out clean here and takes
+    // the ordinary path, rather than being condemned to a file nobody can fix.
+    const repaired = repairMechanically(original)
+    const entry = repaired ? { ...original, msgstr: repaired } : original
+    const mechanical: Finding[] = repaired
+      ? [{ rule: 'repaired', severity: 'suspect', message: 'whitespace restored to match the source' }]
+      : []
+    const base = repaired ? { text: repaired, repairedBy: 'rules' as const } : {}
+
+    const findings = [...mechanical, ...runRules(entry, ctx)]
     const errors = findings.filter((f) => f.severity === 'error')
 
     if (errors.length > 0) {
-      verdicts.set(entry.key, { key: entry.key, problem: true, findings, reason: ruleReason(findings) })
+      verdicts.set(entry.key, { key: entry.key, problem: true, findings, reason: ruleReason(findings), ...base })
       continue
     }
     if (opts.noAi) {
-      // Nothing adjudicates a suspect without the model, so a soft finding is
-      // reported for a human to look at rather than asserted as a problem.
+      // A mechanical repair is a settled fix, not an unadjudicated guess, so it
+      // alone must not mark the entry as needing a human decision.
+      const undecided = findings.filter((f) => f.rule !== 'repaired')
       verdicts.set(entry.key, {
         key: entry.key,
         problem: false,
-        ...(findings.length > 0 ? { needsReview: true } : {}),
+        ...(undecided.length > 0 ? { needsReview: true } : {}),
         findings,
         reason: ruleReason(findings),
+        ...base,
       })
       continue
     }
@@ -107,6 +125,7 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
       comments: entry.comments,
       references: entry.references,
       hints: findings,
+      ...(repaired ? { repaired: { text: repaired, repairedBy: 'rules' as const } } : {}),
     })
   }
 
@@ -183,7 +202,7 @@ function toVerdict(candidate: AuditCandidate, result: AuditResult): Verdict {
       }))
     : []
   const findings = result.problem ? [...candidate.hints, ...aiFindings] : []
-  return { key: candidate.key, problem: result.problem, findings, reason: result.reason }
+  return { key: candidate.key, problem: result.problem, findings, reason: result.reason, ...(candidate.repaired ?? {}) }
 }
 
 // A batch we failed to review is never silently approved: a false negative ships a
@@ -198,5 +217,6 @@ function unreviewed(candidate: AuditCandidate): Verdict {
       { rule: 'unreviewed', severity: 'error', message: 'automated review failed for this entry' },
     ],
     reason: 'this entry could not be reviewed automatically and needs a human look',
+    ...(candidate.repaired ?? {}),
   }
 }
