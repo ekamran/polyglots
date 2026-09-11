@@ -9,7 +9,9 @@ import { profileFor } from './rules/profiles.js'
 // problems file's own header because that file is the only artifact of the run.
 export const MARKER_HEADER = 'X-Polyglots-Review'
 
-const FORMAT = 1
+// Bumped when `repaired` became a required field, so old markers are rejected
+// on purpose rather than by accident of validation.
+const FORMAT = 2
 
 // Kept as named parts rather than one hash so a refusal can say what moved. The
 // user's next step differs: a changed submission means the input was replaced, a

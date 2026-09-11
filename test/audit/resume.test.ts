@@ -53,7 +53,9 @@ describe('review marker', () => {
     expect(decodeMarker('{"done":')).toBeUndefined()
     expect(decodeMarker('not json at all')).toBeUndefined()
     expect(decodeMarker('{"done":"lots"}')).toBeUndefined()
-    expect(decodeMarker(encodeMarker(MARKER).replace(/"v":1/, '"v":2'))).toBeUndefined()
+    // 0 is not a format any build has ever written, so this stays a mismatch
+    // regardless of what FORMAT is bumped to next.
+    expect(decodeMarker(encodeMarker(MARKER).replace(/"v":\d+/, '"v":0'))).toBeUndefined()
     // A marker written before repairs were counted: resuming from it would report
     // a repair count short by everything the earlier run fixed.
     expect(decodeMarker(encodeMarker(MARKER).replace(/,"repaired":\d+/, ''))).toBeUndefined()
