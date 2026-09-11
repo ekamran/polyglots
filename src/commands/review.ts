@@ -168,9 +168,13 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
       // A repair with nothing else wrong is neither a problem nor a guess, and it
       // still belongs in the file: it is the only copy of the correction.
       if (!verdict.problem && !verdict.needsReview && verdict.text === undefined) continue
+      const notes = verdict.findings.map((f) => f.message)
       annotations.set(verdict.key, {
-        notes: verdict.findings.map((f) => f.message),
-        ...(verdict.text ? { text: verdict.text } : {}),
+        // A verdict with no findings still has to say something: keepOnly would
+        // otherwise fall back to a generic note, and the model's own reason is
+        // the better line to give the human reading the file.
+        notes: notes.length > 0 ? notes : [verdict.reason],
+        ...(verdict.text === undefined ? {} : { text: verdict.text }),
       })
     }
     if (opts.outDir) await mkdir(opts.outDir, { recursive: true })

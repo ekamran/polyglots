@@ -119,6 +119,20 @@ describe('PoFile.keepOnly', () => {
     expect(reparsed.carried()).toEqual(new Map([[key, { notes: ['meaning'], msgstr: ['Müsvedde'] }]]))
   })
 
+  // carried() can only see an entry that carries one of our notes, so an
+  // annotation written without one would be dropped the next time the output is
+  // rebuilt from the source, taking any repair in it along.
+  it('writes a note even for an annotation that came with none', async () => {
+    await keep(new Map([['Settings', { notes: [] }]]))
+    const reparsed = await loadPo(out)
+    expect([...reparsed.carried().keys()]).toEqual(['Settings'])
+  })
+
+  it('leaves the submitted translation alone when the repair is an empty list', async () => {
+    const text = await keep(new Map([['Settings', { notes: ['glossary'], text: [] }]]))
+    expect(text).toContain('msgstr "Ayarlar"')
+  })
+
   it('reads back nothing from a file with none of our notes', async () => {
     expect((await loadPo(file)).carried().size).toBe(0)
   })

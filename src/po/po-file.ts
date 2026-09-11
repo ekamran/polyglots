@@ -132,6 +132,19 @@ export function sourceOrder(text: string): Map<string, number> {
 
 const NOTE_PREFIX = 'polyglots: '
 
+// Said when a verdict reached keepOnly with nothing to say. It is never the best
+// wording, but it is better than the alternative: see readableNotes.
+const FALLBACK_NOTE = 'flagged for review'
+
+// carried() can only recover an entry that carries one of our notes, and the
+// output file is rebuilt from the untouched source on every save. An annotation
+// written without a readable note is therefore deleted on the next resume, along
+// with a repair that exists in no other file, so one is always substituted here.
+function readableNotes(notes: string[]): string[] {
+  const said = notes.filter((note) => note.trim() !== '')
+  return said.length > 0 ? said : [FALLBACK_NOTE]
+}
+
 // Our own notes are rewritten on every pass rather than appended, so resuming a
 // run cannot stack duplicates, and a note disappears once its reason does.
 // Comments that came from the source or from a contributor are left alone.
@@ -235,13 +248,13 @@ export class PoFile {
           delete this.raw.translations[ctx][msgid]
           continue
         }
-        if (annotation.text) {
+        if (annotation.text?.length) {
           entry.msgstr =
             entry.msgid_plural !== undefined
               ? Array.from({ length: this.nplurals }, (_, i) => annotation.text![i] ?? '')
               : [annotation.text[0] ?? '']
         }
-        setNotes(entry, annotation.notes)
+        setNotes(entry, readableNotes(annotation.notes))
         const flags = flagList(entry).filter((f) => f !== 'fuzzy')
         flags.push('fuzzy')
         entry.comments = { ...entry.comments, flag: flags.join(', ') }

@@ -245,6 +245,42 @@ describe('resuming an interrupted review', () => {
     expect(text).toMatch(/polyglots:.*whitespace/i)
   })
 
+  // A model may return problem:true with no categories at all. That leaves the
+  // verdict with no findings, and an entry written without one of our notes is
+  // invisible to carried(), so the resume rebuilds the file without it while the
+  // summary still counts it.
+  it('keeps an entry the model flagged without naming a category across a resume', async () => {
+    const bare = () =>
+      vi.fn(async (batch: { id: number }[]) =>
+        batch.map((c) => ({ id: c.id, problem: true, categories: [] as never[], reason: 'says the opposite' })),
+      )
+    let batches = 0
+    await expect(
+      run({
+        adjudicate: bare(),
+        onProgress: (e: ReviewEvent) => {
+          if (e.type === 'batch-done' && ++batches === 1) throw new Error('interrupted')
+        },
+      }),
+    ).rejects.toThrow('interrupted')
+
+    const summary = await run({ adjudicate: bare() })
+    const kept = (await loadPo(repaired)).auditEntries().map((e) => e.msgid)
+    expect(kept).toContain('Save all changes')
+    expect(summary.repaired).toBeLessThanOrEqual(summary.written)
+  })
+
+  // The entries in the file, the counts in the summary and what carried() can
+  // recover are three views of one set. The single-run case was asserted; the
+  // resume, where the file is rebuilt from the source, was not.
+  it('reports how many entries it wrote after a resume as well', async () => {
+    await interrupt()
+    const summary = await run()
+
+    const entries = (await loadPo(repaired)).auditEntries()
+    expect(summary.written).toBe(entries.length)
+  })
+
   it('does not announce a file that holds nothing but a marker', async () => {
     await writeFile(file, PO.replace('msgstr "yorumlar"', 'msgstr "%s yorum"'), 'utf8')
     const events: ReviewEvent[] = []
