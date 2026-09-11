@@ -58,15 +58,85 @@ describe('reviewFile', () => {
 
   it('derives the output name from the input file', async () => {
     const summary = await run()
-    expect(summary.problemsFile).toBe(join(home, 'plugin-tr-problems.po'))
+    expect(summary.problemsFile).toBe(join(home, 'plugin-tr-repaired.po'))
     expect(await readdir(home)).not.toContain('plugin-tr-report.md')
   })
 
   it('honours outDir while keeping the derived name', async () => {
     const outDir = join(home, 'out')
     const summary = await run({ outDir })
-    expect(summary.problemsFile).toBe(join(outDir, 'plugin-tr-problems.po'))
-    expect(await readdir(outDir)).toEqual(['plugin-tr-problems.po'])
+    expect(summary.problemsFile).toBe(join(outDir, 'plugin-tr-repaired.po'))
+    expect(await readdir(outDir)).toEqual(['plugin-tr-repaired.po'])
+  })
+
+  it('names the file for what it contains', async () => {
+    const summary = await run({
+      adjudicate: vi.fn(async (batch: { id: number }[]) =>
+        batch.map((c) => ({
+          id: c.id,
+          problem: true,
+          categories: ['meaning'] as never[],
+          reason: 'no',
+          fix: ['Düzeltildi'],
+        })),
+      ),
+    })
+    expect(summary.problemsFile).toBe(join(home, 'plugin-tr-repaired.po'))
+  })
+
+  it('keeps the problems name when nothing could be repaired by a model', async () => {
+    const summary = await run({ noAi: true })
+    expect(summary.problemsFile).toBe(join(home, 'plugin-tr-problems.po'))
+  })
+
+  it('writes the repaired translation into the file', async () => {
+    const summary = await run({
+      adjudicate: vi.fn(async (batch: { id: number; msgid: string }[]) =>
+        batch.map((c) => ({
+          id: c.id,
+          problem: c.msgid === 'Save all changes',
+          categories: ['meaning'] as never[],
+          reason: 'says the opposite',
+          ...(c.msgid === 'Save all changes' ? { fix: ['Tüm değişiklikleri kaydedin'] } : {}),
+        })),
+      ),
+    })
+    const text = await readFile(summary.problemsFile!, 'utf8')
+    expect(text).toContain('Tüm değişiklikleri kaydedin')
+  })
+
+  it('counts what it repaired', async () => {
+    const summary = await run({
+      adjudicate: vi.fn(async (batch: { id: number; msgid: string }[]) =>
+        batch.map((c) => ({
+          id: c.id,
+          problem: c.msgid === 'Save all changes',
+          categories: ['meaning'] as never[],
+          reason: 'x',
+          ...(c.msgid === 'Save all changes' ? { fix: ['Tüm değişiklikleri kaydedin'] } : {}),
+        })),
+      ),
+    })
+    expect(summary.repaired).toBe(1)
+  })
+
+  // A whitespace repair is settled, not a problem and not a guess, so it carries
+  // neither flag. It still has to reach the file: review never touches the
+  // submission, so dropping it here would throw the correction away.
+  it('writes an entry whose only fault the rules repaired outright', async () => {
+    await writeFile(file, PO.replace('kaydet"', 'kaydet "'), 'utf8')
+    const summary = await run()
+
+    const entries = await loadPo(summary.problemsFile!).then((p) => p.auditEntries())
+    expect(entries.map((e) => e.msgid)).toContain('Save all changes')
+    expect(entries.find((e) => e.msgid === 'Save all changes')!.msgstr).toEqual(['Tüm değişiklikleri kaydet'])
+    expect(summary.repaired).toBe(1)
+  })
+
+  it('reports how many entries it wrote', async () => {
+    const summary = await run()
+    const entries = await loadPo(summary.problemsFile!).then((p) => p.auditEntries())
+    expect(summary.written).toBe(entries.length)
   })
 
   it('skips entries with nothing submitted and counts them', async () => {
@@ -106,7 +176,7 @@ describe('reviewFile', () => {
 
     expect(summary.problems).toBe(0)
     expect(summary.problemsFile).toBeUndefined()
-    expect(await readdir(home)).not.toContain('plugin-tr-problems.po')
+    expect(await readdir(home)).not.toContain('plugin-tr-repaired.po')
     expect(await readdir(home)).not.toContain('plugin-tr-report.md')
   })
 
@@ -199,7 +269,7 @@ describe('reviewFile', () => {
   it('writes the problems file after every batch, not only at the end', async () => {
     const seen: number[] = []
     const adjudicate = vi.fn(async (batch: { id: number; msgid: string }[]) => {
-      const target = join(home, 'plugin-tr-problems.po')
+      const target = join(home, 'plugin-tr-repaired.po')
       seen.push(await readFile(target, 'utf8').then((t) => t.length).catch(() => 0))
       return batch.map((c) => ({ id: c.id, problem: true, categories: ['meaning'] as never[], reason: 'nope' }))
     })

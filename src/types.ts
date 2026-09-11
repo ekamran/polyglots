@@ -79,6 +79,13 @@ export interface ReviewSummary {
   needsReview: number
   approvable: number
   unreviewed: number
+  // Entries that carry a correction, whether the rules or the model made it. The
+  // rest still need a human to write something.
+  repaired: number
+  // How many entries the output file holds. Reported rather than derived, because
+  // `problems - repaired` is not it: an entry whose only fault was whitespace is
+  // written out too, and it counts as neither a problem nor a soft finding.
+  written: number
   byRule: Record<string, number>
   problemsFile?: string
 }

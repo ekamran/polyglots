@@ -36,13 +36,13 @@ msgstr ""
 describe('resuming an interrupted review', () => {
   let home: string
   let file: string
-  let problems: string
+  let repaired: string
   let db: Database.Database
 
   beforeEach(async () => {
     home = await mkdtemp(join(tmpdir(), 'polyglots-resume-'))
     file = join(home, 'plugin-tr.po')
-    problems = join(home, 'plugin-tr-problems.po')
+    repaired = join(home, 'plugin-tr-repaired.po')
     await writeFile(file, PO, 'utf8')
     db = openDb(join(home, 'polyglots.db'))
     replaceGlossary(db, 'tr', [
@@ -86,7 +86,7 @@ describe('resuming an interrupted review', () => {
 
   it('records how far it got in the problems file header', async () => {
     await run()
-    const marker = decodeMarker((await loadPo(problems)).headers[MARKER_HEADER])
+    const marker = decodeMarker((await loadPo(repaired)).headers[MARKER_HEADER])
     expect(marker).toMatchObject({ done: 3, of: 3 })
   })
 
@@ -104,9 +104,9 @@ describe('resuming an interrupted review', () => {
     await interrupt()
     await run()
 
-    const kept = (await loadPo(problems)).auditEntries().map((e) => e.msgid)
+    const kept = (await loadPo(repaired)).auditEntries().map((e) => e.msgid)
     expect(kept).toContain('Save all changes')
-    expect(await readFile(problems, 'utf8')).toContain('says the opposite')
+    expect(await readFile(repaired, 'utf8')).toContain('says the opposite')
   })
 
   it('counts the skipped batches in the summary, not just the ones it ran', async () => {
@@ -168,7 +168,7 @@ describe('resuming an interrupted review', () => {
     await writeFile(file, PO.replace('msgstr "yorumlar"', 'msgstr "%s yorum"'), 'utf8')
     const seen: (number | undefined)[] = []
     const adjudicate = vi.fn(async (batch: { id: number }[]) => {
-      const marker = await loadPo(problems).then((p) => decodeMarker(p.headers[MARKER_HEADER])).catch(() => undefined)
+      const marker = await loadPo(repaired).then((p) => decodeMarker(p.headers[MARKER_HEADER])).catch(() => undefined)
       seen.push(marker?.done)
       return batch.map((c) => ({ id: c.id, problem: false, categories: [] as never[], reason: 'ok' }))
     })
@@ -183,7 +183,39 @@ describe('resuming an interrupted review', () => {
 
     expect(summary.problems).toBe(0)
     expect(summary.problemsFile).toBeUndefined()
-    expect(await readdir(home)).not.toContain('plugin-tr-problems.po')
+    expect(await readdir(home)).not.toContain('plugin-tr-repaired.po')
+  })
+
+  // The output is rebuilt from the source file on every save, so a repair lives
+  // only in the file the interrupted run wrote. Recovering just the comments
+  // would revert the text while keeping a note claiming it was repaired.
+  it('keeps a repaired translation across a resume', async () => {
+    const repairs = () =>
+      vi.fn(async (batch: { id: number }[]) =>
+        batch.map((c) => ({
+          id: c.id,
+          problem: true,
+          categories: ['meaning'] as never[],
+          reason: 'says the opposite',
+          fix: ['Onarıldı'],
+        })),
+      )
+    let batches = 0
+    await expect(
+      run({
+        adjudicate: repairs(),
+        onProgress: (e: ReviewEvent) => {
+          if (e.type === 'batch-done' && ++batches === 1) throw new Error('interrupted')
+        },
+      }),
+    ).rejects.toThrow('interrupted')
+
+    const summary = await run({ adjudicate: repairs() })
+    const text = await readFile(summary.problemsFile!, 'utf8')
+    // Two of the three: the fix offered for "%s comments" drops the placeholder
+    // the source requires, so it is rejected and that entry stays unrepaired.
+    expect(text.match(/Onarıldı/g)).toHaveLength(2)
+    expect(summary.repaired).toBe(2)
   })
 
   it('does not announce a file that holds nothing but a marker', async () => {

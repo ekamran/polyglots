@@ -12,7 +12,7 @@ import {
   type ReviewMarker,
 } from '../audit/resume.js'
 import { writeMcpConfig, MCP_ENV } from '../mcp/config.js'
-import { loadPo, type Annotation } from '../po/po-file.js'
+import { loadPo, type Annotation, type CarriedEntry } from '../po/po-file.js'
 import { loadConfig } from '../config.js'
 import { allGlossary, openDb } from '../storage/index.js'
 import type { AuditEntry, Locale, ReviewEvent, ReviewSummary } from '../types.js'
@@ -31,9 +31,12 @@ export interface ReviewOptions extends Partial<ClaudeRunOptions> {
   onProgress?: (event: ReviewEvent) => void
 }
 
-function problemsPath(file: string, outDir?: string): string {
-  const dir = outDir ?? dirname(file)
-  return join(dir, `${basename(file, extname(file))}-problems.po`)
+function outputPath(file: string, opts: { outDir?: string; noAi?: boolean }): string {
+  const dir = opts.outDir ?? dirname(file)
+  // The name says whether a model was in the loop, because that decides whether
+  // anything beyond mechanical whitespace could have been repaired.
+  const suffix = opts.noAi ? 'problems' : 'repaired'
+  return join(dir, `${basename(file, extname(file))}-${suffix}.po`)
 }
 
 function readGlossary(locale: Locale, injected?: Database.Database) {
@@ -93,7 +96,7 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
   const reviewable = all.filter(submitted)
   const emit = opts.onProgress ?? (() => {})
 
-  const target = problemsPath(opts.file, opts.outDir)
+  const target = outputPath(opts.file, opts)
   const properNouns = opts.properNouns ?? configuredProperNouns(opts.locale)
   const batchSize = opts.batchSize ?? DEFAULT_BATCH_SIZE
 
@@ -110,7 +113,7 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
   // flagged. Those entries are only in the problems file, so they are read back
   // and carried into the file this run writes.
   let resumed: ReviewMarker | undefined
-  let carried = new Map<string, string[]>()
+  let carried = new Map<string, CarriedEntry>()
   if (!opts.fresh) {
     const previous = await loadPo(target).catch(() => undefined)
     const marker = previous && decodeMarker(previous.headers[MARKER_HEADER])
@@ -125,7 +128,7 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
         )
       }
       resumed = marker
-      carried = new Map([...previous.carried()].map(([key, entry]) => [key, entry.notes]))
+      carried = previous.carried()
     }
   }
 
@@ -146,6 +149,7 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
     of: resumed?.of ?? 0,
     problems: resumed?.problems ?? 0,
     unreviewed: resumed?.unreviewed ?? 0,
+    repaired: resumed?.repaired ?? 0,
     byRule: { ...resumed?.byRule },
   }
 
@@ -156,10 +160,18 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
   const decided: Verdict[] = []
   let wrote = false
   const persist = async (): Promise<number> => {
-    const annotations = new Map<string, Annotation>([...carried].map(([key, notes]) => [key, { notes }]))
+    const annotations = new Map<string, Annotation>()
+    // The repaired text of a skipped batch survives nowhere but in the file the
+    // earlier run wrote, so it is carried back in rather than re-derived.
+    for (const [key, entry] of carried) annotations.set(key, { notes: entry.notes, text: entry.msgstr })
     for (const verdict of decided) {
-      if (!verdict.problem && !verdict.needsReview) continue
-      annotations.set(verdict.key, { notes: verdict.findings.map((f) => f.message) })
+      // A repair with nothing else wrong is neither a problem nor a guess, and it
+      // still belongs in the file: it is the only copy of the correction.
+      if (!verdict.problem && !verdict.needsReview && verdict.text === undefined) continue
+      annotations.set(verdict.key, {
+        notes: verdict.findings.map((f) => f.message),
+        ...(verdict.text ? { text: verdict.text } : {}),
+      })
     }
     if (opts.outDir) await mkdir(opts.outDir, { recursive: true })
     const out = await loadPo(opts.file)
@@ -196,6 +208,7 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
       marker.of = b.of
       marker.problems += b.verdicts.filter((v) => v.problem).length
       marker.unreviewed += b.verdicts.filter((v) => v.unreviewed).length
+      marker.repaired += b.verdicts.filter((v) => v.text !== undefined).length
       addTally(marker.byRule, tally(b.verdicts))
       await persist()
       // One terminal event per batch: the reducer counts either as progress, so
@@ -209,7 +222,16 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
   const needsReview = verdicts.filter((v) => v.needsReview)
   // Counts from the batches this run skipped come off the marker: their entries
   // are in the file but their verdicts were never in memory.
-  const before = { problems: resumed?.problems ?? 0, unreviewed: resumed?.unreviewed ?? 0 }
+  const before = {
+    problems: resumed?.problems ?? 0,
+    unreviewed: resumed?.unreviewed ?? 0,
+    repaired: resumed?.repaired ?? 0,
+  }
+
+  // The rules-only path decides everything up front, so nothing was persisted yet.
+  decided.length = 0
+  decided.push(...verdicts)
+  const written = await persist()
 
   const summary: ReviewSummary = {
     file: opts.file,
@@ -220,14 +242,12 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
     needsReview: needsReview.length,
     approvable: reviewable.length - problems.length - needsReview.length - before.problems,
     unreviewed: verdicts.filter((v) => v.unreviewed).length + before.unreviewed,
+    repaired: verdicts.filter((v) => v.text !== undefined).length + before.repaired,
+    written,
     byRule: addTally(tally(verdicts), resumed?.byRule ?? {}),
   }
 
-  // The rules-only path decides everything up front, so nothing was persisted yet.
-  decided.length = 0
-  decided.push(...verdicts)
-  const kept = await persist()
-  if (kept > 0) summary.problemsFile = target
+  if (written > 0) summary.problemsFile = target
   // Nothing was flagged, so the only thing left in the file is the marker, and a
   // finished review has nothing to resume.
   else await rm(target, { force: true })

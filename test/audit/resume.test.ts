@@ -26,6 +26,7 @@ const MARKER: ReviewMarker = {
   of: 114,
   problems: 57,
   unreviewed: 25,
+  repaired: 19,
   byRule: { 'ai:meaning': 30, glossary: 27 },
 }
 
@@ -53,6 +54,9 @@ describe('review marker', () => {
     expect(decodeMarker('not json at all')).toBeUndefined()
     expect(decodeMarker('{"done":"lots"}')).toBeUndefined()
     expect(decodeMarker(encodeMarker(MARKER).replace(/"v":1/, '"v":2'))).toBeUndefined()
+    // A marker written before repairs were counted: resuming from it would report
+    // a repair count short by everything the earlier run fixed.
+    expect(decodeMarker(encodeMarker(MARKER).replace(/,"repaired":\d+/, ''))).toBeUndefined()
   })
 
   it('reads nothing from a marker whose fingerprint is not a fingerprint', () => {

@@ -361,6 +361,8 @@ describe('review', () => {
       needsReview: 0,
       approvable: 102,
       unreviewed: 0,
+      repaired: 9,
+      written: 14,
       byRule: { placeholder: 3, 'title-case': 11 },
       problemsFile: '/tmp/plugin-tr-problems.po',
       ...overrides,

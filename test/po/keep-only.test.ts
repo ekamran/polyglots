@@ -110,6 +110,15 @@ describe('PoFile.keepOnly', () => {
     )
   })
 
+  // The key a context-qualified entry reads back under is msgctxt + U+0004 +
+  // msgid, which is the one shape a round trip can quietly get wrong.
+  it('reads back a context-qualified entry under the key it was written with', async () => {
+    const key = unitKey('Draft', 'post status')
+    await keep(new Map([[key, { notes: ['meaning'], text: ['Müsvedde'] }]]))
+    const reparsed = await loadPo(out)
+    expect(reparsed.carried()).toEqual(new Map([[key, { notes: ['meaning'], msgstr: ['Müsvedde'] }]]))
+  })
+
   it('reads back nothing from a file with none of our notes', async () => {
     expect((await loadPo(file)).carried().size).toBe(0)
   })
