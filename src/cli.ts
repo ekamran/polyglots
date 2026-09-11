@@ -404,7 +404,12 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
         )
       }
       if (summary.unreviewed > 0) cli.out(`${summary.unreviewed} entries could not be reviewed and were flagged.`)
-      if (summary.problemsFile) cli.out(`Problems: ${summary.problemsFile}`)
+      // written - repaired, not flagged - repaired: a whitespace-only fix is neither
+      // a problem nor a needsReview entry, so flagged - repaired can go negative.
+      if (summary.repaired > 0) {
+        cli.out(`${summary.repaired} repaired, ${summary.written - summary.repaired} left for you.`)
+      }
+      if (summary.problemsFile) cli.out(`Wrote ${summary.problemsFile}`)
       else cli.out('Nothing flagged; the whole submission looks approvable.')
     })
 

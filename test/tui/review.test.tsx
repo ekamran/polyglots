@@ -319,6 +319,14 @@ describe('ReviewProgress', () => {
     await tick()
     expect(flat(lastFrame())).not.toContain('unreviewed')
   })
+
+  it('reports repairs in the summary', () => {
+    const repairEvents: ReviewEvent[] = [
+      { type: 'start', file: FILE, total: 120, reviewable: 100 },
+      { type: 'done', summary: reviewSummaryOf(FILE, { problems: 40, approvable: 60, repaired: 33 }) },
+    ]
+    expect(flat(render(<ReviewProgress events={repairEvents} />).lastFrame())).toMatch(/33 repaired/)
+  })
 })
 
 describe('batchSizeChoices', () => {

@@ -494,6 +494,26 @@ describe('review', () => {
     expect(h.stdout.text).toContain('7')
     expect(h.stdout.text).toMatch(/unreviewed|could not be reviewed/i)
   })
+
+  it('says how much of the work it already did', async () => {
+    const h = harness()
+    const review = fakeReview(
+      summary({ problems: 412, needsReview: 0, approvable: 2393, repaired: 380, written: 412 }),
+    )
+    await h.run(['review', file], { reviewFile: review.fn })
+
+    expect(h.stdout.text).toContain('380 repaired')
+    expect(h.stdout.text).toContain('32 left for you')
+  })
+
+  it('says nothing about repairs when there were none', async () => {
+    const h = harness()
+    const review = fakeReview(
+      summary({ problems: 0, approvable: 116, repaired: 0, problemsFile: undefined, byRule: {} }),
+    )
+    await h.run(['review', file], { reviewFile: review.fn })
+    expect(h.stdout.text).not.toContain('repaired')
+  })
 })
 
 describe('glossary export', () => {

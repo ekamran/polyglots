@@ -174,6 +174,11 @@ export function ReviewProgress({ events }: { events: ReviewEvent[] }) {
               decided.
             </Text>
           )}
+          {summary.repaired > 0 && (
+            <Text color="green">
+              {summary.repaired} repaired, {summary.written - summary.repaired} left for you.
+            </Text>
+          )}
           {breakdown.length > 0 && <Text>{breakdown.join(' · ')}</Text>}
           {summary.problemsFile ? (
             <Text>Fix them with: polyglots translate {summary.problemsFile}</Text>
