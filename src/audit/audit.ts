@@ -208,7 +208,10 @@ function toVerdict(candidate: AuditCandidate, result: AuditResult, ctx: RuleCont
         message: result.reason,
       }))
     : []
-  const findings = problem ? [...candidate.hints, ...aiFindings] : []
+  // A cleared entry keeps the note for a repair the rules already made. Nothing
+  // else records that the text in the file is not what was submitted, and an
+  // entry with no note at all is invisible to a resume, which would revert it.
+  const findings = problem ? [...candidate.hints, ...aiFindings] : candidate.hints.filter((f) => f.rule === 'repaired')
 
   const base: Verdict = { key: candidate.key, problem, findings, reason: result.reason, ...(candidate.repaired ?? {}) }
   if (!problem || !result.fix) return base

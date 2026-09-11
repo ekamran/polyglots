@@ -332,6 +332,18 @@ describe('auditEntries', () => {
     expect(verdicts[0]!.findings.map((f) => f.rule)).toContain('repaired')
   })
 
+  // Clearing the entry does not un-make the repair. The note is the only record
+  // that the text in the file is not what was submitted, and the only thing a
+  // resumed run can find the entry by.
+  it('keeps the repair note on an entry the model cleared', async () => {
+    const dropped = entry('w', 'Save changes ', 'Değişiklikleri kaydet')
+    const adjudicate = vi.fn().mockResolvedValue([{ id: 1, problem: false, categories: [], reason: 'ok' }])
+    const verdicts = await auditEntries({ entries: [dropped], ...base(), adjudicate })
+
+    expect(verdicts[0]).toMatchObject({ problem: false, text: ['Değişiklikleri kaydet '] })
+    expect(verdicts[0]!.findings.map((f) => f.rule)).toEqual(['repaired'])
+  })
+
   it('judges the repaired text, not the submitted text', async () => {
     // Whitespace is the entry's only fault, so after repair nothing is wrong.
     const dropped = entry('w', 'Save changes ', 'Değişiklikleri kaydet')

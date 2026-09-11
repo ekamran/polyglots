@@ -218,6 +218,31 @@ describe('resuming an interrupted review', () => {
     expect(summary.repaired).toBe(2)
   })
 
+  // A whitespace repair the model then clears is neither a problem nor a guess,
+  // so its one note is all that keeps it visible to carried(). Without the note
+  // the resume rebuilds the file without the entry and the repair reverts, while
+  // the marker still counts it as repaired.
+  it('keeps a repair the model cleared across a resume', async () => {
+    await writeFile(file, PO.replace('kaydet"', 'kaydet "'), 'utf8')
+    await expect(
+      run({
+        onProgress: (e: ReviewEvent) => {
+          if (e.type === 'batch-done') throw new Error('interrupted')
+        },
+      }),
+    ).rejects.toThrow('interrupted')
+
+    const summary = await run()
+    const kept = (await loadPo(repaired)).auditEntries().map((e) => e.msgid)
+    expect(kept).toContain('Save all changes')
+
+    const text = await readFile(summary.problemsFile!, 'utf8')
+    expect(text).toContain('msgstr "Tüm değişiklikleri kaydet"')
+    // Fuzzy with no problem against it needs a reason, or the file asks the
+    // reviewer to judge an entry without saying what was done to it.
+    expect(text).toMatch(/polyglots:.*whitespace/i)
+  })
+
   it('does not announce a file that holds nothing but a marker', async () => {
     await writeFile(file, PO.replace('msgstr "yorumlar"', 'msgstr "%s yorum"'), 'utf8')
     const events: ReviewEvent[] = []
