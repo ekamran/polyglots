@@ -86,9 +86,11 @@ export interface ReviewSummary {
 export type ReviewEvent =
   | { type: 'start'; file: string; total: number; reviewable: number }
   | { type: 'rules-done'; flagged: number; suspects: number }
-  | { type: 'batch-start'; index: number; of: number; size: number }
-  | { type: 'batch-done'; index: number; problems: number }
-  | { type: 'batch-failed'; index: number; size: number; reason: string }
+  // `at` lets a pure reducer measure how long each batch took, which is what the
+  // remaining-time estimate is built from.
+  | { type: 'batch-start'; index: number; of: number; size: number; at: number }
+  | { type: 'batch-done'; index: number; problems: number; at: number }
+  | { type: 'batch-failed'; index: number; size: number; reason: string; at: number }
   | { type: 'written'; file: string }
   | { type: 'done'; summary: ReviewSummary }
 

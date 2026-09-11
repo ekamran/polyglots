@@ -88,6 +88,47 @@ describe('reduceReviewProgress', () => {
   })
 })
 
+describe('ReviewProgress remaining time', () => {
+  const timed = (n: number, ms: number): ReviewEvent[] => {
+    const out: ReviewEvent[] = [{ type: 'start', file: FILE, total: 200, reviewable: 200 }]
+    let t = 1_000_000
+    for (let i = 1; i <= n; i++) {
+      out.push({ type: 'batch-start', index: i, of: 8, size: 25, at: t })
+      t += ms
+      out.push({ type: 'batch-done', index: i, problems: 1, at: t })
+    }
+    out.push({ type: 'batch-start', index: n + 1, of: 8, size: 25, at: t })
+    return out
+  }
+
+  it('estimates what is left once it has a couple of batches to go on', () => {
+    const state = reduceReviewProgress(timed(3, 60_000))
+    expect(state.batchDurations).toEqual([60_000, 60_000, 60_000])
+    expect(state.remainingMs).toBe(5 * 60_000)
+  })
+
+  it('says nothing until it has seen two batches', () => {
+    expect(reduceReviewProgress(timed(1, 60_000)).remainingMs).toBeUndefined()
+  })
+
+  it('ignores events with no timestamp rather than producing nonsense', () => {
+    const state = reduceReviewProgress([
+      { type: 'start', file: FILE, total: 50, reviewable: 50 },
+      { type: 'batch-start', index: 1, of: 2, size: 25 } as ReviewEvent,
+      { type: 'batch-done', index: 1, problems: 0 } as ReviewEvent,
+    ])
+    expect(state.batchDurations).toEqual([])
+    expect(state.remainingMs).toBeUndefined()
+  })
+
+  it('shows the estimate and a finish time in the line', () => {
+    const { lastFrame } = render(<ReviewProgress events={timed(3, 60_000)} />)
+    const frame = flat(lastFrame())
+    expect(frame).toMatch(/5m left/)
+    expect(frame).toMatch(/\d{1,2}[:.]\d{2}/)
+  })
+})
+
 describe('ReviewProgress in-flight clock', () => {
   it('marks a batch as in flight once it starts and not before', () => {
     const before = reduceReviewProgress([{ type: 'start', file: FILE, total: 10, reviewable: 10 }])

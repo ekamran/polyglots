@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Box, Text } from 'ink'
 import type { ReviewEvent, ReviewSummary } from '../../types.js'
 import { renderBar } from './Progress.js'
+import { estimateRemainingMs, formatDuration, formatFinishTime } from '../../cli/progress.js'
 
 export interface ReviewProgressState {
   started: boolean
@@ -18,6 +19,8 @@ export interface ReviewProgressState {
   // true, so it is what the elapsed clock hangs off.
   inFlight: boolean
   batchIndex: number
+  batchDurations: number[]
+  remainingMs?: number
   failures: string[]
   written: string[]
   summary?: ReviewSummary
@@ -36,8 +39,18 @@ export function reduceReviewProgress(events: ReviewEvent[]): ReviewProgressState
     batchesTotal: 0,
     inFlight: false,
     batchIndex: 0,
+    batchDurations: [],
     failures: [],
     written: [],
+  }
+
+  // Only set while a batch is open, so a duration is recorded exactly once and a
+  // fixture without timestamps records none rather than NaN.
+  let openedAt: number | undefined
+
+  const close = (at: unknown) => {
+    if (typeof openedAt === 'number' && typeof at === 'number') state.batchDurations.push(at - openedAt)
+    openedAt = undefined
   }
 
   for (const e of events) {
@@ -57,15 +70,18 @@ export function reduceReviewProgress(events: ReviewEvent[]): ReviewProgressState
         state.batchesTotal = e.of
         state.batchIndex = e.index
         state.inFlight = true
+        openedAt = typeof e.at === 'number' ? e.at : undefined
         break
       case 'batch-done':
         state.batchesDone += 1
         state.problems += e.problems
         state.inFlight = false
+        close(e.at)
         break
       case 'batch-failed':
         state.batchesDone += 1
         state.inFlight = false
+        close(e.at)
         state.unreviewed += e.size
         state.failures.push(`Batch ${e.index} failed (${e.size} entries): ${e.reason}`)
         break
@@ -78,8 +94,11 @@ export function reduceReviewProgress(events: ReviewEvent[]): ReviewProgressState
     }
   }
 
+  state.remainingMs = estimateRemainingMs(state.batchDurations, state.batchesTotal - state.batchesDone)
+
   if (state.summary) {
     state.inFlight = false
+    state.remainingMs = undefined
     state.problems = state.summary.problems
     state.unreviewed = state.summary.unreviewed
   }
@@ -127,7 +146,10 @@ export function ReviewProgress({ events }: { events: ReviewEvent[] }) {
         {renderBar(state.batchesDone, state.batchesTotal || 1)}{' '}
         {state.inFlight
           ? `batch ${state.batchIndex}/${state.batchesTotal} · reviewing ${elapsed}s`
-          : `${state.batchesDone}/${state.batchesTotal} batches`}{' '}
+          : `${state.batchesDone}/${state.batchesTotal} batches`}
+        {state.remainingMs === undefined
+          ? ''
+          : ` · ~${formatDuration(state.remainingMs)} left, done by ${formatFinishTime(state.remainingMs)}`}{' '}
         · problems {state.problems}
       </Text>
       <Text dimColor>

@@ -168,6 +168,30 @@ export function createProgressReporter(stream: ProgressStream): ProgressReporter
   return Object.assign(report, { finish: clearLive })
 }
 
+// How many recent batches the estimate looks at. Long enough to smooth a single
+// slow call, short enough to follow a real change in throughput.
+const ETA_WINDOW = 5
+
+// Median rather than mean: one batch that stalls near the timeout would otherwise
+// dominate the estimate for the rest of the run.
+export function estimateRemainingMs(durations: number[], remaining: number): number | undefined {
+  if (durations.length < 2 || remaining <= 0) return undefined
+  const recent = [...durations.slice(-ETA_WINDOW)].sort((a, b) => a - b)
+  const median = recent[Math.floor(recent.length / 2)]
+  return median === undefined ? undefined : median * remaining
+}
+
+export function formatDuration(ms: number): string {
+  if (ms < 60_000) return `${Math.round(ms / 1000)}s`
+  const minutes = Math.round(ms / 60_000)
+  if (minutes < 60) return `${minutes}m`
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`
+}
+
+export function formatFinishTime(ms: number, now: number = Date.now()): string {
+  return new Date(now + ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
 export interface ReviewProgressReporter {
   (event: ReviewEvent): void
   finish(): void
@@ -180,6 +204,7 @@ export function createReviewProgressReporter(stream: ProgressStream): ReviewProg
   let liveLine = false
   let inFlightSince: number | undefined
   let ticker: NodeJS.Timeout | undefined
+  const durations: number[] = []
   const tty = stream.isTTY === true
 
   const stopTicking = () => {
@@ -207,15 +232,29 @@ export function createReviewProgressReporter(stream: ProgressStream): ReviewProg
     ticker.unref?.()
   }
 
-  const line = (): string => {
+  // Timing comes off the events rather than the wall clock so the estimate is
+  // whatever the reviewer actually spent, and is reproducible in a test.
+  const close = (at: number): void => {
+    if (inFlightSince !== undefined && typeof at === 'number') durations.push(at - inFlightSince)
+    inFlightSince = undefined
+  }
+
+  const line = (now: number = Date.now()): string => {
     const done = inFlightSince === undefined ? index : index - 1
     // of === 0 means no batch has started yet, which is an empty bar, not a full one.
     const ratio = of === 0 ? 0 : Math.min(1, done / of)
     const filled = ratio === 1 ? BAR_WIDTH : Math.min(BAR_WIDTH - 1, Math.round(ratio * BAR_WIDTH))
     const bar = `[${'#'.repeat(filled)}${'-'.repeat(BAR_WIDTH - filled)}]`
     const base = `${bar} batch ${index}/${of}  flagged ${flagged}`
-    if (inFlightSince === undefined) return base
-    return `${base}  reviewing ${Math.max(0, Math.round((Date.now() - inFlightSince) / 1000))}s`
+    const parts = [base]
+    if (inFlightSince !== undefined) {
+      parts.push(`reviewing ${Math.max(0, Math.round((now - inFlightSince) / 1000))}s`)
+    }
+    const remaining = estimateRemainingMs(durations, of - done)
+    if (remaining !== undefined) {
+      parts.push(`~${formatDuration(remaining)} left, done by ${formatFinishTime(remaining, now)}`)
+    }
+    return parts.join('  ')
   }
 
   const report = (event: ReviewEvent): void => {
@@ -227,14 +266,14 @@ export function createReviewProgressReporter(stream: ProgressStream): ReviewProg
       case 'batch-start':
         of = event.of
         index = event.index
-        inFlightSince = Date.now()
+        inFlightSince = event.at
         break
       case 'batch-done':
         flagged += event.problems
-        inFlightSince = undefined
+        close(event.at)
         break
       case 'batch-failed':
-        inFlightSince = undefined
+        close(event.at)
         notice = `batch ${event.index} failed (${event.size} entries, flagged as unreviewed): ${event.reason}`
         break
       case 'written':

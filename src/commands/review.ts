@@ -116,14 +116,14 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
     ...(opts.claudeBin ? { claudeBin: opts.claudeBin } : {}),
     ...(opts.model ? { model: opts.model } : {}),
     onRules: (r) => emit({ type: 'rules-done', flagged: r.flagged, suspects: r.suspects }),
-    onBatchStart: (b) => emit({ type: 'batch-start', index: b.index, of: b.of, size: b.size }),
+    onBatchStart: (b) => emit({ type: 'batch-start', index: b.index, of: b.of, size: b.size, at: Date.now() }),
     onBatch: async (b) => {
       decided.push(...b.verdicts)
       await persist()
       // One terminal event per batch: the reducer counts either as progress, so
       // emitting both would advance the bar twice.
-      if (b.failed) emit({ type: 'batch-failed', index: b.index, size: b.size, reason: b.failed })
-      else emit({ type: 'batch-done', index: b.index, problems: b.problems })
+      if (b.failed) emit({ type: 'batch-failed', index: b.index, size: b.size, reason: b.failed, at: Date.now() })
+      else emit({ type: 'batch-done', index: b.index, problems: b.problems, at: Date.now() })
     },
   })
 

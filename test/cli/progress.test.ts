@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TranslateEvent } from '../../src/commands/translate.js'
-import { applyEvent, createProgressReporter, formatProgress, initialProgress, noticeFor, createReviewProgressReporter } from '../../src/cli/progress.js'
+import { applyEvent, createProgressReporter, formatProgress, initialProgress, noticeFor, createReviewProgressReporter, estimateRemainingMs, formatDuration } from '../../src/cli/progress.js'
 
 const events: TranslateEvent[] = [
   { type: 'start', file: 'a.po', total: 300, pending: 210 },
@@ -240,6 +240,35 @@ describe('createReviewProgressReporter', () => {
     expect(out.text).toMatch(/flagged 5/)
   })
 
+  // The batch clock is the only thing a long review shows; the estimate is what
+  // tells the user whether to wait up or go to bed.
+  it('projects the remaining time from finished batches', () => {
+    const out = sink()
+    const report = createReviewProgressReporter(out)
+    const t = 1_700_000_000_000
+    report({ type: 'start', file: 'a.po', total: 125, reviewable: 125 })
+    report({ type: 'batch-start', index: 1, of: 5, size: 25, at: t })
+    report({ type: 'batch-done', index: 1, problems: 0, at: t + 60_000 })
+    report({ type: 'batch-start', index: 2, of: 5, size: 25, at: t + 60_000 })
+    report({ type: 'batch-done', index: 2, problems: 0, at: t + 120_000 })
+    report.finish()
+
+    // Three batches left at a minute each.
+    expect(out.text).toMatch(/~3m left, done by /)
+  })
+
+  it('says nothing about remaining time until it has two batches to go on', () => {
+    const out = sink()
+    const report = createReviewProgressReporter(out)
+    const t = 1_700_000_000_000
+    report({ type: 'start', file: 'a.po', total: 125, reviewable: 125 })
+    report({ type: 'batch-start', index: 1, of: 5, size: 25, at: t })
+    report({ type: 'batch-done', index: 1, problems: 0, at: t + 60_000 })
+    report.finish()
+
+    expect(out.text).not.toContain('left')
+  })
+
   it('announces a failed batch', () => {
     const out = sink()
     const report = createReviewProgressReporter(out)
@@ -248,5 +277,40 @@ describe('createReviewProgressReporter', () => {
     report.finish()
     expect(out.text).toMatch(/batch 2/)
     expect(out.text).toContain('exit code 1')
+  })
+})
+
+describe('estimateRemainingMs', () => {
+  it('waits for a couple of samples before guessing', () => {
+    expect(estimateRemainingMs([], 10)).toBeUndefined()
+    expect(estimateRemainingMs([40_000], 10)).toBeUndefined()
+  })
+
+  it('multiplies the typical batch by what is left', () => {
+    expect(estimateRemainingMs([40_000, 40_000], 10)).toBe(400_000)
+  })
+
+  // Throughput drifts over a long run (rate limits, batch complexity), and one
+  // stalled batch should not dominate the estimate.
+  it('uses a recent median, so an outlier does not skew it', () => {
+    const durations = [40_000, 41_000, 300_000, 39_000, 40_000, 41_000]
+    expect(estimateRemainingMs(durations, 2)).toBe(82_000)
+  })
+
+  it('returns nothing when there is nothing left', () => {
+    expect(estimateRemainingMs([40_000, 40_000], 0)).toBeUndefined()
+  })
+})
+
+describe('formatDuration', () => {
+  it('drops to the largest useful unit', () => {
+    expect(formatDuration(45_000)).toBe('45s')
+    expect(formatDuration(34 * 60_000)).toBe('34m')
+    expect(formatDuration(3 * 3_600_000 + 12 * 60_000)).toBe('3h 12m')
+  })
+
+  it('rounds rather than truncating', () => {
+    expect(formatDuration(89_000)).toBe('1m')
+    expect(formatDuration(91_000)).toBe('2m')
   })
 })
