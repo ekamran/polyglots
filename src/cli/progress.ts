@@ -25,6 +25,22 @@ export const initialProgress: ProgressState = {
 
 const BAR_WIDTH = 10
 
+// Parallelograms rather than hashes in brackets: the filled and empty cells are
+// the same shape and width, so the bar reads as one object at a glance instead
+// of as punctuation.
+const FILLED = '▰'
+const EMPTY = '▱'
+
+// The one bar every surface draws. A total of zero means there was nothing to
+// do, which is finished, not stalled; and the last cell stays empty until the
+// work really is done, because rounding fills it several percent early and a
+// full bar on a run with entries left reads as a hang.
+export function renderBar(done: number, total: number, width: number): string {
+  const ratio = total === 0 ? 1 : Math.min(1, Math.max(0, done / total))
+  const filled = ratio === 1 ? width : Math.min(width - 1, Math.round(ratio * width))
+  return FILLED.repeat(filled) + EMPTY.repeat(width - filled)
+}
+
 export function applyEvent(state: ProgressState, event: TranslateEvent): ProgressState {
   switch (event.type) {
     case 'start':
@@ -50,10 +66,7 @@ export function applyEvent(state: ProgressState, event: TranslateEvent): Progres
 }
 
 export function formatProgress(state: ProgressState, now: number = Date.now()): string {
-  const ratio = state.pending === 0 ? 1 : Math.min(1, state.done / state.pending)
-  const filled = ratio === 1 ? BAR_WIDTH : Math.min(BAR_WIDTH - 1, Math.round(ratio * BAR_WIDTH))
-  const bar = `[${'#'.repeat(filled)}${'-'.repeat(BAR_WIDTH - filled)}]`
-  const parts = [`${bar} ${state.done}/${state.pending}`]
+  const parts = [`${renderBar(state.done, state.pending, BAR_WIDTH)} ${state.done}/${state.pending}`]
   if (state.batch) {
     parts.push(`batch ${state.batch.index}/${state.batch.of}`, `fuzzy ${state.fuzzy}`)
   }
@@ -246,11 +259,9 @@ export function createReviewProgressReporter(stream: ProgressStream): ReviewProg
 
   const line = (now: number = Date.now()): string => {
     const done = inFlightSince === undefined ? index : index - 1
-    // of === 0 means no batch has started yet, which is an empty bar, not a full one.
-    const ratio = of === 0 ? 0 : Math.min(1, done / of)
-    const filled = ratio === 1 ? BAR_WIDTH : Math.min(BAR_WIDTH - 1, Math.round(ratio * BAR_WIDTH))
-    const bar = `[${'#'.repeat(filled)}${'-'.repeat(BAR_WIDTH - filled)}]`
-    const base = `${bar} batch ${index}/${of}  flagged ${flagged}`
+    // `of || 1` because of === 0 means no batch has started yet, which is an
+    // empty bar; renderBar reads a total of zero as nothing to do, so full.
+    const base = `${renderBar(done, of || 1, BAR_WIDTH)} batch ${index}/${of}  flagged ${flagged}`
     const parts = [base]
     if (inFlightSince !== undefined) {
       parts.push(`reviewing ${Math.max(0, Math.round((now - inFlightSince) / 1000))}s`)

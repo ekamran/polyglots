@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TranslateEvent } from '../../src/commands/translate.js'
-import { applyEvent, createProgressReporter, formatProgress, initialProgress, noticeFor, createReviewProgressReporter, estimateRemainingMs, formatDuration } from '../../src/cli/progress.js'
+import { applyEvent, createProgressReporter, formatProgress, initialProgress, noticeFor, createReviewProgressReporter, estimateRemainingMs, formatDuration, renderBar } from '../../src/cli/progress.js'
 
 const events: TranslateEvent[] = [
   { type: 'start', file: 'a.po', total: 300, pending: 210 },
@@ -21,34 +21,57 @@ function run(upTo: number) {
   return events.slice(0, upTo).reduce(applyEvent, initialProgress)
 }
 
+describe('renderBar', () => {
+  it('fills in proportion to the work done', () => {
+    expect(renderBar(0, 4, 4)).toBe('▱▱▱▱')
+    expect(renderBar(2, 4, 4)).toBe('▰▰▱▱')
+    expect(renderBar(4, 4, 4)).toBe('▰▰▰▰')
+  })
+
+  // Rounding alone fills the last cell well before the work is finished, and a
+  // full bar on a run with entries left to go reads as a hang.
+  it('keeps the last cell empty until the work is actually done', () => {
+    expect(renderBar(39, 40, 20)).toBe('▰'.repeat(19) + '▱')
+    expect(renderBar(40, 40, 20)).toBe('▰'.repeat(20))
+  })
+
+  it('is full when there is nothing to do', () => {
+    expect(renderBar(0, 0, 4)).toBe('▰▰▰▰')
+  })
+
+  it('does not run past its width on a count that overshoots', () => {
+    expect(renderBar(9, 4, 4)).toBe('▰▰▰▰')
+  })
+})
+
 describe('formatProgress', () => {
   it('renders an empty bar before any work', () => {
-    expect(formatProgress(run(1))).toBe('[----------] 0/210')
+    expect(formatProgress(run(1))).toBe('▱▱▱▱▱▱▱▱▱▱ 0/210')
   })
 
   it('counts TM hits as processed', () => {
-    expect(formatProgress(run(2))).toBe('[#---------] 12/210')
+    expect(formatProgress(run(2))).toBe('▰▱▱▱▱▱▱▱▱▱ 12/210')
   })
 
   it('shows the current batch and fuzzy count once batching starts', () => {
-    expect(formatProgress(run(4))).toBe('[#---------] 12/210  batch 1/9  fuzzy 0')
-    expect(formatProgress(run(5))).toBe('[##--------] 37/210  batch 1/9  fuzzy 3')
+    expect(formatProgress(run(4))).toBe('▰▱▱▱▱▱▱▱▱▱ 12/210  batch 1/9  fuzzy 0')
+    expect(formatProgress(run(5))).toBe('▰▰▱▱▱▱▱▱▱▱ 37/210  batch 1/9  fuzzy 3')
   })
 
   it('counts skipped batches as processed', () => {
-    expect(formatProgress(run(9))).toBe('[###-------] 62/210  batch 2/9  fuzzy 3')
-    expect(formatProgress(run(11))).toBe('[###-------] 67/210  batch 3/9  fuzzy 4')
+    expect(formatProgress(run(9))).toBe('▰▰▰▱▱▱▱▱▱▱ 62/210  batch 2/9  fuzzy 3')
+    expect(formatProgress(run(11))).toBe('▰▰▰▱▱▱▱▱▱▱ 67/210  batch 3/9  fuzzy 4')
   })
 
   it('renders a full bar when nothing is pending', () => {
     const state = applyEvent(initialProgress, { type: 'start', file: 'x.po', total: 5, pending: 0 })
-    expect(formatProgress(state)).toBe('[##########] 0/0')
+    expect(formatProgress(state)).toBe('▰▰▰▰▰▰▰▰▰▰ 0/0')
   })
 
   it('never rounds a partial run up to a full bar', () => {
     let state = applyEvent(initialProgress, { type: 'start', file: 'x.po', total: 100, pending: 100 })
     state = applyEvent(state, { type: 'tm-hit', count: 99 })
-    expect(formatProgress(state)).toBe('[#########-] 99/100')
+    expect(formatProgress(state)).toBe('▰▰▰▰▰▰▰▰▰▱ 99/100')
   })
 })
 
@@ -94,12 +117,12 @@ describe('createProgressReporter', () => {
     expect(out).not.toContain('\x1b[')
     expect(out.split('\n').filter(Boolean)).toEqual([
       'Translating a.po: 210 of 300 entries selected',
-      '[#---------] 12/210',
-      '[##--------] 37/210  batch 1/9  fuzzy 3',
+      '▰▱▱▱▱▱▱▱▱▱ 12/210',
+      '▰▰▱▱▱▱▱▱▱▱ 37/210  batch 1/9  fuzzy 3',
       'warning: placeholder %s missing in "Hello %s"',
       'batch 2/9 skipped (25 entries): claude exited 1',
-      '[###-------] 62/210  batch 2/9  fuzzy 3',
-      '[###-------] 67/210  batch 3/9  fuzzy 4',
+      '▰▰▰▱▱▱▱▱▱▱ 62/210  batch 2/9  fuzzy 3',
+      '▰▰▰▱▱▱▱▱▱▱ 67/210  batch 3/9  fuzzy 4',
     ])
   })
 
@@ -108,14 +131,14 @@ describe('createProgressReporter', () => {
     const report = createProgressReporter(stream)
     for (const e of events.slice(0, 5)) report(e)
     const out = stream.chunks.join('')
-    expect(out).toContain('\r\x1b[2K[#---------] 12/210  batch 1/9  fuzzy 0')
-    expect(out).toContain('\r\x1b[2K[##--------] 37/210  batch 1/9  fuzzy 3')
+    expect(out).toContain('\r\x1b[2K▰▱▱▱▱▱▱▱▱▱ 12/210  batch 1/9  fuzzy 0')
+    expect(out).toContain('\r\x1b[2K▰▰▱▱▱▱▱▱▱▱ 37/210  batch 1/9  fuzzy 3')
     expect(out.endsWith('fuzzy 3')).toBe(true)
     expect(out.split('\n')).toHaveLength(2)
 
     report(events[7]!)
     const afterWarning = stream.chunks.slice(-2).join('')
-    expect(afterWarning).toBe('\r\x1b[2Kwarning: placeholder %s missing in "Hello %s"\n\r\x1b[2K[##--------] 37/210  batch 1/9  fuzzy 3')
+    expect(afterWarning).toBe('\r\x1b[2Kwarning: placeholder %s missing in "Hello %s"\n\r\x1b[2K▰▰▱▱▱▱▱▱▱▱ 37/210  batch 1/9  fuzzy 3')
 
     report(events[11]!)
     expect(stream.chunks.at(-1)).toBe('\r\x1b[2K')
@@ -125,7 +148,7 @@ describe('createProgressReporter', () => {
     const stream = fakeStream(true)
     const report = createProgressReporter(stream)
     report(events[0]!)
-    expect(stream.chunks.join('').endsWith('[----------] 0/210')).toBe(true)
+    expect(stream.chunks.join('').endsWith('▱▱▱▱▱▱▱▱▱▱ 0/210')).toBe(true)
     report.finish()
     expect(stream.chunks.at(-1)).toBe('\r\x1b[2K')
     report.finish()
@@ -226,8 +249,8 @@ describe('createReviewProgressReporter', () => {
     const report = createReviewProgressReporter(out)
     report({ type: 'start', file: 'a.po', total: 120, reviewable: 116 })
     report.finish()
-    expect(out.text).toContain('[----------]')
-    expect(out.text).not.toContain('[##########]')
+    expect(out.text).toContain('▱▱▱▱▱▱▱▱▱▱')
+    expect(out.text).not.toContain('▰▰▰▰▰▰▰▰▰▰')
   })
 
   it('accumulates flagged counts across batches', () => {

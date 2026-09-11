@@ -54,7 +54,7 @@ describe('Progress', () => {
     const { lastFrame } = render(<Progress events={events.slice(0, 5)} />)
     await tick()
     const frame = lastFrame() ?? ''
-    expect(frame).toMatch(/\[#+-+\] 4\/6/)
+    expect(frame).toMatch(/▰+▱+ 4\/6/)
     expect(frame).toContain('batch 1/2')
     expect(frame).toContain('fuzzy 1')
     expect(frame).not.toContain('Done.')
@@ -64,7 +64,7 @@ describe('Progress', () => {
     const { lastFrame } = render(<Progress events={events} />)
     await tick()
     const frame = lastFrame() ?? ''
-    expect(frame).toMatch(/\[#{20}\] 6\/6/)
+    expect(frame).toMatch(/▰{20} 6\/6/)
     expect(frame).toContain('placeholder %s missing in draft')
     expect(frame).toContain('Batch 2 skipped (2 entries): claude exited with code 1')
     expect(frame).toContain('Done. 2 translated, 1 fuzzy, 2 from TM, 2 skipped.')
@@ -94,7 +94,7 @@ describe('Progress', () => {
     ]
     const { lastFrame } = render(<Progress events={sparse} />)
     await tick()
-    expect(lastFrame()).toMatch(/\[#{20}\] 4\/4/)
+    expect(lastFrame()).toMatch(/▰{20} 4\/4/)
     expect(lastFrame()).toContain('fuzzy 1')
   })
 

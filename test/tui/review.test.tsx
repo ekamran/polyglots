@@ -240,7 +240,7 @@ describe('ReviewProgress', () => {
     const { lastFrame } = render(<ReviewProgress events={events.slice(0, 4)} />)
     await tick()
     const frame = lastFrame() ?? ''
-    expect(frame).toMatch(/\[#+-+\] 1\/2/)
+    expect(frame).toMatch(/▰+▱+ 1\/2/)
     expect(frame).toContain('problems 20')
     expect(frame).not.toContain('Done.')
   })

@@ -114,7 +114,7 @@ describe('translate summary output', () => {
     const code = await h.run(['translate', file], { translate: translate.fn })
     expect(code).toBe(0)
     expect(h.stdout.text).toBe(`Done. 6 translated, 1 fuzzy, 1 from TM, 0 skipped. Open ${file} in PoEdit to review.\n`)
-    expect(h.stderr.text).toContain('[##########] 7/7  batch 1/1  fuzzy 1')
+    expect(h.stderr.text).toContain('▰▰▰▰▰▰▰▰▰▰ 7/7  batch 1/1  fuzzy 1')
   })
 
   it('passes flags and config defaults through to translateFile', async () => {

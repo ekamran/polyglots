@@ -1,4 +1,5 @@
 import { Box, Text } from 'ink'
+import { renderBar as bar } from '../../cli/progress.js'
 import type { TranslateEvent, TranslateSummary } from '../../commands/translate.js'
 
 export interface ProgressState {
@@ -70,10 +71,12 @@ export function reduceProgress(events: TranslateEvent[]): ProgressState {
   return state
 }
 
-export function renderBar(done: number, total: number, width = 20): string {
-  const ratio = total > 0 ? Math.min(1, Math.max(0, done / total)) : 1
-  const filled = Math.round(ratio * width)
-  return `[${'#'.repeat(filled)}${'-'.repeat(width - filled)}]`
+// The TUI has a whole line to itself, so it draws the same bar wider than the
+// CLI does.
+const BAR_WIDTH = 20
+
+export function renderBar(done: number, total: number): string {
+  return bar(done, total, BAR_WIDTH)
 }
 
 export function formatSummary(summary: TranslateSummary): string {
