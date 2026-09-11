@@ -220,6 +220,16 @@ describe('createReviewProgressReporter', () => {
     expect(out.text).toMatch(/flagged 3/)
   })
 
+  // of === 0 means no batch has started, not that every batch is finished.
+  it('shows an empty bar before the first batch, not a full one', () => {
+    const out = { isTTY: true, text: '', write(c: string) { this.text += c; return true } }
+    const report = createReviewProgressReporter(out)
+    report({ type: 'start', file: 'a.po', total: 120, reviewable: 116 })
+    report.finish()
+    expect(out.text).toContain('[----------]')
+    expect(out.text).not.toContain('[##########]')
+  })
+
   it('accumulates flagged counts across batches', () => {
     const out = sink()
     const report = createReviewProgressReporter(out)

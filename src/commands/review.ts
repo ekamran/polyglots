@@ -81,7 +81,27 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
   const mcpConfigPath =
     opts.mcpConfigPath ?? (opts.noAi ? '' : await writeMcpConfig({ env: { [MCP_ENV.locale]: opts.locale } }))
 
+  const target = problemsPath(opts.file, opts.outDir)
+
   const properNouns = opts.properNouns ?? configuredProperNouns(opts.locale)
+
+  // A large submission is hundreds of batches and hours of wall clock, so the file
+  // is rewritten after every one. Losing it all to a Ctrl+C is not acceptable, and
+  // re-parsing the source each time is cheaper than the AI call that preceded it.
+  const decided: Verdict[] = []
+  let wrote = false
+  const persist = async (): Promise<void> => {
+    const flagged = decided.filter((v) => v.problem || v.needsReview)
+    if (flagged.length === 0) return
+    if (opts.outDir) await mkdir(opts.outDir, { recursive: true })
+    const out = await loadPo(opts.file)
+    out.keepOnly(new Map(flagged.map((v) => [v.key, v.findings.map((f) => f.message)])))
+    await out.save(target)
+    if (!wrote) {
+      wrote = true
+      emit({ type: 'written', file: target })
+    }
+  }
 
   const verdicts = await auditEntries({
     entries: reviewable,
@@ -95,9 +115,15 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
     ...(opts.adjudicate ? { adjudicate: opts.adjudicate } : {}),
     ...(opts.claudeBin ? { claudeBin: opts.claudeBin } : {}),
     ...(opts.model ? { model: opts.model } : {}),
-    onBatch: (b) => {
-      emit({ type: 'batch-start', index: b.index, of: b.of, size: b.size })
-      emit({ type: 'batch-done', index: b.index, problems: b.problems })
+    onRules: (r) => emit({ type: 'rules-done', flagged: r.flagged, suspects: r.suspects }),
+    onBatchStart: (b) => emit({ type: 'batch-start', index: b.index, of: b.of, size: b.size }),
+    onBatch: async (b) => {
+      decided.push(...b.verdicts)
+      await persist()
+      // One terminal event per batch: the reducer counts either as progress, so
+      // emitting both would advance the bar twice.
+      if (b.failed) emit({ type: 'batch-failed', index: b.index, size: b.size, reason: b.failed })
+      else emit({ type: 'batch-done', index: b.index, problems: b.problems })
     },
   })
 
@@ -106,7 +132,6 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
   // Both go into the file: every entry now carries its reasons as comments, so an
   // unadjudicated guess is legible as one rather than looking like a hard error.
   const flagged = [...problems, ...needsReview]
-  const target = problemsPath(opts.file, opts.outDir)
 
   const summary: ReviewSummary = {
     file: opts.file,
@@ -120,15 +145,11 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
     byRule: tally(verdicts),
   }
 
-  if (opts.outDir) await mkdir(opts.outDir, { recursive: true })
-
-  if (flagged.length > 0) {
-    const annotations = new Map(flagged.map((v) => [v.key, v.findings.map((f) => f.message)]))
-    po.keepOnly(annotations)
-    await po.save(target)
-    summary.problemsFile = target
-    emit({ type: 'written', file: target })
-  }
+  // The rules-only path decides everything up front, so nothing was persisted yet.
+  decided.length = 0
+  decided.push(...verdicts)
+  await persist()
+  if (flagged.length > 0) summary.problemsFile = target
 
   emit({ type: 'done', summary })
   return summary

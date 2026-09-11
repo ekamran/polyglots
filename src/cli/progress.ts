@@ -178,19 +178,44 @@ export function createReviewProgressReporter(stream: ProgressStream): ReviewProg
   let index = 0
   let flagged = 0
   let liveLine = false
+  let inFlightSince: number | undefined
+  let ticker: NodeJS.Timeout | undefined
   const tty = stream.isTTY === true
 
+  const stopTicking = () => {
+    if (!ticker) return
+    clearInterval(ticker)
+    ticker = undefined
+  }
+
   const clearLive = () => {
+    stopTicking()
     if (!liveLine) return
     stream.write(CLEAR_LINE)
     liveLine = false
   }
 
+  // A review batch is one claude call of minutes, so the bar cannot move while it
+  // runs. The clock is the only thing separating work from a wedged subprocess.
+  const startTicking = () => {
+    if (!tty || ticker) return
+    ticker = setInterval(() => {
+      if (inFlightSince === undefined) return
+      stream.write(`${CLEAR_LINE}${line()}`)
+      liveLine = true
+    }, 1000)
+    ticker.unref?.()
+  }
+
   const line = (): string => {
-    const ratio = of === 0 ? 1 : Math.min(1, index / of)
+    const done = inFlightSince === undefined ? index : index - 1
+    // of === 0 means no batch has started yet, which is an empty bar, not a full one.
+    const ratio = of === 0 ? 0 : Math.min(1, done / of)
     const filled = ratio === 1 ? BAR_WIDTH : Math.min(BAR_WIDTH - 1, Math.round(ratio * BAR_WIDTH))
     const bar = `[${'#'.repeat(filled)}${'-'.repeat(BAR_WIDTH - filled)}]`
-    return `${bar} batch ${index}/${of}  flagged ${flagged}`
+    const base = `${bar} batch ${index}/${of}  flagged ${flagged}`
+    if (inFlightSince === undefined) return base
+    return `${base}  reviewing ${Math.max(0, Math.round((Date.now() - inFlightSince) / 1000))}s`
   }
 
   const report = (event: ReviewEvent): void => {
@@ -202,11 +227,14 @@ export function createReviewProgressReporter(stream: ProgressStream): ReviewProg
       case 'batch-start':
         of = event.of
         index = event.index
+        inFlightSince = Date.now()
         break
       case 'batch-done':
         flagged += event.problems
+        inFlightSince = undefined
         break
       case 'batch-failed':
+        inFlightSince = undefined
         notice = `batch ${event.index} failed (${event.size} entries, flagged as unreviewed): ${event.reason}`
         break
       case 'written':
@@ -230,6 +258,8 @@ export function createReviewProgressReporter(stream: ProgressStream): ReviewProg
       stream.write(`${CLEAR_LINE}${line()}`)
       liveLine = true
     }
+    if (inFlightSince !== undefined) startTicking()
+    else stopTicking()
   }
 
   return Object.assign(report, { finish: clearLive })

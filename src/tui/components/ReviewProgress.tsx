@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Box, Text } from 'ink'
 import type { ReviewEvent, ReviewSummary } from '../../types.js'
 import { renderBar } from './Progress.js'
@@ -13,6 +14,10 @@ export interface ReviewProgressState {
   unreviewed: number
   batchesDone: number
   batchesTotal: number
+  // A batch has started and not yet finished. The bar cannot move while that is
+  // true, so it is what the elapsed clock hangs off.
+  inFlight: boolean
+  batchIndex: number
   failures: string[]
   written: string[]
   summary?: ReviewSummary
@@ -29,6 +34,8 @@ export function reduceReviewProgress(events: ReviewEvent[]): ReviewProgressState
     unreviewed: 0,
     batchesDone: 0,
     batchesTotal: 0,
+    inFlight: false,
+    batchIndex: 0,
     failures: [],
     written: [],
   }
@@ -48,13 +55,17 @@ export function reduceReviewProgress(events: ReviewEvent[]): ReviewProgressState
         break
       case 'batch-start':
         state.batchesTotal = e.of
+        state.batchIndex = e.index
+        state.inFlight = true
         break
       case 'batch-done':
         state.batchesDone += 1
         state.problems += e.problems
+        state.inFlight = false
         break
       case 'batch-failed':
         state.batchesDone += 1
+        state.inFlight = false
         state.unreviewed += e.size
         state.failures.push(`Batch ${e.index} failed (${e.size} entries): ${e.reason}`)
         break
@@ -68,10 +79,29 @@ export function reduceReviewProgress(events: ReviewEvent[]): ReviewProgressState
   }
 
   if (state.summary) {
+    state.inFlight = false
     state.problems = state.summary.problems
     state.unreviewed = state.summary.unreviewed
   }
   return state
+}
+
+// Seconds since `key` last changed while `active`, re-rendered once a second so
+// the number visibly moves during a call that produces no other output.
+function useElapsed(active: boolean, key: number): number {
+  const [since, setSince] = useState(() => Date.now())
+  const [now, setNow] = useState(since)
+
+  useEffect(() => {
+    if (!active) return
+    const started = Date.now()
+    setSince(started)
+    setNow(started)
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [active, key])
+
+  return Math.max(0, Math.round((now - since) / 1000))
 }
 
 function ruleBreakdown(byRule: Record<string, number>): string[] {
@@ -82,6 +112,7 @@ function ruleBreakdown(byRule: Record<string, number>): string[] {
 
 export function ReviewProgress({ events }: { events: ReviewEvent[] }) {
   const state = reduceReviewProgress(events)
+  const elapsed = useElapsed(state.inFlight, state.batchIndex)
   if (!state.started) return <Text dimColor>Starting…</Text>
 
   const { summary } = state
@@ -90,8 +121,9 @@ export function ReviewProgress({ events }: { events: ReviewEvent[] }) {
   return (
     <Box flexDirection="column">
       <Text>
-        {renderBar(state.batchesDone, state.batchesTotal)} {state.batchesDone}/{state.batchesTotal} problems{' '}
+        {renderBar(state.batchesDone, state.batchesTotal || 1)} {state.batchesDone}/{state.batchesTotal} problems{' '}
         {state.problems}
+        {state.inFlight ? ` · batch ${state.batchIndex}/${state.batchesTotal} reviewing ${elapsed}s` : ''}
       </Text>
       <Text dimColor>
         {state.file} · {state.total} entries, {state.reviewable} reviewable, {state.ruleFlagged} flagged by rules

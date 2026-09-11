@@ -19,11 +19,20 @@ export type Adjudicator = (
   opts: { locale: Locale; nplurals: number } & ClaudeRunOptions,
 ) => Promise<AuditResult[]>
 
-export interface BatchProgress {
+export interface BatchStart {
   index: number
   of: number
   size: number
+}
+
+export interface BatchProgress extends BatchStart {
   problems: number
+  // The verdicts this batch decided, so a caller can persist as it goes rather
+  // than holding hours of work in memory until the run ends.
+  verdicts: Verdict[]
+  // Set when the batch could not be adjudicated and its entries were marked
+  // unreviewed.
+  failed?: string
 }
 
 export interface AuditOptions extends Partial<ClaudeRunOptions> {
@@ -35,7 +44,10 @@ export interface AuditOptions extends Partial<ClaudeRunOptions> {
   noAi?: boolean
   batchSize?: number
   adjudicate?: Adjudicator
-  onBatch?: (progress: BatchProgress) => void
+  onRules?: (summary: { flagged: number; suspects: number }) => void
+  onBatchStart?: (batch: BatchStart) => void
+  // Awaited, so a caller writing to disk finishes before the next batch starts.
+  onBatch?: (progress: BatchProgress) => void | Promise<void>
 }
 
 const DEFAULT_BATCH_SIZE = 25
@@ -94,6 +106,11 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
     })
   }
 
+  opts.onRules?.({
+    flagged: [...verdicts.values()].filter((v) => v.problem).length,
+    suspects: candidates.filter((c) => c.hints.length > 0).length,
+  })
+
   const adjudicate = opts.adjudicate ?? adjudicateWithClaude
   const batches = chunk(candidates, opts.batchSize ?? DEFAULT_BATCH_SIZE)
 
@@ -101,15 +118,25 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
     // Ids are per batch and 1-based: the model never has to echo a gettext key,
     // whose msgctxt separator does not survive a JSON schema round-trip.
     const batch = rawBatch.map((c, n) => ({ ...c, id: n + 1 }))
-    const results = await runBatch(adjudicate, batch, opts)
+    const position = { index: i + 1, of: batches.length, size: batch.length }
+    opts.onBatchStart?.(position)
+
+    const outcome = await runBatch(adjudicate, batch, opts)
 
     let problems = 0
+    const decided: Verdict[] = []
     for (const [n, candidate] of batch.entries()) {
-      const verdict = results ? toVerdict(candidate, results[n]!) : unreviewed(candidate)
+      const verdict = outcome.results ? toVerdict(candidate, outcome.results[n]!) : unreviewed(candidate)
       if (verdict.problem) problems += 1
       verdicts.set(candidate.key, verdict)
+      decided.push(verdict)
     }
-    opts.onBatch?.({ index: i + 1, of: batches.length, size: batch.length, problems })
+    await opts.onBatch?.({
+      ...position,
+      problems,
+      verdicts: decided,
+      ...(outcome.failed ? { failed: outcome.failed } : {}),
+    })
   }
 
   return opts.entries.map((e) => verdicts.get(e.key)!).filter(Boolean)
@@ -119,7 +146,7 @@ async function runBatch(
   adjudicate: Adjudicator,
   batch: AuditCandidate[],
   opts: AuditOptions,
-): Promise<AuditResult[] | undefined> {
+): Promise<{ results?: AuditResult[]; failed?: string }> {
   const claudeOpts = {
     locale: opts.locale,
     nplurals: opts.nplurals,
@@ -129,14 +156,15 @@ async function runBatch(
     ...(opts.timeoutMs ? { timeoutMs: opts.timeoutMs } : {}),
     ...(opts.cwd ? { cwd: opts.cwd } : {}),
   }
+  let failed = 'unknown error'
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      return await adjudicate(batch, claudeOpts)
-    } catch {
-      if (attempt === 1) return undefined
+      return { results: await adjudicate(batch, claudeOpts) }
+    } catch (err) {
+      failed = err instanceof Error ? err.message : String(err)
     }
   }
-  return undefined
+  return { failed }
 }
 
 function toVerdict(candidate: AuditCandidate, result: AuditResult): Verdict {

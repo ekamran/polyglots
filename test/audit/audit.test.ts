@@ -128,6 +128,81 @@ describe('auditEntries', () => {
     expect(verdict!.reason).toContain('could not be reviewed')
   })
 
+  // The UI showed "0 flagged by rules" forever because nothing reported the rule
+  // pass, and 0/0 because a batch only announced itself once it had finished.
+  it('reports what the rules decided before any AI call', async () => {
+    const seen: unknown[] = []
+    const adjudicate = vi
+      .fn()
+      .mockImplementation(async (batch: { id: number }[]) =>
+        batch.map((c) => ({ id: c.id, problem: false, categories: [], reason: 'ok' })),
+      )
+    await auditEntries({
+      entries: [clean, hardError, suspect],
+      ...base(),
+      adjudicate,
+      onRules: (r) => seen.push(r),
+    })
+    expect(seen).toEqual([{ flagged: 1, suspects: 1 }])
+  })
+
+  it('announces a batch before running it, not after', async () => {
+    const order: string[] = []
+    const adjudicate = vi.fn().mockImplementation(async (batch: { id: number }[]) => {
+      order.push('adjudicate')
+      return batch.map((c) => ({ id: c.id, problem: false, categories: [], reason: 'ok' }))
+    })
+    await auditEntries({
+      entries: [clean, suspect],
+      ...base({ batchSize: 1 }),
+      adjudicate,
+      onBatchStart: () => order.push('start'),
+      onBatch: () => order.push('done'),
+    })
+    expect(order).toEqual(['start', 'adjudicate', 'done', 'start', 'adjudicate', 'done'])
+  })
+
+  it('hands each batch verdicts over as they are decided', async () => {
+    const batches: string[][] = []
+    const adjudicate = vi
+      .fn()
+      .mockImplementation(async (batch: { id: number }[]) =>
+        batch.map((c) => ({ id: c.id, problem: true, categories: ['meaning'], reason: 'nope' })),
+      )
+    await auditEntries({
+      entries: [clean, suspect],
+      ...base({ batchSize: 1 }),
+      adjudicate,
+      onBatch: (p) => batches.push(p.verdicts.map((v) => v.key)),
+    })
+    expect(batches).toEqual([['a'], ['c']])
+  })
+
+  it('waits for a slow onBatch before starting the next batch', async () => {
+    const order: string[] = []
+    const adjudicate = vi.fn().mockImplementation(async (batch: { id: number }[]) => {
+      order.push('adjudicate')
+      return batch.map((c) => ({ id: c.id, problem: false, categories: [], reason: 'ok' }))
+    })
+    await auditEntries({
+      entries: [clean, suspect],
+      ...base({ batchSize: 1 }),
+      adjudicate,
+      onBatch: async () => {
+        await new Promise((r) => setTimeout(r, 5))
+        order.push('saved')
+      },
+    })
+    expect(order).toEqual(['adjudicate', 'saved', 'adjudicate', 'saved'])
+  })
+
+  it('reports why a batch failed so the run can say so', async () => {
+    const seen: Array<string | undefined> = []
+    const adjudicate = vi.fn().mockRejectedValue(new Error('claude exited with exit code 1'))
+    await auditEntries({ entries: [clean], ...base(), adjudicate, onBatch: (p) => seen.push(p.failed) })
+    expect(seen[0]).toMatch(/exit code 1/)
+  })
+
   it('reports batch progress', async () => {
     const events: unknown[] = []
     const adjudicate = vi
@@ -138,8 +213,8 @@ describe('auditEntries', () => {
     await auditEntries({ entries: [clean, suspect], ...base({ batchSize: 1 }), adjudicate, onBatch: (e) => events.push(e) })
 
     expect(events).toEqual([
-      { index: 1, of: 2, size: 1, problems: 0 },
-      { index: 2, of: 2, size: 1, problems: 0 },
+      { index: 1, of: 2, size: 1, problems: 0, verdicts: [expect.objectContaining({ key: 'a' })] },
+      { index: 2, of: 2, size: 1, problems: 0, verdicts: [expect.objectContaining({ key: 'c' })] },
     ])
   })
 

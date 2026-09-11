@@ -88,6 +88,41 @@ describe('reduceReviewProgress', () => {
   })
 })
 
+describe('ReviewProgress in-flight clock', () => {
+  it('marks a batch as in flight once it starts and not before', () => {
+    const before = reduceReviewProgress([{ type: 'start', file: FILE, total: 10, reviewable: 10 }])
+    expect(before.inFlight).toBe(false)
+
+    const during = reduceReviewProgress([
+      { type: 'start', file: FILE, total: 10, reviewable: 10 },
+      { type: 'batch-start', index: 1, of: 4, size: 25 },
+    ])
+    expect(during.inFlight).toBe(true)
+
+    const after = reduceReviewProgress([
+      { type: 'start', file: FILE, total: 10, reviewable: 10 },
+      { type: 'batch-start', index: 1, of: 4, size: 25 },
+      { type: 'batch-done', index: 1, problems: 2 },
+    ])
+    expect(after.inFlight).toBe(false)
+  })
+
+  // A batch is a single claude call taking minutes; without this the bar sits at
+  // the same fraction with no way to tell work from a wedged subprocess.
+  it('shows the batch it is waiting on while one is in flight', () => {
+    const { lastFrame } = render(
+      <ReviewProgress
+        events={[
+          { type: 'start', file: FILE, total: 100, reviewable: 100 },
+          { type: 'batch-start', index: 1, of: 4, size: 25 },
+        ]}
+      />,
+    )
+    expect(flat(lastFrame())).toMatch(/batch 1\/4/)
+    expect(flat(lastFrame())).toMatch(/\d+s/)
+  })
+})
+
 describe('ReviewProgress needs-your-eye', () => {
   it('reports entries only the human can judge after a rules-only run', () => {
     const summary = reviewSummaryOf('plugin-tr.po', { problems: 2, needsReview: 7, approvable: 40 })

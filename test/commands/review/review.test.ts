@@ -170,6 +170,55 @@ describe('reviewFile', () => {
     expect(summary.problems).toBe(3)
   })
 
+  it('reports what the rules found before the model runs', async () => {
+    const events: ReviewEvent[] = []
+    await run({ onProgress: (e: ReviewEvent) => events.push(e) })
+    const rules = events.find((e) => e.type === 'rules-done')
+    expect(rules).toMatchObject({ flagged: 1 })
+  })
+
+  it('announces a batch before it runs', async () => {
+    const order: string[] = []
+    const adjudicate = vi.fn(async (batch: { id: number }[]) => {
+      order.push('adjudicate')
+      return batch.map((c) => ({ id: c.id, problem: false, categories: [] as never[], reason: 'ok' }))
+    })
+    await run({
+      adjudicate,
+      onProgress: (e: ReviewEvent) => {
+        if (e.type === 'batch-start' || e.type === 'batch-done') order.push(e.type)
+      },
+    })
+    expect(order).toEqual(['batch-start', 'adjudicate', 'batch-done'])
+  })
+
+  it('reports a failed batch rather than swallowing it', async () => {
+    const events: ReviewEvent[] = []
+    const adjudicate = vi.fn().mockRejectedValue(new Error('claude exited with exit code 1'))
+    await run({ adjudicate, onProgress: (e: ReviewEvent) => events.push(e) })
+    expect(events.find((e) => e.type === 'batch-failed')).toMatchObject({ reason: expect.stringMatching(/exit code 1/) })
+    // One terminal event per batch, or the progress bar counts it twice.
+    expect(events.filter((e) => e.type === 'batch-done')).toHaveLength(0)
+  })
+
+  // A 2831-entry submission is ~114 batches and hours of wall clock; losing all
+  // of it to one Ctrl+C would be unacceptable.
+  it('writes the problems file after every batch, not only at the end', async () => {
+    const seen: number[] = []
+    const adjudicate = vi.fn(async (batch: { id: number; msgid: string }[]) => {
+      const target = join(home, 'plugin-tr-problems.po')
+      seen.push(await readFile(target, 'utf8').then((t) => t.length).catch(() => 0))
+      return batch.map((c) => ({ id: c.id, problem: true, categories: ['meaning'] as never[], reason: 'nope' }))
+    })
+
+    await run({ adjudicate, batchSize: 1 })
+
+    // The second batch starts with the first already on disk.
+    expect(seen).toHaveLength(2)
+    expect(seen[0]).toBe(0)
+    expect(seen[1]).toBeGreaterThan(0)
+  })
+
   it('emits progress ending in done', async () => {
     const events: ReviewEvent[] = []
     const summary = await run({ onProgress: (e: ReviewEvent) => events.push(e) })
