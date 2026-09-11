@@ -327,6 +327,23 @@ describe('ReviewProgress', () => {
     ]
     expect(flat(render(<ReviewProgress events={repairEvents} />).lastFrame())).toMatch(/33 repaired/)
   })
+
+  // Whitespace-only fixes are written but count as neither a problem nor a
+  // needsReview entry, so flagged (problems + needsReview) undercounts what
+  // was written. Subtracting repaired from flagged instead of written would
+  // print a negative "left for you" here.
+  it('never goes negative when everything written was a mechanical fix', () => {
+    const wsEvents: ReviewEvent[] = [
+      { type: 'start', file: FILE, total: 10, reviewable: 10 },
+      {
+        type: 'done',
+        summary: reviewSummaryOf(FILE, { problems: 0, needsReview: 0, approvable: 10, repaired: 10, written: 10 }),
+      },
+    ]
+    const frame = flat(render(<ReviewProgress events={wsEvents} />).lastFrame())
+    expect(frame).toContain('10 repaired, 0 left for you')
+    expect(frame).not.toMatch(/-\d+ left for you/)
+  })
 })
 
 describe('batchSizeChoices', () => {

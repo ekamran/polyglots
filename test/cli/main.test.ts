@@ -506,6 +506,19 @@ describe('review', () => {
     expect(h.stdout.text).toContain('32 left for you')
   })
 
+  // Whitespace-only fixes are written but count as neither a problem nor a
+  // needsReview entry, so flagged (problems + needsReview) undercounts what
+  // was written. Subtracting repaired from flagged instead of written would
+  // print a negative "left for you" here.
+  it('never goes negative when everything written was a mechanical fix', async () => {
+    const h = harness()
+    const review = fakeReview(summary({ problems: 0, needsReview: 0, approvable: 10, repaired: 10, written: 10 }))
+    await h.run(['review', file], { reviewFile: review.fn })
+
+    expect(h.stdout.text).toContain('10 repaired, 0 left for you')
+    expect(h.stdout.text).not.toMatch(/-\d+ left for you/)
+  })
+
   it('says nothing about repairs when there were none', async () => {
     const h = harness()
     const review = fakeReview(
