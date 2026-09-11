@@ -61,8 +61,10 @@ describe('review marker', () => {
     expect(decodeMarker(encodeMarker(MARKER).replace(/,"repaired":\d+/, ''))).toBeUndefined()
   })
 
+  // Encoded rather than hand-written, so the marker carries whatever FORMAT is
+  // current and the shape check is what rejects it, not the version check.
   it('reads nothing from a marker whose fingerprint is not a fingerprint', () => {
-    expect(decodeMarker(JSON.stringify({ v: 1, ...MARKER, fingerprint: 'abc' }))).toBeUndefined()
+    expect(decodeMarker(encodeMarker({ ...MARKER, fingerprint: 'abc' } as unknown as ReviewMarker))).toBeUndefined()
   })
 })
 

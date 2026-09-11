@@ -37,6 +37,13 @@ describe('repairMechanically', () => {
     expect(repairMechanically(plural)).toEqual(['%s öğe ', '%s öğe ', ''])
   })
 
+  // A msgstr of nothing but spaces is not a translation to repair. Trimming it to
+  // empty would be counted as a repair, which claims a correction that blanked
+  // the entry instead.
+  it('leaves a whitespace-only translation alone rather than blanking it', () => {
+    expect(repairMechanically(entry('Save ', ['   ']))).toBeUndefined()
+  })
+
   it('leaves an untranslated entry alone', () => {
     expect(repairMechanically(entry('Save ', ['']))).toBeUndefined()
   })

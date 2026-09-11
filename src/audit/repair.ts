@@ -26,7 +26,10 @@ export function repairMechanically(entry: AuditEntry): string[] | undefined {
   let changed = false
 
   const repaired = entry.msgstr.map((form) => {
-    if (form === '') return form
+    // Nothing but whitespace is not a translation whose edges can be fixed.
+    // Trimming it to empty would be counted as a repair, when what it did was
+    // blank the entry.
+    if (form.trim() === '') return form
     const target = edges(form)
     if (target.lead === source.lead && target.trail === source.trail) return form
     changed = true
