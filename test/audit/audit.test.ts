@@ -21,14 +21,51 @@ function base(overrides = {}) {
 }
 
 describe('auditEntries', () => {
-  it('flags hard errors without consulting the AI', async () => {
-    const adjudicate = vi.fn().mockResolvedValue([])
+  // The rules proved it broken, so the model's job is to fix it, not to argue.
+  it('sends a rule-condemned entry to the model to be repaired', async () => {
+    const adjudicate = vi.fn(async (batch: { id: number }[]) =>
+      batch.map((c) => ({ id: c.id, problem: true, categories: ['placeholder'] as never[], reason: 'lost %s', fix: ['%s yorum'] })),
+    )
     const verdicts = await auditEntries({ entries: [hardError], ...base(), adjudicate })
 
-    expect(adjudicate).not.toHaveBeenCalled()
-    expect(verdicts).toHaveLength(1)
+    expect(adjudicate).toHaveBeenCalledTimes(1)
+    expect(verdicts[0]).toMatchObject({ key: 'b', problem: true, text: ['%s yorum'], repairedBy: 'model' })
+  })
+
+  it('does not let the model clear what the rules proved broken', async () => {
+    const adjudicate = vi.fn(async (batch: { id: number }[]) =>
+      batch.map((c) => ({ id: c.id, problem: false, categories: [] as never[], reason: 'looks fine to me' })),
+    )
+    const verdicts = await auditEntries({ entries: [hardError], ...base(), adjudicate })
+
     expect(verdicts[0]).toMatchObject({ key: 'b', problem: true })
-    expect(verdicts[0]!.findings.map((f) => f.rule)).toEqual(['placeholder'])
+    expect(verdicts[0]!.findings.map((f) => f.rule)).toContain('placeholder')
+  })
+
+  it('takes the fix even when the model wrongly cleared a rule-condemned entry', async () => {
+    const adjudicate = vi.fn(async (batch: { id: number }[]) =>
+      batch.map((c) => ({ id: c.id, problem: false, categories: [] as never[], reason: 'ok', fix: ['%s yorum'] })),
+    )
+    const verdicts = await auditEntries({ entries: [hardError], ...base(), adjudicate })
+    expect(verdicts[0]!.text).toEqual(['%s yorum'])
+  })
+
+  it('records why a bad fix was thrown away rather than silently dropping it', async () => {
+    const adjudicate = vi.fn(async (batch: { id: number }[]) =>
+      batch.map((c) => ({ id: c.id, problem: true, categories: ['placeholder'] as never[], reason: 'lost %s', fix: ['hala yorumlar'] })),
+    )
+    const verdicts = await auditEntries({ entries: [hardError], ...base(), adjudicate })
+
+    expect(verdicts[0]!.text).toBeUndefined()
+    expect(verdicts[0]!.findings.map((f) => f.message).join(' ')).toMatch(/rejected/i)
+  })
+
+  it('ignores a fix on an entry that had nothing wrong with it', async () => {
+    const adjudicate = vi.fn(async (batch: { id: number }[]) =>
+      batch.map((c) => ({ id: c.id, problem: false, categories: [] as never[], reason: 'ok', fix: ['Başka bir şey'] })),
+    )
+    const verdicts = await auditEntries({ entries: [clean], ...base(), adjudicate })
+    expect(verdicts[0]!.text).toBeUndefined()
   })
 
   it('sends suspects to the AI carrying their rule findings as hints', async () => {
@@ -376,6 +413,16 @@ describe('buildAuditPrompt', () => {
     expect(prompt).toMatch(/title case/i)
     expect(prompt).toContain('glossary_lookup')
     expect(prompt).toContain('consistency_lookup')
+  })
+
+  it('asks the model for a corrected translation', () => {
+    const prompt = buildAuditPrompt(
+      [{ id: 1, key: 'a', msgid: 'Save', msgstr: ['Kaydet'], comments: [], references: [], hints: [] }],
+      'tr',
+      2,
+    )
+    expect(prompt).toMatch(/"fix"/)
+    expect(prompt).toMatch(/leave "fix" out/i)
   })
 })
 

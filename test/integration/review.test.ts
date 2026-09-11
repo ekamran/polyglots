@@ -167,8 +167,10 @@ describe('review end to end', () => {
     const events: ReviewEvent[] = []
     const resumedRun = await run({ batchSize: 2, onProgress: (e: ReviewEvent) => events.push(e) })
     expect(events[0]).toMatchObject({ type: 'start', resumed: 1 })
-    // Only the second batch was re-reviewed.
-    expect(events.filter((e) => e.type === 'batch-start')).toHaveLength(1)
+    // Every rule-condemned entry now reaches the model too, so 6 candidates at a
+    // batch size of 2 make 3 batches; only the first was finished before the
+    // interruption, leaving 2 to re-review.
+    expect(events.filter((e) => e.type === 'batch-start')).toHaveLength(2)
 
     const uninterrupted = await run({ batchSize: 2, fresh: true, outDir: join(home, 'uninterrupted') })
     expect(resumedRun.problems).toBe(uninterrupted.problems)

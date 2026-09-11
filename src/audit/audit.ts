@@ -2,9 +2,9 @@ import { chunk } from '../batch.js'
 import { runClaude, type ClaudeRunOptions } from '../claude/run.js'
 import type { AuditEntry, Finding, GlossaryEntry, Locale } from '../types.js'
 import { buildAuditPrompt, type AuditCandidate } from './prompt.js'
-import { repairMechanically } from './repair.js'
+import { judgeFix, repairMechanically } from './repair.js'
 import { auditBatchJsonSchema, mapAuditResults, type AuditResult } from './schema.js'
-import { buildRuleContext, runRules } from './rules/index.js'
+import { buildRuleContext, runRules, type RuleContext } from './rules/index.js'
 
 export interface Verdict {
   key: string
@@ -97,7 +97,7 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
     const findings = [...mechanical, ...runRules(entry, ctx)]
     const errors = findings.filter((f) => f.severity === 'error')
 
-    if (errors.length > 0) {
+    if (errors.length > 0 && opts.noAi) {
       verdicts.set(entry.key, { key: entry.key, problem: true, findings, reason: ruleReason(findings), ...base })
       continue
     }
@@ -125,13 +125,14 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
       comments: entry.comments,
       references: entry.references,
       hints: findings,
+      ...(errors.length > 0 ? { condemned: findings } : {}),
       ...(repaired ? { repaired: { text: repaired, repairedBy: 'rules' as const } } : {}),
     })
   }
 
   opts.onRules?.({
-    flagged: [...verdicts.values()].filter((v) => v.problem).length,
-    suspects: candidates.filter((c) => c.hints.length > 0).length,
+    flagged: candidates.filter((c) => c.condemned).length + [...verdicts.values()].filter((v) => v.problem).length,
+    suspects: candidates.filter((c) => c.hints.length > 0 && !c.condemned).length,
   })
 
   const adjudicate = opts.adjudicate ?? adjudicateWithClaude
@@ -152,7 +153,9 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
     let problems = 0
     const decided: Verdict[] = []
     for (const [n, candidate] of batch.entries()) {
-      const verdict = outcome.results ? toVerdict(candidate, outcome.results[n]!) : unreviewed(candidate)
+      const verdict = outcome.results
+        ? toVerdict(candidate, outcome.results[n]!, ctx, opts.nplurals)
+        : unreviewed(candidate)
       if (verdict.problem) problems += 1
       verdicts.set(candidate.key, verdict)
       decided.push(verdict)
@@ -193,7 +196,11 @@ async function runBatch(
   return { failed }
 }
 
-function toVerdict(candidate: AuditCandidate, result: AuditResult): Verdict {
+function toVerdict(candidate: AuditCandidate, result: AuditResult, ctx: RuleContext, nplurals: number): Verdict {
+  // A rule error is a mechanical fact. The model was asked for a fix, not for a
+  // second opinion, so it cannot clear one.
+  const problem = candidate.condemned !== undefined || result.problem
+
   const aiFindings: Finding[] = result.problem
     ? result.categories.map((category) => ({
         rule: `ai:${category}`,
@@ -201,8 +208,26 @@ function toVerdict(candidate: AuditCandidate, result: AuditResult): Verdict {
         message: result.reason,
       }))
     : []
-  const findings = result.problem ? [...candidate.hints, ...aiFindings] : []
-  return { key: candidate.key, problem: result.problem, findings, reason: result.reason, ...(candidate.repaired ?? {}) }
+  const findings = problem ? [...candidate.hints, ...aiFindings] : []
+
+  const base: Verdict = { key: candidate.key, problem, findings, reason: result.reason, ...(candidate.repaired ?? {}) }
+  if (!problem || !result.fix) return base
+
+  const entry: AuditEntry = {
+    key: candidate.key,
+    msgid: candidate.msgid,
+    ...(candidate.msgctxt ? { msgctxt: candidate.msgctxt } : {}),
+    ...(candidate.msgidPlural ? { msgidPlural: candidate.msgidPlural } : {}),
+    msgstr: candidate.msgstr,
+    comments: candidate.comments,
+    references: candidate.references,
+    fuzzy: false,
+  }
+  const verdict = judgeFix({ entry, fix: result.fix, nplurals, ctx })
+  if ('accepted' in verdict) return { ...base, text: verdict.accepted, repairedBy: 'model' }
+  // Say so rather than dropping it. Silence here looks like the model declined,
+  // which is a different thing and hides a real signal about the prompt.
+  return { ...base, findings: [...findings, { rule: 'fix-rejected', severity: 'suspect', message: verdict.rejected }] }
 }
 
 // A batch we failed to review is never silently approved: a false negative ships a

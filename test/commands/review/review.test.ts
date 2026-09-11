@@ -125,15 +125,6 @@ describe('reviewFile', () => {
     expect(summary.byRule).toMatchObject({ 'ai:meaning': 1, placeholder: 1 })
   })
 
-  it('never sends the AI an entry a hard rule already condemned', async () => {
-    const adjudicate = vi.fn(async (batch: { id: number; msgid: string }[]) =>
-      batch.map((c) => ({ id: c.id, problem: false, categories: [] as never[], reason: 'ok' })),
-    )
-    await run({ adjudicate })
-    const seen = adjudicate.mock.calls.flatMap(([batch]) => batch.map((c) => c.msgid))
-    expect(seen).not.toContain('%s comments')
-  })
-
   it('skips the AI entirely with noAi', async () => {
     const adjudicate = vi.fn()
     const summary = await run({ noAi: true, adjudicate })
@@ -166,7 +157,9 @@ describe('reviewFile', () => {
   it('counts entries whose review failed as unreviewed problems', async () => {
     const adjudicate = vi.fn().mockRejectedValue(new Error('claude exited with exit code 1'))
     const summary = await run({ adjudicate })
-    expect(summary.unreviewed).toBe(2)
+    // The hard-error entry now reaches the model too, so it fails to adjudicate
+    // right along with the others; it was already a problem either way.
+    expect(summary.unreviewed).toBe(3)
     expect(summary.problems).toBe(3)
   })
 
@@ -213,10 +206,13 @@ describe('reviewFile', () => {
 
     await run({ adjudicate, batchSize: 1 })
 
-    // The second batch starts with the first already on disk.
-    expect(seen).toHaveLength(2)
+    // Three candidates now reach the model ("%s comments" included, to be
+    // repaired), so batchSize 1 makes three batches. The second and third each
+    // start with the previous batch already on disk.
+    expect(seen).toHaveLength(3)
     expect(seen[0]).toBe(0)
     expect(seen[1]).toBeGreaterThan(0)
+    expect(seen[2]).toBeGreaterThan(seen[1]!)
   })
 
   it('emits progress ending in done', async () => {

@@ -16,6 +16,9 @@ export interface AuditCandidate {
   // toVerdict and unreviewed build a fresh Verdict per candidate and would
   // otherwise lose it.
   repaired?: { text: string[]; repairedBy: 'rules' }
+  // Set when the deterministic rules already proved this entry wrong. Its
+  // verdict is settled; the model is being asked for a fix, not an opinion.
+  condemned?: Finding[]
 }
 
 function languageName(locale: Locale): string {
@@ -68,6 +71,10 @@ Some entries carry an "automatedChecks" list: findings from deterministic checks
 Mark problem=true only when a human should change the translation before it is approved. Do not flag a translation that is merely different from how you would word it; the bar is "wrong or against the standards", not "not my preference". Every flagged entry costs the reviewer time, so be strict about accuracy but not about taste.
 
 Categories: ${AUDIT_CATEGORIES.join(', ')}. Use an empty array when problem is false. Keep "reason" to one short sentence, written for the contributor, saying what is wrong (or why a flagged check was cleared).
+
+- When an entry is a problem, also return "fix": the corrected translation, as an array with one string per plural form. It must obey every standard above: the glossary, this locale's capitalization rules, the source's placeholders and HTML exactly, and the formal register.
+- If you are not confident what the entry should say, leave "fix" out entirely. An honest "I do not know" is worth more than a confident wrong translation, which a human then has to catch.
+- Where "automatedChecks" reports a placeholder, html or plural-count problem, the entry is already known to be broken. Do not argue about whether it is wrong; return the fix.
 
 Return exactly one result per id below.
 

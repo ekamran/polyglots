@@ -29,9 +29,10 @@ msgid "Never submitted"
 msgstr ""
 `
 
-// Two candidates reach the model: "%s comments" is a placeholder error the rules
-// settle on their own, and "Never submitted" is not submitted at all. At a batch
-// size of one that is two batches, so a run can be cut off between them.
+// Three candidates reach the model: "%s comments" is a placeholder error the rules
+// already settled, but it still goes to the model to be repaired. "Never submitted"
+// is not submitted at all and never becomes a candidate. At a batch size of one
+// that is three batches, so a run can be cut off partway through.
 describe('resuming an interrupted review', () => {
   let home: string
   let file: string
@@ -86,7 +87,7 @@ describe('resuming an interrupted review', () => {
   it('records how far it got in the problems file header', async () => {
     await run()
     const marker = decodeMarker((await loadPo(problems)).headers[MARKER_HEADER])
-    expect(marker).toMatchObject({ done: 2, of: 2 })
+    expect(marker).toMatchObject({ done: 3, of: 3 })
   })
 
   it('does not re-review the batches the interrupted run finished', async () => {
@@ -94,9 +95,9 @@ describe('resuming an interrupted review', () => {
     const adjudicate = clears()
     await run({ adjudicate })
 
-    expect(adjudicate).toHaveBeenCalledTimes(1)
+    expect(adjudicate).toHaveBeenCalledTimes(2)
     const seen = adjudicate.mock.calls.flatMap(([batch]) => (batch as { msgid: string }[]).map((c) => c.msgid))
-    expect(seen).toEqual(['Open the sidebar'])
+    expect(seen).toEqual(['%s comments', 'Open the sidebar'])
   })
 
   it('keeps the entries the interrupted run had already flagged', async () => {
@@ -150,7 +151,7 @@ describe('resuming an interrupted review', () => {
     const adjudicate = clears()
     await run({ adjudicate, fresh: true })
 
-    expect(adjudicate).toHaveBeenCalledTimes(2)
+    expect(adjudicate).toHaveBeenCalledTimes(3)
   })
 
   it('re-runs a review that had already finished rather than doing nothing', async () => {
@@ -158,7 +159,7 @@ describe('resuming an interrupted review', () => {
     const adjudicate = clears()
     await run({ adjudicate })
 
-    expect(adjudicate).toHaveBeenCalledTimes(2)
+    expect(adjudicate).toHaveBeenCalledTimes(3)
   })
 
   // Without this there is nothing to resume from until the first entry is
