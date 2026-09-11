@@ -66,12 +66,18 @@ function isAuditSchema() {
 
 function buildAuditResults(entries) {
   return entries.map((e) => {
-    const problem = String(e.source).includes('BAD') || (e.automatedChecks || []).length > 0
+    const bad = String(e.source).includes('BAD')
+    // Default: only a source explicitly marked BAD is a problem, so a suspect the
+    // rules only raised a hint about is left for the model to clear, same as a
+    // real Claude might. FAKE_CLAUDE_CONFIRM_HINTS flips that off for tests that
+    // need a rule-condemned or rule-suspected entry to come back with a fix.
+    const hinted = Boolean(process.env.FAKE_CLAUDE_CONFIRM_HINTS) && (e.automatedChecks || []).length > 0
+    const problem = bad || hinted
     const result = {
       id: e.id,
       problem,
       categories: problem ? ['meaning'] : [],
-      reason: problem ? 'fake: source marked BAD' : 'fake: looks fine',
+      reason: bad ? 'fake: source marked BAD' : hinted ? 'fake: confirming automated check' : 'fake: looks fine',
     }
     // A fix that keeps the source's placeholders and tags, so the rules accept
     // it. FAKE_CLAUDE_BAD_FIX makes it drop them, to exercise the rejection.

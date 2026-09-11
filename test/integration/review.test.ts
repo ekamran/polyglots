@@ -7,7 +7,6 @@ import { openDb, replaceGlossary } from '../../src/storage/index.js'
 import { writeMcpConfig } from '../../src/mcp/config.js'
 import { loadPo } from '../../src/po/po-file.js'
 import { reviewFile } from '../../src/commands/review.js'
-import type { Adjudicator } from '../../src/audit/audit.js'
 import type { ReviewEvent } from '../../src/types.js'
 
 const FAKE_CLAUDE = resolve(import.meta.dirname, '../fixtures/fake-claude/claude')
@@ -124,18 +123,7 @@ describe('review end to end', () => {
   })
 
   it('clears entries the rules only suspected but the model approved', async () => {
-    // The fake claude now confirms every automated hint it is handed (see
-    // buildAuditResults), which proves the repair path but leaves nothing for
-    // this test to clear. A stand-in adjudicator restores the thing being
-    // tested here: rules raise a suspicion, the model can dismiss it, and the
-    // rest of reviewFile (tallies, needsReview, the written file) runs for real.
-    const clearSuspects: Adjudicator = async (batch) =>
-      batch.map((c) => {
-        const problem = c.condemned !== undefined || c.msgid.includes('BAD')
-        return { id: c.id, problem, categories: problem ? ['meaning'] : [], reason: problem ? 'confirmed' : 'ok' }
-      })
-
-    const withAi = await run({ adjudicate: clearSuspects })
+    const withAi = await run()
     const rulesOnly = await run({ noAi: true, outDir: join(home, 'rules-only-compare') })
 
     // Rules alone cannot decide a suspect, so it is reported as needing a human
@@ -212,19 +200,31 @@ describe('review end to end', () => {
   })
 
   it('keeps the source placeholders in what it writes back', async () => {
-    const summary = await run()
-    const problems = await loadPo(summary.problemsFile!)
-    const withPlaceholder = problems.auditEntries().find((e) => e.msgid.includes('%s'))
-    expect(withPlaceholder?.msgstr[0]).toContain('%s')
+    // The placeholder entries are rule-condemned, not source-marked BAD, so the
+    // fake only offers them a fix when told to confirm what the rules flagged.
+    process.env.FAKE_CLAUDE_CONFIRM_HINTS = '1'
+    try {
+      const summary = await run()
+      const problems = await loadPo(summary.problemsFile!)
+      const withPlaceholder = problems.auditEntries().find((e) => e.msgid.includes('%s'))
+      expect(withPlaceholder?.msgstr[0]).toContain('%s')
+    } finally {
+      delete process.env.FAKE_CLAUDE_CONFIRM_HINTS
+    }
   })
 
   it('refuses a fix that drops a placeholder, and says so', async () => {
+    // Needs a rule-condemned placeholder entry to actually receive a fix (via
+    // CONFIRM_HINTS) before FAKE_CLAUDE_BAD_FIX can make that fix drop the
+    // placeholder and exercise the rejection.
+    process.env.FAKE_CLAUDE_CONFIRM_HINTS = '1'
     process.env.FAKE_CLAUDE_BAD_FIX = '1'
     try {
       const summary = await run({ outDir: join(home, 'bad-fix') })
       const text = await readFile(summary.problemsFile!, 'utf8')
       expect(text).toMatch(/rejected/i)
     } finally {
+      delete process.env.FAKE_CLAUDE_CONFIRM_HINTS
       delete process.env.FAKE_CLAUDE_BAD_FIX
     }
   })
