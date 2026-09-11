@@ -6,6 +6,7 @@ import { cleanup } from 'ink-testing-library'
 import type { ReviewEvent } from '../../src/types.js'
 import { App } from '../../src/tui/App.js'
 import { ReviewProgress, reduceReviewProgress } from '../../src/tui/components/ReviewProgress.js'
+import { batchSizeChoices } from '../../src/tui/screens/Review.js'
 import type { ReviewFile } from '../../src/tui/commands.js'
 import {
   ESC_DELAY,
@@ -320,6 +321,19 @@ describe('ReviewProgress', () => {
   })
 })
 
+describe('batchSizeChoices', () => {
+  it('offers a ladder from a small batch to a large one', () => {
+    expect(batchSizeChoices(25)).toEqual([10, 25, 50, 75, 100])
+  })
+
+  // Otherwise a locale team that set an unusual default in config.json could not
+  // get back to it after one keypress.
+  it('keeps a configured size reachable, in its place on the ladder', () => {
+    expect(batchSizeChoices(40)).toEqual([10, 25, 40, 50, 75, 100])
+    expect(batchSizeChoices(200)).toEqual([10, 25, 50, 75, 100, 200])
+  })
+})
+
 describe('Review screen', () => {
   const openReview = async (commands = fakeCommands()) => {
     const view = render(<App commands={commands} cwd={cwd} />)
@@ -365,6 +379,8 @@ describe('Review screen', () => {
 
     stdin.write(keys.down)
     await tick()
+    stdin.write(keys.down)
+    await tick()
     stdin.write(' ')
     await waitForText(lastFrame, /Skip AI checks:\s*yes/i)
     stdin.write(keys.down)
@@ -381,6 +397,42 @@ describe('Review screen', () => {
     })
   })
 
+  it('defaults the batch size from the config', async () => {
+    await mkdir(join(home.path, 'config'), { recursive: true })
+    await writeFile(join(home.path, 'config', 'config.json'), JSON.stringify({ batchSize: 50 }))
+    const view = await openReview()
+    await pickFile(view)
+
+    expect(flat(view.lastFrame())).toMatch(/Batch size:\s*50/)
+  })
+
+  // A whole-night review is where batch size actually matters: fewer, larger
+  // calls finish sooner, and the CLI flag is no help from inside the TUI.
+  it('passes the chosen batch size to the command', async () => {
+    const reviewFile = vi.fn<ReviewFile>(async (opts) => {
+      opts.onProgress?.({ type: 'done', summary: reviewSummaryOf(opts.file) })
+      return reviewSummaryOf(opts.file)
+    })
+    const view = await openReview(fakeCommands({ reviewFile }))
+    await pickFile(view)
+    const { lastFrame, stdin } = view
+
+    stdin.write(keys.down)
+    await tick()
+    stdin.write(keys.right)
+    await waitForText(lastFrame, /Batch size:\s*50/)
+    stdin.write(keys.down)
+    await tick()
+    stdin.write(keys.down)
+    await tick()
+    stdin.write(keys.down)
+    await tick()
+    stdin.write(keys.enter)
+
+    await waitFor(() => reviewFile.mock.calls.length > 0)
+    expect(reviewFile.mock.calls[0]?.[0]).toMatchObject({ batchSize: 50 })
+  })
+
   // Without this the TUI has no answer to a refused resume: the message names
   // starting over, and there would be no way to do it.
   it('passes the start-over choice to the command', async () => {
@@ -392,6 +444,8 @@ describe('Review screen', () => {
     await pickFile(view)
     const { lastFrame, stdin } = view
 
+    stdin.write(keys.down)
+    await tick()
     stdin.write(keys.down)
     await tick()
     stdin.write(keys.down)
@@ -420,6 +474,8 @@ describe('Review screen', () => {
     await tick()
     view.stdin.write(keys.down)
     await tick()
+    view.stdin.write(keys.down)
+    await tick()
     view.stdin.write(keys.enter)
 
     await waitFor(() => reviewFile.mock.calls.length > 0)
@@ -429,6 +485,8 @@ describe('Review screen', () => {
   it('shows the summary when the run finishes', async () => {
     const view = await openReview()
     await pickFile(view)
+    view.stdin.write(keys.down)
+    await tick()
     view.stdin.write(keys.down)
     await tick()
     view.stdin.write(keys.down)

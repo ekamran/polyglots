@@ -393,7 +393,7 @@ describe('review', () => {
 
     expect(code).toBe(0)
     expect(review.calls).toEqual([
-      { file, locale: 'tr', outDir: undefined, noAi: undefined, batchSize: undefined, fresh: undefined },
+      { file, locale: 'tr', outDir: undefined, noAi: undefined, batchSize: 25, fresh: undefined },
     ])
     expect(h.stdout.text).toContain('14 flagged')
     expect(h.stdout.text).toContain('102 approvable')
@@ -442,6 +442,18 @@ describe('review', () => {
     expect(review.calls).toEqual([
       { file, locale: 'pt-br', outDir: '/tmp/out', noAi: true, batchSize: 10, fresh: undefined },
     ])
+  })
+
+  // translate has always taken its default from config; review quietly used a
+  // hard-coded 25, so setting a project default only half worked.
+  it('takes the batch size from the config when no flag is given', async () => {
+    await mkdir(join(home, 'config'), { recursive: true })
+    await writeFile(join(home, 'config', 'config.json'), JSON.stringify({ batchSize: 50 }))
+    const h = harness()
+    const review = fakeReview()
+    await h.run(['review', file], { reviewFile: review.fn })
+
+    expect(review.calls[0]).toMatchObject({ batchSize: 50 })
   })
 
   // An interrupted review picks up from its marker by default, so starting over

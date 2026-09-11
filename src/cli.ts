@@ -373,18 +373,20 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
     .option('--locale <locale>', `Review locale (default: ${shown.defaultLocale})`)
     .option('--out-dir <dir>', 'Where to write the problems file (default: beside the input)')
     .option('--no-ai', 'Run the deterministic checks only, skipping AI adjudication')
-    .option('--batch-size <n>', 'Entries per AI batch')
+    .option('--batch-size <n>', `Entries per AI batch (default: ${shown.batchSize})`)
     .option('--fresh', 'Ignore an unfinished review left in the problems file and start over')
     .action(async (raw: string, flags: ReviewFlags) => {
       const [target] = expandFileArgs([raw])
-      const locale = parseLocaleArg(flags.locale ?? cli.config().defaultLocale)
+      const config = cli.config()
+      const locale = parseLocaleArg(flags.locale ?? config.defaultLocale)
       const report = createReviewProgressReporter(cli.streams.stderr)
       const summary = await cli.reviewFile({
         file: target!,
         locale,
         ...(flags.outDir ? { outDir: flags.outDir } : {}),
         ...(flags.ai === false ? { noAi: true } : {}),
-        ...(flags.batchSize ? { batchSize: parsePositiveInt('--batch-size', flags.batchSize) } : {}),
+        batchSize:
+          flags.batchSize === undefined ? config.batchSize : parsePositiveInt('--batch-size', flags.batchSize),
         ...(flags.fresh ? { fresh: true } : {}),
         claudeBin: process.env.POLYGLOTS_CLAUDE_BIN || undefined,
         onProgress: report,

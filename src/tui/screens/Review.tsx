@@ -19,10 +19,25 @@ type Phase = 'pick' | 'options' | 'running'
 
 const PO_EXTENSIONS = ['.po']
 const FIELD_LOCALE = 0
-const FIELD_NO_AI = 1
-const FIELD_FRESH = 2
-const FIELD_START = 3
-const FIELD_COUNT = 4
+const FIELD_BATCH = 1
+const FIELD_NO_AI = 2
+const FIELD_FRESH = 3
+const FIELD_START = 4
+const FIELD_COUNT = 5
+
+const BATCH_SIZES = [10, 25, 50, 75, 100]
+
+// A locale team can set any batch size in config.json, and whatever they set has
+// to stay reachable after the first keypress, so it joins the ladder in order.
+export function batchSizeChoices(configured: number): number[] {
+  if (BATCH_SIZES.includes(configured)) return BATCH_SIZES
+  return [...BATCH_SIZES, configured].sort((a, b) => a - b)
+}
+
+function step(values: number[], current: number, by: number): number {
+  const i = values.indexOf(current)
+  return values[(i + by + values.length) % values.length] ?? current
+}
 
 export function Review({ cwd, onBack }: ReviewProps) {
   const commands = useCommands()
@@ -32,6 +47,7 @@ export function Review({ cwd, onBack }: ReviewProps) {
   const [locale, setLocale] = useState(config.defaultLocale)
   const [noAi, setNoAi] = useState(false)
   const [fresh, setFresh] = useState(false)
+  const [batchSize, setBatchSize] = useState(config.batchSize)
   const [focus, setFocus] = useState(FIELD_LOCALE)
   const [events, setEvents] = useState<ReviewEvent[]>([])
   const task = useTask<ReviewSummary>()
@@ -52,6 +68,7 @@ export function Review({ cwd, onBack }: ReviewProps) {
         locale: chosenLocale,
         noAi,
         fresh,
+        batchSize,
         onProgress: (e) => setEvents((prev) => [...prev, e]),
       }),
     )
@@ -76,6 +93,9 @@ export function Review({ cwd, onBack }: ReviewProps) {
     else if (key.leftArrow || key.rightArrow || (input === ' ' && !typing)) {
       if (focus === FIELD_NO_AI) setNoAi((v) => !v)
       else if (focus === FIELD_FRESH) setFresh((v) => !v)
+      else if (focus === FIELD_BATCH) {
+        setBatchSize((n) => step(batchSizeChoices(config.batchSize), n, key.leftArrow ? -1 : 1))
+      }
     } else if (key.return && focus !== FIELD_LOCALE) {
       if (focus === FIELD_START) {
         const normalized = normalizeLocale(locale)
@@ -111,21 +131,26 @@ export function Review({ cwd, onBack }: ReviewProps) {
       {stage === 'options' && (
         <>
           <Box>
-            <Text>{marker(FIELD_LOCALE)}Locale: </Text>
+            <Text>{marker(FIELD_LOCALE)}Locale:          </Text>
             {typing ? (
-              <TextInput value={locale} onChange={setLocale} onSubmit={() => setFocus(FIELD_NO_AI)} />
+              <TextInput value={locale} onChange={setLocale} onSubmit={() => setFocus(FIELD_BATCH)} />
             ) : (
               <Text>{locale}</Text>
             )}
           </Box>
+          {/* Dimmed under "skip AI checks", where there are no batches to size.
+              It still steps, so the choice survives toggling the AI back on. */}
+          <Text dimColor={noAi}>
+            {marker(FIELD_BATCH)}Batch size:      {batchSize} entries per AI call
+          </Text>
           <Text>
-            {marker(FIELD_NO_AI)}Skip AI checks: {noAi ? 'yes (rules only, fast)' : 'no (rules, then AI review)'}
+            {marker(FIELD_NO_AI)}Skip AI checks:  {noAi ? 'yes (rules only, fast)' : 'no (rules, then AI review)'}
           </Text>
           {/* A review that was interrupted picks up from the marker in its
               problems file. This is the way to make it forget that and start
               from the first batch again. */}
           <Text>
-            {marker(FIELD_FRESH)}Start over: {fresh ? 'yes (ignore saved progress)' : 'no (resume if interrupted)'}
+            {marker(FIELD_FRESH)}Start over:      {fresh ? 'yes (ignore saved progress)' : 'no (resume if interrupted)'}
           </Text>
           <Text>{marker(FIELD_START)}Start review</Text>
           <Hint>↑↓ move · ←→ change · enter select · esc back to menu</Hint>
