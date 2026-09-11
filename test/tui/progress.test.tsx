@@ -123,7 +123,7 @@ describe('Progress', () => {
     const stopped: TranslateEvent[] = [
       { type: 'start', file: FILE, total: 10, pending: 6 },
       { type: 'tm-hit', count: 0 },
-      { type: 'batch-start', index: 1, of: 3, size: 2 },
+      { type: 'batch-start', index: 1, of: 3, size: 2, at: T },
       {
         type: 'done',
         summary: { file: FILE, total: 10, pending: 6, fromTm: 0, translated: 0, fuzzy: 0, skipped: 0, stopped: 'DeepL quota exceeded' },

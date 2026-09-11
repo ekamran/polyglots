@@ -55,13 +55,15 @@ describe('resuming an interrupted review', () => {
     await rm(home, { recursive: true, force: true })
   })
 
+  // Typed with msgid, not just id, so a test that inspects what a batch contained
+  // does not need to cast the mock's recorded call arguments.
   const clears = () =>
-    vi.fn(async (batch: { id: number }[]) =>
+    vi.fn(async (batch: { id: number; msgid: string }[]) =>
       batch.map((c) => ({ id: c.id, problem: false, categories: [] as never[], reason: 'ok' })),
     )
 
   const flags = () =>
-    vi.fn(async (batch: { id: number }[]) =>
+    vi.fn(async (batch: { id: number; msgid: string }[]) =>
       batch.map((c) => ({ id: c.id, problem: true, categories: ['meaning'] as never[], reason: 'says the opposite' })),
     )
 
@@ -96,7 +98,7 @@ describe('resuming an interrupted review', () => {
     await run({ adjudicate })
 
     expect(adjudicate).toHaveBeenCalledTimes(2)
-    const seen = adjudicate.mock.calls.flatMap(([batch]) => (batch as { msgid: string }[]).map((c) => c.msgid))
+    const seen = adjudicate.mock.calls.flatMap(([batch]) => batch.map((c) => c.msgid))
     expect(seen).toEqual(['%s comments', 'Open the sidebar'])
   })
 

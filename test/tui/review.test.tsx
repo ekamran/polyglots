@@ -43,10 +43,10 @@ const FILE = '/tmp/work/submission.po'
 const events: ReviewEvent[] = [
   { type: 'start', file: FILE, total: 120, reviewable: 100 },
   { type: 'rules-done', flagged: 12, suspects: 20 },
-  { type: 'batch-start', index: 1, of: 2, size: 44 },
-  { type: 'batch-done', index: 1, problems: 8 },
-  { type: 'batch-start', index: 2, of: 2, size: 44 },
-  { type: 'batch-failed', index: 2, size: 44, reason: 'claude exited with code 1' },
+  { type: 'batch-start', index: 1, of: 2, size: 44, at: 1_000_000 },
+  { type: 'batch-done', index: 1, problems: 8, at: 1_060_000 },
+  { type: 'batch-start', index: 2, of: 2, size: 44, at: 1_060_000 },
+  { type: 'batch-failed', index: 2, size: 44, reason: 'claude exited with code 1', at: 1_120_000 },
   { type: 'written', file: '/tmp/work/submission-problems.po' },
   {
     type: 'done',
@@ -184,14 +184,14 @@ describe('ReviewProgress in-flight clock', () => {
 
     const during = reduceReviewProgress([
       { type: 'start', file: FILE, total: 10, reviewable: 10 },
-      { type: 'batch-start', index: 1, of: 4, size: 25 },
+      { type: 'batch-start', index: 1, of: 4, size: 25, at: 1000 },
     ])
     expect(during.inFlight).toBe(true)
 
     const after = reduceReviewProgress([
       { type: 'start', file: FILE, total: 10, reviewable: 10 },
-      { type: 'batch-start', index: 1, of: 4, size: 25 },
-      { type: 'batch-done', index: 1, problems: 2 },
+      { type: 'batch-start', index: 1, of: 4, size: 25, at: 1000 },
+      { type: 'batch-done', index: 1, problems: 2, at: 2000 },
     ])
     expect(after.inFlight).toBe(false)
   })
@@ -203,11 +203,11 @@ describe('ReviewProgress in-flight clock', () => {
       <ReviewProgress
         events={[
           { type: 'start', file: FILE, total: 200, reviewable: 200 },
-          { type: 'batch-start', index: 1, of: 8, size: 25 },
-          { type: 'batch-done', index: 1, problems: 1 },
-          { type: 'batch-start', index: 2, of: 8, size: 25 },
-          { type: 'batch-done', index: 2, problems: 2 },
-          { type: 'batch-start', index: 3, of: 8, size: 25 },
+          { type: 'batch-start', index: 1, of: 8, size: 25, at: 1_000_000 },
+          { type: 'batch-done', index: 1, problems: 1, at: 1_060_000 },
+          { type: 'batch-start', index: 2, of: 8, size: 25, at: 1_060_000 },
+          { type: 'batch-done', index: 2, problems: 2, at: 1_120_000 },
+          { type: 'batch-start', index: 3, of: 8, size: 25, at: 1_120_000 },
         ]}
       />,
     )
@@ -221,8 +221,8 @@ describe('ReviewProgress in-flight clock', () => {
       <ReviewProgress
         events={[
           { type: 'start', file: FILE, total: 200, reviewable: 200 },
-          { type: 'batch-start', index: 1, of: 8, size: 25 },
-          { type: 'batch-done', index: 1, problems: 1 },
+          { type: 'batch-start', index: 1, of: 8, size: 25, at: 1_000_000 },
+          { type: 'batch-done', index: 1, problems: 1, at: 1_060_000 },
         ]}
       />,
     )
@@ -236,7 +236,7 @@ describe('ReviewProgress in-flight clock', () => {
       <ReviewProgress
         events={[
           { type: 'start', file: FILE, total: 100, reviewable: 100 },
-          { type: 'batch-start', index: 1, of: 4, size: 25 },
+          { type: 'batch-start', index: 1, of: 4, size: 25, at: 1_000_000 },
         ]}
       />,
     )

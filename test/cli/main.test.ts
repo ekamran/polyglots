@@ -59,8 +59,8 @@ function fakeTranslate(plan: (opts: TranslateOptions, call: number) => Partial<T
       if (outcome instanceof Error) throw outcome
       const summary = summaryFor(opts, outcome)
       emit({ type: 'tm-hit', count: summary.fromTm })
-      emit({ type: 'batch-start', index: 1, of: 1, size: 6 })
-      emit({ type: 'batch-done', index: 1, translated: summary.translated, fuzzy: summary.fuzzy })
+      emit({ type: 'batch-start', index: 1, of: 1, size: 6, at: Date.now() })
+      emit({ type: 'batch-done', index: 1, translated: summary.translated, fuzzy: summary.fuzzy, at: Date.now() })
       emit({ type: 'done', summary })
       return summary
     },

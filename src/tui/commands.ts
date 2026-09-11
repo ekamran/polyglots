@@ -7,6 +7,7 @@ import { DEFAULT_CONFIG, loadConfig, loadSecrets, saveSecret } from '../config.j
 import type { Locale, PolyglotsConfig, ReviewEvent, ReviewSummary } from '../types.js'
 
 export type ReviewFile = typeof reviewFile
+export type ReviewFileOptions = Parameters<ReviewFile>[0]
 
 export interface TuiCommands {
   translateFile: typeof translateFile

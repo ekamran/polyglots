@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // Typechecking src and test together needs a rootDir wide enough to hold both, but this
+    // config is never used to emit, so it does not affect what `npm run build` produces.
+    "rootDir": ".",
+    "noEmit": true
+  },
+  "include": ["src", "test"]
+}

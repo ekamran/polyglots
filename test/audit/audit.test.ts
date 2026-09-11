@@ -241,7 +241,9 @@ describe('auditEntries', () => {
       ...base({ batchSize: 1 }),
       adjudicate,
       onBatchStart: () => order.push('start'),
-      onBatch: () => order.push('done'),
+      onBatch: () => {
+        order.push('done')
+      },
     })
     expect(order).toEqual(['start', 'adjudicate', 'done', 'start', 'adjudicate', 'done'])
   })
@@ -257,7 +259,9 @@ describe('auditEntries', () => {
       entries: [clean, suspect],
       ...base({ batchSize: 1 }),
       adjudicate,
-      onBatch: (p) => batches.push(p.verdicts.map((v) => v.key)),
+      onBatch: (p) => {
+        batches.push(p.verdicts.map((v) => v.key))
+      },
     })
     expect(batches).toEqual([['a'], ['c']])
   })
@@ -283,7 +287,14 @@ describe('auditEntries', () => {
   it('reports why a batch failed so the run can say so', async () => {
     const seen: Array<string | undefined> = []
     const adjudicate = vi.fn().mockRejectedValue(new Error('claude exited with exit code 1'))
-    await auditEntries({ entries: [clean], ...base(), adjudicate, onBatch: (p) => seen.push(p.failed) })
+    await auditEntries({
+      entries: [clean],
+      ...base(),
+      adjudicate,
+      onBatch: (p) => {
+        seen.push(p.failed)
+      },
+    })
     expect(seen[0]).toMatch(/exit code 1/)
   })
 
@@ -294,7 +305,14 @@ describe('auditEntries', () => {
       .mockImplementation(async (batch: { id: number }[]) =>
         batch.map((c) => ({ id: c.id, problem: false, categories: [], reason: 'ok' })),
       )
-    await auditEntries({ entries: [clean, suspect], ...base({ batchSize: 1 }), adjudicate, onBatch: (e) => events.push(e) })
+    await auditEntries({
+      entries: [clean, suspect],
+      ...base({ batchSize: 1 }),
+      adjudicate,
+      onBatch: (e) => {
+        events.push(e)
+      },
+    })
 
     expect(events).toEqual([
       { index: 1, of: 2, size: 1, problems: 0, verdicts: [expect.objectContaining({ key: 'a' })] },

@@ -76,8 +76,8 @@ describe('Translate run', () => {
         return scriptedTranslate((file) => [
           { type: 'start', file, total: 8, pending: 3 },
           { type: 'tm-hit', count: 1 },
-          { type: 'batch-start', index: 1, of: 1, size: 2 },
-          { type: 'batch-done', index: 1, translated: 2, fuzzy: 1 },
+          { type: 'batch-start', index: 1, of: 1, size: 2, at: Date.now() },
+          { type: 'batch-done', index: 1, translated: 2, fuzzy: 1, at: Date.now() },
           { type: 'saved' },
           { type: 'done', summary: { file, total: 8, pending: 3, fromTm: 1, translated: 2, fuzzy: 1, skipped: 0 } },
         ])(opts)

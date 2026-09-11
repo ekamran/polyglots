@@ -106,11 +106,13 @@ describe('formatProgress remaining time', () => {
   })
 
   it('drops the estimate once the last batch is in', () => {
-    const state = [
-      { type: 'start', file: 'a.po', total: 50, pending: 50 },
-      { type: 'batch-start', index: 1, of: 1, size: 50, at: T },
-      { type: 'batch-done', index: 1, translated: 50, fuzzy: 0, at: T + 60_000 },
-    ].reduce(applyEvent, initialProgress)
+    const state = (
+      [
+        { type: 'start', file: 'a.po', total: 50, pending: 50 },
+        { type: 'batch-start', index: 1, of: 1, size: 50, at: T },
+        { type: 'batch-done', index: 1, translated: 50, fuzzy: 0, at: T + 60_000 },
+      ] satisfies TranslateEvent[]
+    ).reduce(applyEvent, initialProgress)
     expect(formatProgress(state)).not.toContain('left')
   })
 })
@@ -223,7 +225,7 @@ describe('createProgressReporter', () => {
 describe('batch phase reporting', () => {
   it('shows which half of the batch is running', () => {
     let state = applyEvent(initialProgress, { type: 'start', file: 'a.po', total: 10, pending: 10 })
-    state = applyEvent(state, { type: 'batch-start', index: 1, of: 2, size: 5 })
+    state = applyEvent(state, { type: 'batch-start', index: 1, of: 2, size: 5, at: 1000 })
     state = applyEvent(state, { type: 'batch-phase', index: 1, phase: 'drafting', at: 1000 })
     expect(formatProgress(state, 1000)).toMatch(/drafting/)
 
@@ -245,7 +247,7 @@ describe('batch phase reporting', () => {
   it('drops the phase once the batch finishes', () => {
     let state = applyEvent(initialProgress, { type: 'start', file: 'a.po', total: 10, pending: 10 })
     state = applyEvent(state, { type: 'batch-phase', index: 1, phase: 'reviewing', at: 1000 })
-    state = applyEvent(state, { type: 'batch-done', index: 1, translated: 5, fuzzy: 1 })
+    state = applyEvent(state, { type: 'batch-done', index: 1, translated: 5, fuzzy: 1, at: 9000 })
     expect(formatProgress(state, 9000)).not.toMatch(/reviewing/)
   })
 
@@ -253,7 +255,7 @@ describe('batch phase reporting', () => {
     const out = { isTTY: false, text: '', write(c: string) { this.text += c; return true } }
     const report = createProgressReporter(out)
     report({ type: 'start', file: 'a.po', total: 10, pending: 10 })
-    report({ type: 'batch-start', index: 1, of: 2, size: 5 })
+    report({ type: 'batch-start', index: 1, of: 2, size: 5, at: 1000 })
     report({ type: 'batch-phase', index: 1, phase: 'drafting', at: 1000 })
     report({ type: 'batch-phase', index: 1, phase: 'reviewing', at: 2000 })
     report.finish()
@@ -273,8 +275,8 @@ describe('createReviewProgressReporter', () => {
     const out = sink()
     const report = createReviewProgressReporter(out)
     report({ type: 'start', file: 'a.po', total: 120, reviewable: 116 })
-    report({ type: 'batch-start', index: 1, of: 5, size: 25 })
-    report({ type: 'batch-done', index: 1, problems: 3 })
+    report({ type: 'batch-start', index: 1, of: 5, size: 25, at: 1000 })
+    report({ type: 'batch-done', index: 1, problems: 3, at: 5000 })
     report.finish()
 
     expect(out.text).toContain('Reviewing a.po')
@@ -297,8 +299,8 @@ describe('createReviewProgressReporter', () => {
     const out = sink()
     const report = createReviewProgressReporter(out)
     report({ type: 'start', file: 'a.po', total: 10, reviewable: 10 })
-    report({ type: 'batch-done', index: 1, problems: 2 })
-    report({ type: 'batch-done', index: 2, problems: 3 })
+    report({ type: 'batch-done', index: 1, problems: 2, at: 1000 })
+    report({ type: 'batch-done', index: 2, problems: 3, at: 2000 })
     report.finish()
     expect(out.text).toMatch(/flagged 5/)
   })
@@ -364,7 +366,7 @@ describe('createReviewProgressReporter', () => {
     const out = sink()
     const report = createReviewProgressReporter(out)
     report({ type: 'start', file: 'a.po', total: 10, reviewable: 10 })
-    report({ type: 'batch-failed', index: 2, size: 25, reason: 'claude exited with exit code 1' })
+    report({ type: 'batch-failed', index: 2, size: 25, reason: 'claude exited with exit code 1', at: 1000 })
     report.finish()
     expect(out.text).toMatch(/batch 2/)
     expect(out.text).toContain('exit code 1')
