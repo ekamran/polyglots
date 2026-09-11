@@ -1,4 +1,5 @@
 import type { AuditEntry } from '../types.js'
+import { runRules, type RuleContext } from './rules/index.js'
 
 // Rules whose correct output is computable from the source, so no judgment and
 // no model call is needed. A rule qualifies only if it is `error` severity and
@@ -33,4 +34,34 @@ export function repairMechanically(entry: AuditEntry): string[] | undefined {
   })
 
   return changed ? repaired : undefined
+}
+
+export type FixVerdict = { accepted: string[] } | { rejected: string }
+
+export interface JudgeFixArgs {
+  entry: AuditEntry
+  fix: string[]
+  nplurals: number
+  ctx: RuleContext
+}
+
+// A proposed fix is only worth taking if it is actually different, actually
+// shaped like a translation of this entry, and does not break something the
+// rules can prove. Soft findings are not grounds for rejection: the model just
+// weighed those, and rejecting on them would mean no fix could ever land.
+export function judgeFix({ entry, fix, nplurals, ctx }: JudgeFixArgs): FixVerdict {
+  const forms = entry.msgidPlural === undefined ? 1 : nplurals
+  if (fix.length !== forms) {
+    return { rejected: `the proposed fix has ${fix.length} plural forms where this entry needs ${forms}` }
+  }
+  if (fix.some((form) => form.trim() === '')) return { rejected: 'the proposed fix was empty' }
+  if (fix.length === entry.msgstr.length && fix.every((form, i) => form === entry.msgstr[i])) {
+    return { rejected: 'the proposed fix was unchanged from what was submitted' }
+  }
+
+  const errors = runRules({ ...entry, msgstr: fix }, ctx).filter((f) => f.severity === 'error')
+  if (errors.length > 0) {
+    return { rejected: `the proposed fix was rejected: ${errors.map((f) => f.message).join('; ')}` }
+  }
+  return { accepted: fix }
 }
