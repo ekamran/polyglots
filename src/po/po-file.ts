@@ -140,8 +140,13 @@ const FALLBACK_NOTE = 'flagged for review'
 // output file is rebuilt from the untouched source on every save. An annotation
 // written without a readable note is therefore deleted on the next resume, along
 // with a repair that exists in no other file, so one is always substituted here.
+// A note is read back through splitLines, which trims each line and keeps only
+// the first: a newline in the note text truncates it, and one at the front
+// leaves a bare "# polyglots:" whose lost trailing space no longer matches
+// NOTE_PREFIX. Flattening the note to a single line here keeps the round trip
+// whole whatever the reviewer, or the model's reason string, put in it.
 function readableNotes(notes: string[]): string[] {
-  const said = notes.filter((note) => note.trim() !== '')
+  const said = notes.map((note) => note.replace(/\s*\n\s*/g, ' ').trim()).filter((note) => note !== '')
   return said.length > 0 ? said : [FALLBACK_NOTE]
 }
 

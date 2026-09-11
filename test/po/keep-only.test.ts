@@ -128,6 +128,28 @@ describe('PoFile.keepOnly', () => {
     expect([...reparsed.carried().keys()]).toEqual(['Settings'])
   })
 
+  // The note text on the audit path is the model's own reason string, so a reply
+  // that begins with a newline lands here. splitLines trims every line, so the
+  // note was written as a bare "# polyglots:" that carried()'s prefix check can
+  // never match, and the entry was dropped on the next rebuild with its repair.
+  it('reads back a note that begins with a newline, and the repair with it', async () => {
+    await keep(new Map([['Settings', { notes: ['\nglossary term not used'], text: ['Ayarlar bölümü'] }]]))
+    const reparsed = await loadPo(out)
+    expect(reparsed.carried()).toEqual(
+      new Map([['Settings', { notes: ['glossary term not used'], msgstr: ['Ayarlar bölümü'] }]]),
+    )
+  })
+
+  // A newline inside the note split it across two comment lines, only the first
+  // of which carries the prefix, so everything after it was silently lost.
+  it('reads back the whole of a note with a newline inside it', async () => {
+    await keep(new Map([['Settings', { notes: ['title case mirrors the source\nand the glossary term is not used'] }]]))
+    const reparsed = await loadPo(out)
+    expect(reparsed.carried().get('Settings')?.notes).toEqual([
+      'title case mirrors the source and the glossary term is not used',
+    ])
+  })
+
   it('leaves the submitted translation alone when the repair is an empty list', async () => {
     const text = await keep(new Map([['Settings', { notes: ['glossary'], text: [] }]]))
     expect(text).toContain('msgstr "Ayarlar"')
