@@ -22,11 +22,14 @@ export const auditBatchJsonSchema = {
         properties: {
           id: { type: 'integer', minimum: 1 },
           problem: { type: 'boolean' },
+          // Empty for a clean entry, which is most of them: the prompt asks for
+          // that, so the schema has to allow it. A flagged entry is guaranteed
+          // something readable to write by readableNotes, not by a minItems here.
+          categories: { type: 'array', items: { type: 'string', enum: [...AUDIT_CATEGORIES] } },
+          reason: { type: 'string' },
           // Only in the JSON schema, which steers one result. The zod schema stays
           // permissive on purpose: rejecting there fails the whole batch and marks
           // every entry in it unreviewed over one malformed result.
-          categories: { type: 'array', minItems: 1, items: { type: 'string', enum: [...AUDIT_CATEGORIES] } },
-          reason: { type: 'string' },
           fix: { type: 'array', minItems: 1, items: { type: 'string' } },
         },
         required: ['id', 'problem', 'categories', 'reason'],

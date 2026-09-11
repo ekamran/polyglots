@@ -98,6 +98,64 @@ function buildResults(entries, nplurals) {
   })
 }
 
+// The real CLI decodes under the --json-schema it is given, so a payload that
+// violates it is one the real model could never return. Checking it here keeps
+// the schema honest against the prompt: a shape the prompt asks for but the
+// schema forbids fails loudly in tests instead of in a live run.
+function schemaErrors(value, schema, path) {
+  const errors = []
+  const at = path || 'output'
+  if (!schema || typeof schema !== 'object') return errors
+
+  if (schema.enum && !schema.enum.includes(value)) errors.push(`${at} is not one of ${schema.enum.join(', ')}`)
+
+  switch (schema.type) {
+    case 'object': {
+      if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+        errors.push(`${at} is not an object`)
+        break
+      }
+      for (const key of schema.required || []) {
+        if (!(key in value)) errors.push(`${at}.${key} is required`)
+      }
+      for (const [key, child] of Object.entries(value)) {
+        const childSchema = (schema.properties || {})[key]
+        if (!childSchema) {
+          if (schema.additionalProperties === false) errors.push(`${at}.${key} is not allowed`)
+          continue
+        }
+        errors.push(...schemaErrors(child, childSchema, `${at}.${key}`))
+      }
+      break
+    }
+    case 'array': {
+      if (!Array.isArray(value)) {
+        errors.push(`${at} is not an array`)
+        break
+      }
+      if (schema.minItems !== undefined && value.length < schema.minItems) {
+        errors.push(`${at} has ${value.length} items, fewer than the ${schema.minItems} required`)
+      }
+      value.forEach((item, i) => errors.push(...schemaErrors(item, schema.items, `${at}[${i}]`)))
+      break
+    }
+    case 'integer':
+      if (!Number.isInteger(value)) errors.push(`${at} is not an integer`)
+      else if (schema.minimum !== undefined && value < schema.minimum) errors.push(`${at} is below the minimum`)
+      break
+    case 'boolean':
+      if (typeof value !== 'boolean') errors.push(`${at} is not a boolean`)
+      break
+    case 'string':
+      if (typeof value !== 'string') errors.push(`${at} is not a string`)
+      else if (schema.minLength !== undefined && value.length < schema.minLength) errors.push(`${at} is too short`)
+      break
+    default:
+      break
+  }
+  return errors
+}
+
 function envelope(payload, extra) {
   return JSON.stringify({
     type: 'result',
@@ -149,6 +207,11 @@ async function main() {
   if (entries.some((e) => typeof e.id !== 'number' || 'key' in e)) fail('entries must carry an id and no key')
 
   const payload = { results: isAuditSchema() ? buildAuditResults(entries) : buildResults(entries, nplurals) }
+
+  // Checked before the switch: the modes below corrupt the payload on purpose,
+  // to stand in for a CLI that misbehaves after decoding.
+  const invalid = schemaErrors(payload, JSON.parse(valueOf('--json-schema')))
+  if (invalid.length > 0) fail(`output violates --json-schema: ${invalid.join('; ')}`)
 
   switch (mode) {
     case 'ok':

@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import type Database from 'better-sqlite3'
+import { adjudicateWithClaude } from '../../src/audit/audit.js'
 import { openDb, replaceGlossary } from '../../src/storage/index.js'
 import { writeMcpConfig } from '../../src/mcp/config.js'
 import { loadPo } from '../../src/po/po-file.js'
@@ -83,6 +84,28 @@ describe('review end to end', () => {
     expect(summary.unreviewed).toBe(0)
     expect(summary.problems).toBeGreaterThan(0)
     expect(summary.problems + summary.approvable).toBe(summary.reviewed)
+  })
+
+  // Most entries in a real submission are clean, and the prompt tells the model
+  // to return an empty categories array for those. The schema it is constrained
+  // by has to permit what the prompt asks for, or the common case is rejected
+  // and a whole batch of good entries comes back unreviewed.
+  it('takes a clean verdict, with no categories, through the real schema', async () => {
+    const results = await adjudicateWithClaude(
+      [
+        {
+          id: 1,
+          key: 'Open the sidebar',
+          msgid: 'Open the sidebar',
+          msgstr: ['Kenar çubuğunu aç'],
+          comments: [],
+          references: [],
+          hints: [],
+        },
+      ],
+      { locale: 'tr', nplurals: 2, claudeBin: FAKE_CLAUDE, mcpConfigPath: await writeMcpConfig({ dir: home }) },
+    )
+    expect(results).toEqual([{ id: 1, problem: false, categories: [], reason: 'fake: looks fine' }])
   })
 
   it('catches the mechanical failures without help from the model', async () => {
