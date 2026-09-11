@@ -120,10 +120,15 @@ export function ReviewProgress({ events }: { events: ReviewEvent[] }) {
 
   return (
     <Box flexDirection="column">
+      {/* The bar already shows the completed fraction, so the text carries one
+          counter: which batch is running, or how many are finished. Showing both
+          reads as a contradiction (2/8 next to batch 3/8). */}
       <Text>
-        {renderBar(state.batchesDone, state.batchesTotal || 1)} {state.batchesDone}/{state.batchesTotal} problems{' '}
-        {state.problems}
-        {state.inFlight ? ` · batch ${state.batchIndex}/${state.batchesTotal} reviewing ${elapsed}s` : ''}
+        {renderBar(state.batchesDone, state.batchesTotal || 1)}{' '}
+        {state.inFlight
+          ? `batch ${state.batchIndex}/${state.batchesTotal} · reviewing ${elapsed}s`
+          : `${state.batchesDone}/${state.batchesTotal} batches`}{' '}
+        · problems {state.problems}
       </Text>
       <Text dimColor>
         {state.file} · {state.total} entries, {state.reviewable} reviewable, {state.ruleFlagged} flagged by rules

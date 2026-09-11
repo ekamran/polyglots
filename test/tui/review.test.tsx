@@ -107,6 +107,39 @@ describe('ReviewProgress in-flight clock', () => {
     expect(after.inFlight).toBe(false)
   })
 
+  // Two counters (batches done and batch in flight) read as a contradiction; the
+  // bar already shows the completed fraction, so the text says what is happening.
+  it('shows one counter, not both, while a batch is in flight', () => {
+    const { lastFrame } = render(
+      <ReviewProgress
+        events={[
+          { type: 'start', file: FILE, total: 200, reviewable: 200 },
+          { type: 'batch-start', index: 1, of: 8, size: 25 },
+          { type: 'batch-done', index: 1, problems: 1 },
+          { type: 'batch-start', index: 2, of: 8, size: 25 },
+          { type: 'batch-done', index: 2, problems: 2 },
+          { type: 'batch-start', index: 3, of: 8, size: 25 },
+        ]}
+      />,
+    )
+    const frame = flat(lastFrame())
+    expect(frame).toMatch(/batch 3\/8/)
+    expect(frame).not.toMatch(/2\/8/)
+  })
+
+  it('falls back to a completed count when no batch is running', () => {
+    const { lastFrame } = render(
+      <ReviewProgress
+        events={[
+          { type: 'start', file: FILE, total: 200, reviewable: 200 },
+          { type: 'batch-start', index: 1, of: 8, size: 25 },
+          { type: 'batch-done', index: 1, problems: 1 },
+        ]}
+      />,
+    )
+    expect(flat(lastFrame())).toMatch(/1\/8/)
+  })
+
   // A batch is a single claude call taking minutes; without this the bar sits at
   // the same fraction with no way to tell work from a wedged subprocess.
   it('shows the batch it is waiting on while one is in flight', () => {
