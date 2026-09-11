@@ -66,13 +66,20 @@ function isAuditSchema() {
 
 function buildAuditResults(entries) {
   return entries.map((e) => {
-    const problem = String(e.source).includes('BAD')
-    return {
+    const problem = String(e.source).includes('BAD') || (e.automatedChecks || []).length > 0
+    const result = {
       id: e.id,
       problem,
       categories: problem ? ['meaning'] : [],
       reason: problem ? 'fake: source marked BAD' : 'fake: looks fine',
     }
+    // A fix that keeps the source's placeholders and tags, so the rules accept
+    // it. FAKE_CLAUDE_BAD_FIX makes it drop them, to exercise the rejection.
+    if (problem) {
+      const carried = String(e.source).match(/%[0-9$]*[sd]|<[^>]+>/g) || []
+      result.fix = [process.env.FAKE_CLAUDE_BAD_FIX ? '[tr] onarildi' : `[tr] onarildi ${carried.join(' ')}`.trim()]
+    }
+    return result
   })
 }
 
