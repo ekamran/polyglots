@@ -299,13 +299,22 @@ describe('createReviewProgressReporter', () => {
     expect(out.text).toMatch(/~3m left, done by /)
   })
 
-  it('says nothing about remaining time until it has two batches to go on', () => {
-    const out = sink()
+  // The whole point of the estimate is deciding whether to wait up, which is a
+  // decision the user makes at the start, not an hour in.
+  it('has an estimate from the first batch, before any of them has finished', () => {
+    const out = { isTTY: true, text: '', write(c: string) { this.text += c; return true } }
     const report = createReviewProgressReporter(out)
-    const t = 1_700_000_000_000
-    report({ type: 'start', file: 'a.po', total: 125, reviewable: 125 })
-    report({ type: 'batch-start', index: 1, of: 5, size: 25, at: t })
-    report({ type: 'batch-done', index: 1, problems: 0, at: t + 60_000 })
+    report({ type: 'start', file: 'a.po', total: 2831, reviewable: 2805 })
+    report({ type: 'batch-start', index: 1, of: 114, size: 25, at: 1_700_000_000_000 })
+    report.finish()
+
+    expect(out.text).toMatch(/left, done by /)
+  })
+
+  it('has nothing to estimate from before the first batch is announced', () => {
+    const out = { isTTY: true, text: '', write(c: string) { this.text += c; return true } }
+    const report = createReviewProgressReporter(out)
+    report({ type: 'start', file: 'a.po', total: 2831, reviewable: 2805 })
     report.finish()
 
     expect(out.text).not.toContain('left')
@@ -323,9 +332,23 @@ describe('createReviewProgressReporter', () => {
 })
 
 describe('estimateRemainingMs', () => {
-  it('waits for a couple of samples before guessing', () => {
+  // On a 114-batch submission, waiting for two batches to land before saying
+  // anything is half an hour of silence. A guess from a default pace is worth
+  // more than that, and it is replaced the moment a real batch lands.
+  it('guesses from a default pace before it has timed anything', () => {
+    expect(estimateRemainingMs([], 10, 25)).toBe(10 * 25 * 4_000)
+  })
+
+  it('drops the guess as soon as one real batch has been timed', () => {
+    expect(estimateRemainingMs([40_000], 10, 25)).toBe(400_000)
+  })
+
+  it('scales the guess with the batch size, since a batch is one call over its entries', () => {
+    expect(estimateRemainingMs([], 10, 50)).toBe(2 * estimateRemainingMs([], 10, 25)!)
+  })
+
+  it('says nothing when it has neither a measurement nor a batch size', () => {
     expect(estimateRemainingMs([], 10)).toBeUndefined()
-    expect(estimateRemainingMs([40_000], 10)).toBeUndefined()
   })
 
   it('multiplies the typical batch by what is left', () => {

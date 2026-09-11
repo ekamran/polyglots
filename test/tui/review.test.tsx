@@ -137,8 +137,23 @@ describe('ReviewProgress remaining time', () => {
     expect(state.remainingMs).toBe(5 * 60_000)
   })
 
-  it('says nothing until it has seen two batches', () => {
-    expect(reduceReviewProgress(timed(1, 60_000)).remainingMs).toBeUndefined()
+  // Two batches into a 114-batch run is half an hour of silence. The guess is
+  // rough and says so by changing as soon as a real batch lands.
+  it('guesses from a default pace before any batch has finished', () => {
+    const state = reduceReviewProgress([
+      { type: 'start', file: FILE, total: 2831, reviewable: 2805 },
+      { type: 'batch-start', index: 1, of: 114, size: 25, at: 1_000_000 },
+    ])
+    expect(state.remainingMs).toBe(114 * 25 * 4_000)
+  })
+
+  it('replaces the guess with the first batch it actually timed', () => {
+    expect(reduceReviewProgress(timed(1, 60_000)).remainingMs).toBe(7 * 60_000)
+  })
+
+  it('has nothing to guess from before the first batch is announced', () => {
+    const state = reduceReviewProgress([{ type: 'start', file: FILE, total: 2831, reviewable: 2805 }])
+    expect(state.remainingMs).toBeUndefined()
   })
 
   it('ignores events with no timestamp rather than producing nonsense', () => {
@@ -147,8 +162,10 @@ describe('ReviewProgress remaining time', () => {
       { type: 'batch-start', index: 1, of: 2, size: 25 } as ReviewEvent,
       { type: 'batch-done', index: 1, problems: 0 } as ReviewEvent,
     ])
+    // Nothing was timed, so nothing is measured; the estimate falls back to the
+    // default pace rather than to NaN.
     expect(state.batchDurations).toEqual([])
-    expect(state.remainingMs).toBeUndefined()
+    expect(state.remainingMs).toBe(1 * 25 * 4_000)
   })
 
   it('shows the estimate and a finish time in the line', () => {

@@ -188,14 +188,20 @@ const ETA_WINDOW = 5
 // Below this the estimate is noise: the wait is over before anyone has read it.
 const MIN_ESTIMATE_MS = 10_000
 
+// What a batch costs before this run has timed one of its own. A batch is a
+// single claude call over its entries, and the observed pace on real
+// submissions is around four seconds an entry, so it scales with batch size.
+// Only ever a placeholder: the first batch to land replaces it.
+const PRIOR_MS_PER_ENTRY = 4_000
+
 // Median rather than mean: one batch that stalls near the timeout would otherwise
 // dominate the estimate for the rest of the run.
-export function estimateRemainingMs(durations: number[], remaining: number): number | undefined {
-  if (durations.length < 2 || remaining <= 0) return undefined
+export function estimateRemainingMs(durations: number[], remaining: number, batchSize = 0): number | undefined {
+  if (remaining <= 0) return undefined
   const recent = [...durations.slice(-ETA_WINDOW)].sort((a, b) => a - b)
-  const median = recent[Math.floor(recent.length / 2)]
-  if (median === undefined) return undefined
-  const estimate = median * remaining
+  const typical = recent.length > 0 ? recent[Math.floor(recent.length / 2)]! : batchSize * PRIOR_MS_PER_ENTRY
+  if (typical <= 0) return undefined
+  const estimate = typical * remaining
   return estimate < MIN_ESTIMATE_MS ? undefined : estimate
 }
 
@@ -222,6 +228,7 @@ export function createReviewProgressReporter(stream: ProgressStream): ReviewProg
   let liveLine = false
   let inFlightSince: number | undefined
   let ticker: NodeJS.Timeout | undefined
+  let batchSize = 0
   const durations: number[] = []
   const tty = stream.isTTY === true
 
@@ -266,7 +273,7 @@ export function createReviewProgressReporter(stream: ProgressStream): ReviewProg
     if (inFlightSince !== undefined) {
       parts.push(`reviewing ${Math.max(0, Math.round((now - inFlightSince) / 1000))}s`)
     }
-    const remaining = estimateRemainingMs(durations, of - done)
+    const remaining = estimateRemainingMs(durations, of - done, batchSize)
     if (remaining !== undefined) {
       parts.push(`~${formatDuration(remaining)} left, done by ${formatFinishTime(remaining, now)}`)
     }
@@ -286,6 +293,7 @@ export function createReviewProgressReporter(stream: ProgressStream): ReviewProg
       case 'batch-start':
         of = event.of
         index = event.index
+        batchSize = event.size
         inFlightSince = event.at
         break
       case 'batch-done':

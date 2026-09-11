@@ -52,6 +52,8 @@ export function reduceReviewProgress(events: ReviewEvent[]): ReviewProgressState
   // Only set while a batch is open, so a duration is recorded exactly once and a
   // fixture without timestamps records none rather than NaN.
   let openedAt: number | undefined
+  // Feeds the default-pace guess that stands in until a batch has been timed.
+  let batchSize = 0
 
   const close = (at: unknown) => {
     if (typeof openedAt === 'number' && typeof at === 'number') state.batchDurations.push(at - openedAt)
@@ -76,6 +78,7 @@ export function reduceReviewProgress(events: ReviewEvent[]): ReviewProgressState
       case 'batch-start':
         state.batchesTotal = e.of
         state.batchIndex = e.index
+        batchSize = e.size
         state.inFlight = true
         openedAt = typeof e.at === 'number' ? e.at : undefined
         break
@@ -101,7 +104,7 @@ export function reduceReviewProgress(events: ReviewEvent[]): ReviewProgressState
     }
   }
 
-  state.remainingMs = estimateRemainingMs(state.batchDurations, state.batchesTotal - state.batchesDone)
+  state.remainingMs = estimateRemainingMs(state.batchDurations, state.batchesTotal - state.batchesDone, batchSize)
 
   if (state.summary) {
     state.inFlight = false
