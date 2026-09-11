@@ -85,7 +85,7 @@ describe('translateFile with the real reviewBatch and the fake claude binary', (
     })
 
     expect(summary).toMatchObject({ pending: 2, translated: 2, fuzzy: 1, skipped: 0 })
-    expect(ofType(events, 'batch-done')).toEqual([{ type: 'batch-done', index: 1, translated: 2, fuzzy: 1 }])
+    expect(ofType(events, 'batch-done')).toMatchObject([{ type: 'batch-done', index: 1, translated: 2, fuzzy: 1 }])
     const after = await parseFile(file)
     expect(entryOf(after, 'Hook name').msgstr).toEqual(['[tr] Hook name'])
     expect(entryOf(after, 'Hook name').comments?.flag).toBe('fuzzy')

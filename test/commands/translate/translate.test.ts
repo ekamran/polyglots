@@ -205,7 +205,7 @@ describe('translateFile: fuzzy flags', () => {
     expect(entryOf(after, 'Save Changes').comments?.flag).toBeUndefined()
     expect(entryOf(after, 'Form entries').comments?.flag).toBeUndefined()
     expect(summary.fuzzy).toBe(1)
-    expect(ofType(events, 'batch-done')).toEqual([{ type: 'batch-done', index: 1, translated: 7, fuzzy: 1 }])
+    expect(ofType(events, 'batch-done')).toMatchObject([{ type: 'batch-done', index: 1, translated: 7, fuzzy: 1 }])
   })
 })
 
@@ -217,7 +217,7 @@ describe('translateFile: batching and incremental save', () => {
     await translateFile(base({ engine, review: fakeReview(), batchSize: 3, onProgress }))
 
     expect(engine.calls.map((c) => c.length)).toEqual([3, 3, 1])
-    expect(ofType(events, 'batch-start')).toEqual([
+    expect(ofType(events, 'batch-start')).toMatchObject([
       { type: 'batch-start', index: 1, of: 3, size: 3 },
       { type: 'batch-start', index: 2, of: 3, size: 3 },
       { type: 'batch-start', index: 3, of: 3, size: 1 },
@@ -265,7 +265,7 @@ describe('translateFile: failures', () => {
     expect(review.calls).toHaveLength(5)
     expect(engine.calls).toHaveLength(4)
     expect(review.calls[1]!.inputs).toEqual(review.calls[2]!.inputs)
-    expect(ofType(events, 'batch-skipped')).toEqual([{ type: 'batch-skipped', index: 2, size: 2, reason: 'boom' }])
+    expect(ofType(events, 'batch-skipped')).toMatchObject([{ type: 'batch-skipped', index: 2, size: 2, reason: 'boom' }])
     expect(ofType(events, 'batch-done').map((e) => e.index)).toEqual([1, 3, 4])
     expect(summary).toMatchObject({ pending: 7, fromTm: 0, translated: 5, skipped: 2 })
     expect(summary.stopped).toBeUndefined()
@@ -288,7 +288,7 @@ describe('translateFile: failures', () => {
 
     const summary = await translateFile(base({ engine, review: fakeReview(), batchSize: 2, onProgress }))
 
-    expect(ofType(events, 'batch-skipped')).toEqual([
+    expect(ofType(events, 'batch-skipped')).toMatchObject([
       { type: 'batch-skipped', index: 1, size: 2, reason: 'deepl: expected 2 got 1' },
     ])
     expect(summary).toMatchObject({ translated: 5, skipped: 2 })
@@ -305,7 +305,7 @@ describe('translateFile: failures', () => {
     expect(summary).toMatchObject({ pending: 7, translated: 2, skipped: 0, fromTm: 0 })
     expect(engine.calls).toHaveLength(2)
     expect(ofType(events, 'batch-start').map((e) => e.index)).toEqual([1, 2])
-    expect(ofType(events, 'batch-skipped')).toEqual([])
+    expect(ofType(events, 'batch-skipped')).toMatchObject([])
     expect(events.at(-1)).toEqual({ type: 'done', summary })
 
     const after = await parseFile(ws.file)

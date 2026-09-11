@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
 import { Box, Text } from 'ink'
 import type { ReviewEvent, ReviewSummary } from '../../types.js'
 import { renderBar } from './Progress.js'
 import { estimateRemainingMs, formatDuration, formatFinishTime } from '../../cli/progress.js'
+import { useElapsed } from '../hooks/useElapsed.js'
 
 export interface ReviewProgressState {
   started: boolean
@@ -113,24 +113,6 @@ export function reduceReviewProgress(events: ReviewEvent[]): ReviewProgressState
     state.unreviewed = state.summary.unreviewed
   }
   return state
-}
-
-// Seconds since `key` last changed while `active`, re-rendered once a second so
-// the number visibly moves during a call that produces no other output.
-function useElapsed(active: boolean, key: number): number {
-  const [since, setSince] = useState(() => Date.now())
-  const [now, setNow] = useState(since)
-
-  useEffect(() => {
-    if (!active) return
-    const started = Date.now()
-    setSince(started)
-    setNow(started)
-    const timer = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(timer)
-  }, [active, key])
-
-  return Math.max(0, Math.round((now - since) / 1000))
 }
 
 function ruleBreakdown(byRule: Record<string, number>): string[] {

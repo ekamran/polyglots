@@ -12,6 +12,13 @@ export interface ProgressState {
   skipped: number
   batch?: { index: number; of: number }
   phase?: { name: BatchPhase; since: number }
+  // The bar counts entries, but time is spent in batches, so the estimate is
+  // built from those. Set while a batch is open, so one duration is recorded per
+  // batch and an event without a timestamp records none rather than NaN.
+  batchStartedAt?: number
+  batchDurations: number[]
+  batchesDone: number
+  batchSize: number
 }
 
 export const initialProgress: ProgressState = {
@@ -21,6 +28,9 @@ export const initialProgress: ProgressState = {
   done: 0,
   fuzzy: 0,
   skipped: 0,
+  batchDurations: [],
+  batchesDone: 0,
+  batchSize: 0,
 }
 
 const BAR_WIDTH = 10
@@ -41,6 +51,15 @@ export function renderBar(done: number, total: number, width: number): string {
   return FILLED.repeat(filled) + EMPTY.repeat(width - filled)
 }
 
+function closeBatch(state: ProgressState, at: number): Partial<ProgressState> {
+  const timed = typeof state.batchStartedAt === 'number' && typeof at === 'number'
+  return {
+    batchesDone: state.batchesDone + 1,
+    batchStartedAt: undefined,
+    batchDurations: timed ? [...state.batchDurations, at - state.batchStartedAt!] : state.batchDurations,
+  }
+}
+
 export function applyEvent(state: ProgressState, event: TranslateEvent): ProgressState {
   switch (event.type) {
     case 'start':
@@ -48,7 +67,13 @@ export function applyEvent(state: ProgressState, event: TranslateEvent): Progres
     case 'tm-hit':
       return { ...state, done: state.done + event.count }
     case 'batch-start':
-      return { ...state, batch: { index: event.index, of: event.of }, phase: undefined }
+      return {
+        ...state,
+        batch: { index: event.index, of: event.of },
+        phase: undefined,
+        batchStartedAt: event.at,
+        batchSize: event.size,
+      }
     case 'batch-phase':
       return { ...state, phase: { name: event.phase, since: event.at } }
     case 'batch-done':
@@ -57,9 +82,18 @@ export function applyEvent(state: ProgressState, event: TranslateEvent): Progres
         done: state.done + event.translated,
         fuzzy: state.fuzzy + event.fuzzy,
         phase: undefined,
+        ...closeBatch(state, event.at),
       }
+    // A skipped batch still cost whatever it spent failing, so it is timed like
+    // any other; pretending otherwise would make the estimate optimistic exactly
+    // when the run is going badly.
     case 'batch-skipped':
-      return { ...state, done: state.done + event.size, skipped: state.skipped + event.size }
+      return {
+        ...state,
+        done: state.done + event.size,
+        skipped: state.skipped + event.size,
+        ...closeBatch(state, event.at),
+      }
     default:
       return state
   }
@@ -72,6 +106,10 @@ export function formatProgress(state: ProgressState, now: number = Date.now()): 
   }
   if (state.phase) {
     parts.push(`${state.phase.name} ${Math.max(0, Math.round((now - state.phase.since) / 1000))}s`)
+  }
+  const remaining = estimateRemainingMs(state.batchDurations, (state.batch?.of ?? 0) - state.batchesDone, state.batchSize)
+  if (remaining !== undefined) {
+    parts.push(`~${formatDuration(remaining)} left, done by ${formatFinishTime(remaining, now)}`)
   }
   return parts.join('  ')
 }

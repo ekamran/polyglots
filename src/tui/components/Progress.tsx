@@ -1,5 +1,6 @@
 import { Box, Text } from 'ink'
-import { renderBar as bar } from '../../cli/progress.js'
+import { estimateRemainingMs, formatDuration, formatFinishTime, renderBar as bar, type BatchPhase } from '../../cli/progress.js'
+import { useElapsed } from '../hooks/useElapsed.js'
 import type { TranslateEvent, TranslateSummary } from '../../commands/translate.js'
 
 export interface ProgressState {
@@ -13,6 +14,14 @@ export interface ProgressState {
   skipped: number
   done: number
   batch?: { index: number; of: number }
+  // Which of the batch's two long calls is running, and since when. The bar
+  // cannot move inside a batch, so this is what the clock hangs off.
+  phase?: { name: BatchPhase; since: number }
+  // The bar counts entries, but time is spent in batches, so the estimate is
+  // built from those.
+  batchDurations: number[]
+  batchesDone: number
+  remainingMs?: number
   warnings: string[]
   summary?: TranslateSummary
 }
@@ -27,8 +36,23 @@ export function reduceProgress(events: TranslateEvent[]): ProgressState {
     fuzzy: 0,
     skipped: 0,
     done: 0,
+    batchDurations: [],
+    batchesDone: 0,
     warnings: [],
   }
+
+  // Only set while a batch is open, so one duration is recorded per batch and an
+  // event with no timestamp records none rather than NaN.
+  let openedAt: number | undefined
+  let batchSize = 0
+
+  const close = (at: unknown) => {
+    state.batchesDone += 1
+    if (typeof openedAt === 'number' && typeof at === 'number') state.batchDurations.push(at - openedAt)
+    openedAt = undefined
+    state.phase = undefined
+  }
+
   for (const e of events) {
     switch (e.type) {
       case 'start':
@@ -42,14 +66,24 @@ export function reduceProgress(events: TranslateEvent[]): ProgressState {
         break
       case 'batch-start':
         state.batch = { index: e.index, of: e.of }
+        state.phase = undefined
+        openedAt = typeof e.at === 'number' ? e.at : undefined
+        batchSize = e.size
+        break
+      case 'batch-phase':
+        state.phase = { name: e.phase, since: e.at }
         break
       case 'batch-done':
         state.translated += e.translated
         state.fuzzy += e.fuzzy
+        close(e.at)
         break
+      // A skipped batch still cost whatever it spent failing, so it is timed like
+      // any other.
       case 'batch-skipped':
         state.skipped += e.size
         state.warnings.push(`Batch ${e.index} skipped (${e.size} entries): ${e.reason}`)
+        close(e.at)
         break
       case 'warning':
         state.warnings.push(e.message)
@@ -61,7 +95,15 @@ export function reduceProgress(events: TranslateEvent[]): ProgressState {
         break
     }
   }
+  state.remainingMs = estimateRemainingMs(
+    state.batchDurations,
+    (state.batch?.of ?? 0) - state.batchesDone,
+    batchSize,
+  )
+
   if (state.summary) {
+    state.phase = undefined
+    state.remainingMs = undefined
     state.fromTm = state.summary.fromTm
     state.translated = state.summary.translated
     state.fuzzy = state.summary.fuzzy
@@ -85,6 +127,7 @@ export function formatSummary(summary: TranslateSummary): string {
 
 export function Progress({ events }: { events: TranslateEvent[] }) {
   const state = reduceProgress(events)
+  const elapsed = useElapsed(state.phase !== undefined, state.phase?.since ?? 0)
   if (!state.started) return <Text dimColor>Starting…</Text>
 
   const batch = state.batch ? `  batch ${state.batch.index}/${state.batch.of}` : ''
@@ -93,6 +136,10 @@ export function Progress({ events }: { events: TranslateEvent[] }) {
       <Text>
         {renderBar(state.done, state.pending)} {state.done}/{state.pending}
         {batch}  fuzzy {state.fuzzy}
+        {state.phase ? ` · ${state.phase.name} ${elapsed}s` : ''}
+        {state.remainingMs === undefined
+          ? ''
+          : ` · ~${formatDuration(state.remainingMs)} left, done by ${formatFinishTime(state.remainingMs)}`}
       </Text>
       <Text dimColor>
         {state.file} · {state.total} entries, {state.pending} selected, {state.fromTm} from TM

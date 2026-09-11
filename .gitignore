@@ -2,3 +2,7 @@ node_modules
 dist
 *.log
 .env
+
+# Editor scratch files. One of these was committed by accident in 55811a9.
+.*.sw[a-p]
+*~

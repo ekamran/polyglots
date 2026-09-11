@@ -12,12 +12,14 @@ import type { DraftEngine, Locale, ReviewInput, ReviewResult, Secrets, Translati
 export type TranslateEvent =
   | { type: 'start'; file: string; total: number; pending: number }
   | { type: 'tm-hit'; count: number }
-  | { type: 'batch-start'; index: number; of: number; size: number }
+  // `at` on the batch boundaries is what the remaining-time estimate is built
+  // from; see the review events, which carry it for the same reason.
+  | { type: 'batch-start'; index: number; of: number; size: number; at: number }
   // Emitted between the two long calls in a batch. The bar cannot move inside a
   // batch, so this and the elapsed clock are the only signs the run is alive.
   | { type: 'batch-phase'; index: number; phase: 'drafting' | 'reviewing'; at: number }
-  | { type: 'batch-done'; index: number; translated: number; fuzzy: number }
-  | { type: 'batch-skipped'; index: number; size: number; reason: string }
+  | { type: 'batch-done'; index: number; translated: number; fuzzy: number; at: number }
+  | { type: 'batch-skipped'; index: number; size: number; reason: string; at: number }
   | { type: 'warning'; message: string }
   | { type: 'saved' }
   | { type: 'done'; summary: TranslateSummary }
@@ -171,7 +173,7 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
 
     for (const [i, batch] of batches.entries()) {
       const index = i + 1
-      emit({ type: 'batch-start', index, of: batches.length, size: batch.length })
+      emit({ type: 'batch-start', index, of: batches.length, size: batch.length, at: Date.now() })
       emit({ type: 'batch-phase', index, phase: 'drafting', at: Date.now() })
 
       let drafts: Drafts | undefined
@@ -194,7 +196,7 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
 
       if (results === undefined) {
         summary.skipped += batch.length
-        emit({ type: 'batch-skipped', index, size: batch.length, reason: errorMessage(lastError) })
+        emit({ type: 'batch-skipped', index, size: batch.length, reason: errorMessage(lastError), at: Date.now() })
         continue
       }
 
@@ -202,7 +204,7 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
       const fuzzy = results.filter((r) => r.fuzzy).length
       summary.translated += results.length
       summary.fuzzy += fuzzy
-      emit({ type: 'batch-done', index, translated: results.length, fuzzy })
+      emit({ type: 'batch-done', index, translated: results.length, fuzzy, at: Date.now() })
       if (saved) emit({ type: 'saved' })
     }
 
