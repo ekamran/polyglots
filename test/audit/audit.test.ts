@@ -230,6 +230,24 @@ describe('auditEntries', () => {
     expect(seen).toEqual([{ flagged: 1, suspects: 1 }])
   })
 
+  // A whitespace repair is settled, not an open question, so it must not swell
+  // the count of entries the user is told the model still has to weigh.
+  it('does not count a mechanical repair among the suspects it reports', async () => {
+    const seen: unknown[] = []
+    const adjudicate = vi
+      .fn()
+      .mockImplementation(async (batch: { id: number }[]) =>
+        batch.map((c) => ({ id: c.id, problem: false, categories: [], reason: 'ok' })),
+      )
+    await auditEntries({
+      entries: [entry('d', 'Save ', 'Kaydet')],
+      ...base(),
+      adjudicate,
+      onRules: (r) => seen.push(r),
+    })
+    expect(seen).toEqual([{ flagged: 0, suspects: 0 }])
+  })
+
   it('announces a batch before running it, not after', async () => {
     const order: string[] = []
     const adjudicate = vi.fn().mockImplementation(async (batch: { id: number }[]) => {
@@ -443,6 +461,55 @@ describe('buildAuditPrompt', () => {
     expect(prompt).toMatch(/title case/i)
     expect(prompt).toContain('glossary_lookup')
     expect(prompt).toContain('consistency_lookup')
+  })
+
+  // The one check that was already decided mechanically must not be handed over
+  // as one that was not: the model would adjudicate a settled repair, and the
+  // pre-batch suspect count would include it.
+  it('keeps the mechanical repair out of the checks it asks the model to adjudicate', () => {
+    const prompt = buildAuditPrompt(
+      [
+        {
+          id: 1,
+          key: 'a',
+          msgid: 'Save ',
+          msgstr: ['Kaydet '],
+          comments: [],
+          references: [],
+          hints: [{ rule: 'repaired', severity: 'suspect' as const, message: 'whitespace restored to match the source' }],
+          repaired: { text: ['Kaydet '], repairedBy: 'rules' as const },
+        },
+      ],
+      'tr',
+      2,
+    )
+    expect(prompt).not.toContain('automatedChecks":')
+    expect(prompt).toContain('"alreadyRepaired":true')
+    expect(prompt).toMatch(/alreadyRepaired.*whitespace/i)
+  })
+
+  // The asymmetry is defined in code as severity === 'error'. Naming the rules in
+  // prose instead means a new error rule silently stops being treated as settled.
+  it('marks a condemned entry in the payload and phrases the instruction off it', () => {
+    const prompt = buildAuditPrompt(
+      [
+        {
+          id: 1,
+          key: 'b',
+          msgid: '%s comments',
+          msgstr: ['yorumlar'],
+          comments: [],
+          references: [],
+          hints: [{ rule: 'placeholder', severity: 'error' as const, message: 'lost %s' }],
+          condemned: [{ rule: 'placeholder', severity: 'error' as const, message: 'lost %s' }],
+        },
+      ],
+      'tr',
+      2,
+    )
+    expect(prompt).toContain('"condemned":true')
+    expect(prompt).toMatch(/"condemned"[\s\S]*already known to be broken/)
+    expect(prompt).not.toMatch(/reports a placeholder, html or plural-count problem/)
   })
 
   it('asks the model for a corrected translation', () => {

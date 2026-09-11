@@ -132,7 +132,9 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
 
   opts.onRules?.({
     flagged: candidates.filter((c) => c.condemned).length + [...verdicts.values()].filter((v) => v.problem).length,
-    suspects: candidates.filter((c) => c.hints.length > 0 && !c.condemned).length,
+    // A mechanical repair is decided, so an entry whose only hint is that one is
+    // nobody's open question and does not belong in the count.
+    suspects: candidates.filter((c) => !c.condemned && c.hints.some((f) => f.rule !== 'repaired')).length,
   })
 
   const adjudicate = opts.adjudicate ?? adjudicateWithClaude

@@ -49,7 +49,15 @@ export function buildAuditPrompt(candidates: AuditCandidate[], locale: Locale, n
       if (c.msgidPlural) payload.sourcePlural = c.msgidPlural
       if (c.comments.length > 0) payload.comments = c.comments
       if (c.references.length > 0) payload.references = c.references
-      if (c.hints.length > 0) payload.automatedChecks = c.hints.map((h) => `${h.rule}: ${h.message}`)
+      // The mechanical repair is a decided fact, not an open check. Listing it
+      // here would ask the model to adjudicate the one finding that needs no
+      // adjudication, and invite a fix for an entry that already has one.
+      const checks = c.hints.filter((h) => h.rule !== 'repaired')
+      if (checks.length > 0) payload.automatedChecks = checks.map((h) => `${h.rule}: ${h.message}`)
+      if (c.repaired) payload.alreadyRepaired = true
+      // Carried as a field rather than named as a list of rules in the guidance
+      // below, so adding an error rule keeps the instruction true on its own.
+      if (c.condemned) payload.condemned = true
       return JSON.stringify(payload)
     })
     .join('\n')
@@ -68,13 +76,15 @@ ${capitalization}- Each entry's "references" are the source file and line the st
 
 Some entries carry an "automatedChecks" list: findings from deterministic checks that could not be decided mechanically. ${language} may inflect a glossary term so it no longer matches the dictionary form exactly, and a check may be wrong on that basis. Adjudicate each one: confirm it only if it is a real problem, and clear it otherwise. Entries with no automatedChecks still need your own judgment on meaning, register and fluency.
 
+An entry marked "alreadyRepaired" had its leading and trailing whitespace restored to match the source before it reached you. That part is settled and is not yours to weigh: judge the translation as it now stands.
+
 Mark problem=true only when a human should change the translation before it is approved. Do not flag a translation that is merely different from how you would word it; the bar is "wrong or against the standards", not "not my preference". Every flagged entry costs the reviewer time, so be strict about accuracy but not about taste.
 
 Categories: ${AUDIT_CATEGORIES.join(', ')}. Use an empty array when problem is false. Keep "reason" to one short sentence, written for the contributor, saying what is wrong (or why a flagged check was cleared).
 
 - When an entry is a problem, also return "fix": the corrected translation, as an array with one string per plural form. It must obey every standard above: the glossary, this locale's capitalization rules, the source's placeholders and HTML exactly, and the formal register.
 - If you are not confident what the entry should say, leave "fix" out entirely. An honest "I do not know" is worth more than a confident wrong translation, which a human then has to catch.
-- Where "automatedChecks" reports a placeholder, html or plural-count problem, the entry is already known to be broken. Do not argue about whether it is wrong; return the fix.
+- An entry marked "condemned" has been proved wrong by a deterministic check, so it is already known to be broken whatever you think of it. Do not argue about whether it is wrong; return the fix.
 
 Return exactly one result per id below.
 
