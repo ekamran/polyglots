@@ -80,6 +80,29 @@ describe('PoFile.keepOnly', () => {
     expect(text).not.toContain('msgid "Settings"')
   })
 
+  // Resuming a review reads its own notes back out of the file it wrote, which is
+  // the only record of what the interrupted run had flagged.
+  it('reads its own notes back, keyed the same way it wrote them', async () => {
+    await keep(
+      new Map([
+        ['Settings', ['title case mirrors the source', 'glossary term not used']],
+        [unitKey('Draft', 'post status'), ['meaning']],
+      ]),
+    )
+    const reparsed = await loadPo(out)
+    expect(reparsed.notes()).toEqual(
+      new Map([
+        ['Settings', ['title case mirrors the source', 'glossary term not used']],
+        [unitKey('Draft', 'post status'), ['meaning']],
+      ]),
+    )
+  })
+
+  it('reads back no notes for a file that has none of ours', async () => {
+    const source = await loadPo(file)
+    expect(source.notes().size).toBe(0)
+  })
+
   it('preserves the header so the result is a valid po file', async () => {
     const text = await keep(new Map([['Settings', ['x']]]))
     expect(text).toContain('Plural-Forms: nplurals=2')

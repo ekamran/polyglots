@@ -7,6 +7,7 @@ import { openDb, replaceGlossary } from '../../src/storage/index.js'
 import { writeMcpConfig } from '../../src/mcp/config.js'
 import { loadPo } from '../../src/po/po-file.js'
 import { reviewFile } from '../../src/commands/review.js'
+import type { ReviewEvent } from '../../src/types.js'
 
 const FAKE_CLAUDE = resolve(import.meta.dirname, '../fixtures/fake-claude/claude')
 
@@ -148,6 +149,34 @@ describe('review end to end', () => {
     const summary = await run({ claudeBin: join(home, 'no-such-binary') })
     expect(summary.unreviewed).toBeGreaterThan(0)
     expect(summary.approvable).toBe(0)
+  })
+
+  // The real runner, a real interruption, and the real marker: a resumed run has
+  // to land on the same answer as one that was never interrupted.
+  it('picks a real interrupted run back up and reaches the same verdict', async () => {
+    let batches = 0
+    await expect(
+      run({
+        batchSize: 2,
+        onProgress: (e: ReviewEvent) => {
+          if (e.type === 'batch-done' && ++batches === 1) throw new Error('interrupted')
+        },
+      }),
+    ).rejects.toThrow('interrupted')
+
+    const events: ReviewEvent[] = []
+    const resumedRun = await run({ batchSize: 2, onProgress: (e: ReviewEvent) => events.push(e) })
+    expect(events[0]).toMatchObject({ type: 'start', resumed: 1 })
+    // Only the second batch was re-reviewed.
+    expect(events.filter((e) => e.type === 'batch-start')).toHaveLength(1)
+
+    const uninterrupted = await run({ batchSize: 2, fresh: true, outDir: join(home, 'uninterrupted') })
+    expect(resumedRun.problems).toBe(uninterrupted.problems)
+    expect(resumedRun.approvable).toBe(uninterrupted.approvable)
+    expect(resumedRun.byRule).toEqual(uninterrupted.byRule)
+
+    const keysOf = async (path: string) => (await loadPo(path)).auditEntries().map((e) => e.key).sort()
+    expect(await keysOf(resumedRun.problemsFile!)).toEqual(await keysOf(uninterrupted.problemsFile!))
   })
 
   it('leaves the submitted file untouched', async () => {

@@ -43,6 +43,10 @@ export interface AuditOptions extends Partial<ClaudeRunOptions> {
   properNouns?: string[]
   noAi?: boolean
   batchSize?: number
+  // Batches a previous run already finished and wrote out. They are not
+  // re-adjudicated and their entries are not returned: what they decided lives
+  // in the problems file, not in this call.
+  skipBatches?: number
   adjudicate?: Adjudicator
   onRules?: (summary: { flagged: number; suspects: number }) => void
   onBatchStart?: (batch: BatchStart) => void
@@ -50,7 +54,7 @@ export interface AuditOptions extends Partial<ClaudeRunOptions> {
   onBatch?: (progress: BatchProgress) => void | Promise<void>
 }
 
-const DEFAULT_BATCH_SIZE = 25
+export const DEFAULT_BATCH_SIZE = 25
 
 export const adjudicateWithClaude: Adjudicator = async (batch, opts) => {
   const payload = await runClaude(buildAuditPrompt(batch, opts.locale, opts.nplurals), auditBatchJsonSchema, opts)
@@ -114,7 +118,10 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
   const adjudicate = opts.adjudicate ?? adjudicateWithClaude
   const batches = chunk(candidates, opts.batchSize ?? DEFAULT_BATCH_SIZE)
 
+  const skipBatches = opts.skipBatches ?? 0
+
   for (const [i, rawBatch] of batches.entries()) {
+    if (i < skipBatches) continue
     // Ids are per batch and 1-based: the model never has to echo a gettext key,
     // whose msgctxt separator does not survive a JSON schema round-trip.
     const batch = rawBatch.map((c, n) => ({ ...c, id: n + 1 }))

@@ -88,6 +88,36 @@ describe('reduceReviewProgress', () => {
   })
 })
 
+// An interrupted run leaves batches already done. Counting the bar from zero
+// would tell the user they are three hours behind where they actually are.
+describe('reduceReviewProgress on a resumed run', () => {
+  const resumed: ReviewEvent[] = [
+    { type: 'start', file: FILE, total: 200, reviewable: 200, resumed: 40 },
+    { type: 'batch-start', index: 41, of: 50, size: 25, at: 1_000_000 },
+    { type: 'batch-done', index: 41, problems: 2, at: 1_060_000 },
+  ]
+
+  it('counts the batches the earlier run finished as done', () => {
+    expect(reduceReviewProgress(resumed)).toMatchObject({ batchesDone: 41, batchesTotal: 50, resumed: 40 })
+  })
+
+  it('says on screen that it picked up an earlier run', () => {
+    const frame = flat(render(<ReviewProgress events={resumed} />).lastFrame())
+    expect(frame).toMatch(/resum\w+ after 40 batches/i)
+  })
+
+  // The earlier run's pace is unknown and probably not this one's.
+  it('estimates from the batches this run timed, not the ones it inherited', () => {
+    const state = reduceReviewProgress([
+      ...resumed,
+      { type: 'batch-start', index: 42, of: 50, size: 25, at: 1_060_000 },
+      { type: 'batch-done', index: 42, problems: 0, at: 1_120_000 },
+    ])
+    expect(state.batchDurations).toEqual([60_000, 60_000])
+    expect(state.remainingMs).toBe(8 * 60_000)
+  })
+})
+
 describe('ReviewProgress remaining time', () => {
   const timed = (n: number, ms: number): ReviewEvent[] => {
     const out: ReviewEvent[] = [{ type: 'start', file: FILE, total: 200, reviewable: 200 }]
@@ -322,6 +352,8 @@ describe('Review screen', () => {
     await waitForText(lastFrame, /Skip AI checks:\s*yes/i)
     stdin.write(keys.down)
     await tick()
+    stdin.write(keys.down)
+    await tick()
     stdin.write(keys.enter)
 
     await waitFor(() => reviewFile.mock.calls.length > 0)
@@ -332,9 +364,56 @@ describe('Review screen', () => {
     })
   })
 
+  // Without this the TUI has no answer to a refused resume: the message names
+  // starting over, and there would be no way to do it.
+  it('passes the start-over choice to the command', async () => {
+    const reviewFile = vi.fn<ReviewFile>(async (opts) => {
+      opts.onProgress?.({ type: 'done', summary: reviewSummaryOf(opts.file) })
+      return reviewSummaryOf(opts.file)
+    })
+    const view = await openReview(fakeCommands({ reviewFile }))
+    await pickFile(view)
+    const { lastFrame, stdin } = view
+
+    stdin.write(keys.down)
+    await tick()
+    stdin.write(keys.down)
+    await tick()
+    stdin.write(' ')
+    await waitForText(lastFrame, /Start over:\s*yes/i)
+    stdin.write(keys.down)
+    await tick()
+    stdin.write(keys.enter)
+
+    await waitFor(() => reviewFile.mock.calls.length > 0)
+    expect(reviewFile.mock.calls[0]?.[0]).toMatchObject({ fresh: true })
+  })
+
+  it('resumes an interrupted review unless told to start over', async () => {
+    const reviewFile = vi.fn<ReviewFile>(async (opts) => {
+      opts.onProgress?.({ type: 'done', summary: reviewSummaryOf(opts.file) })
+      return reviewSummaryOf(opts.file)
+    })
+    const view = await openReview(fakeCommands({ reviewFile }))
+    await pickFile(view)
+
+    view.stdin.write(keys.down)
+    await tick()
+    view.stdin.write(keys.down)
+    await tick()
+    view.stdin.write(keys.down)
+    await tick()
+    view.stdin.write(keys.enter)
+
+    await waitFor(() => reviewFile.mock.calls.length > 0)
+    expect(reviewFile.mock.calls[0]?.[0]).toMatchObject({ fresh: false })
+  })
+
   it('shows the summary when the run finishes', async () => {
     const view = await openReview()
     await pickFile(view)
+    view.stdin.write(keys.down)
+    await tick()
     view.stdin.write(keys.down)
     await tick()
     view.stdin.write(keys.down)

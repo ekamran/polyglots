@@ -156,6 +156,10 @@ export class PoFile {
     return this.raw.headers
   }
 
+  setHeader(name: string, value: string): void {
+    this.raw.headers[name] = value
+  }
+
   private *entries(): Generator<GetTextTranslation> {
     for (const ctx of Object.keys(this.raw.translations)) {
       for (const msgid of Object.keys(this.raw.translations[ctx])) {
@@ -190,6 +194,20 @@ export class PoFile {
       out.push({ ...unit, msgstr: [...entry.msgstr], fuzzy: isFuzzy(entry) })
     }
     return out.sort((a, b) => this.rank(a.key) - this.rank(b.key))
+  }
+
+  // The notes this tool wrote, keyed as keepOnly takes them. A resumed review
+  // recovers what the interrupted run had already flagged from here, since the
+  // problems file is the only record of it.
+  notes(): Map<string, string[]> {
+    const out = new Map<string, string[]>()
+    for (const entry of this.entries()) {
+      const mine = splitLines(entry.comments?.translator)
+        .filter((line) => line.startsWith(NOTE_PREFIX))
+        .map((line) => line.slice(NOTE_PREFIX.length))
+      if (mine.length > 0) out.set(unitKey(entry.msgid, entry.msgctxt), mine)
+    }
+    return out
   }
 
   // Reduces the file to the annotated entries, each marked fuzzy with its reasons

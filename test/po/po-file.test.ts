@@ -265,6 +265,15 @@ describe('PoFile.save', () => {
     expect(reparsed.headers['PO-Revision-Date']).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}\+0000$/)
   })
 
+  // The review marker rides in a header, so a header set on the object has to
+  // survive the compile.
+  it('writes a header set on the loaded file', async () => {
+    const file = await loadPo(path)
+    file.setHeader('X-Polyglots-Review', '{"done":3}')
+    await file.save()
+    expect(gettextPo.parse(await readFile(path)).headers['X-Polyglots-Review']).toBe('{"done":3}')
+  })
+
   it('leaves no temp file behind and updates the target', async () => {
     const file = await loadPo(path)
     file.apply([{ key: 'Save Changes', text: ['Değişiklikleri Kaydet'], fuzzy: false }])

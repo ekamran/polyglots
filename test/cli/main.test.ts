@@ -348,7 +348,7 @@ describe('config add-name', () => {
 describe('review', () => {
   interface FakeReview {
     fn: CliDeps['reviewFile'] & object
-    calls: Array<{ file: string; locale: string; outDir?: string; noAi?: boolean; batchSize?: number }>
+    calls: Array<{ file: string; locale: string; outDir?: string; noAi?: boolean; batchSize?: number; fresh?: boolean }>
   }
 
   function summary(overrides = {}) {
@@ -378,6 +378,7 @@ describe('review', () => {
           outDir: opts.outDir,
           noAi: opts.noAi,
           batchSize: opts.batchSize,
+          fresh: opts.fresh,
         })
         if (outcome instanceof Error) throw outcome
         return outcome
@@ -391,7 +392,9 @@ describe('review', () => {
     const code = await h.run(['review', file], { reviewFile: review.fn })
 
     expect(code).toBe(0)
-    expect(review.calls).toEqual([{ file, locale: 'tr', outDir: undefined, noAi: undefined, batchSize: undefined }])
+    expect(review.calls).toEqual([
+      { file, locale: 'tr', outDir: undefined, noAi: undefined, batchSize: undefined, fresh: undefined },
+    ])
     expect(h.stdout.text).toContain('14 flagged')
     expect(h.stdout.text).toContain('102 approvable')
     expect(h.stdout.text).toContain('/tmp/plugin-tr-problems.po')
@@ -436,7 +439,20 @@ describe('review', () => {
     )
 
     expect(code).toBe(0)
-    expect(review.calls).toEqual([{ file, locale: 'pt-br', outDir: '/tmp/out', noAi: true, batchSize: 10 }])
+    expect(review.calls).toEqual([
+      { file, locale: 'pt-br', outDir: '/tmp/out', noAi: true, batchSize: 10, fresh: undefined },
+    ])
+  })
+
+  // An interrupted review picks up from its marker by default, so starting over
+  // needs a word for it.
+  it('forwards --fresh so a resume can be refused', async () => {
+    const h = harness()
+    const review = fakeReview()
+    const code = await h.run(['review', file, '--fresh'], { reviewFile: review.fn })
+
+    expect(code).toBe(0)
+    expect(review.calls[0]).toMatchObject({ fresh: true })
   })
 
   it('exits 2 when the file does not exist', async () => {

@@ -119,6 +119,53 @@ describe('auditEntries', () => {
     expect(adjudicate.mock.calls.map((c) => (c[0] as unknown[]).length)).toEqual([2, 2, 1])
   })
 
+  // Resuming an interrupted run: the first batches were decided and persisted by
+  // the earlier run, so re-paying for them would be the whole cost of resuming.
+  it('skips the batches a previous run already finished', async () => {
+    const many = Array.from({ length: 5 }, (_, i) => entry(`k${i}`, `Source ${i}`, `Çeviri ${i}`))
+    const adjudicate = vi
+      .fn()
+      .mockImplementation(async (batch: { id: number }[]) =>
+        batch.map((c) => ({ id: c.id, problem: false, categories: [], reason: 'ok' })),
+      )
+    await auditEntries({ entries: many, ...base({ batchSize: 2, skipBatches: 2 }), adjudicate })
+
+    expect(adjudicate).toHaveBeenCalledTimes(1)
+    const [batch] = adjudicate.mock.calls[0]!
+    expect((batch as { key: string }[]).map((c) => c.key)).toEqual(['k4'])
+  })
+
+  it('keeps numbering batches from one when it resumes, so progress reads against the whole run', async () => {
+    const many = Array.from({ length: 5 }, (_, i) => entry(`k${i}`, `Source ${i}`, `Çeviri ${i}`))
+    const starts: { index: number; of: number }[] = []
+    const adjudicate = vi
+      .fn()
+      .mockImplementation(async (batch: { id: number }[]) =>
+        batch.map((c) => ({ id: c.id, problem: false, categories: [], reason: 'ok' })),
+      )
+    await auditEntries({
+      entries: many,
+      ...base({ batchSize: 2, skipBatches: 2 }),
+      adjudicate,
+      onBatchStart: (b: { index: number; of: number }) => starts.push({ index: b.index, of: b.of }),
+    })
+
+    expect(starts).toEqual([{ index: 3, of: 3 }])
+  })
+
+  // Whatever the skipped batches decided lives in the problems file, not here.
+  it('returns verdicts only for the entries it actually decided', async () => {
+    const many = Array.from({ length: 5 }, (_, i) => entry(`k${i}`, `Source ${i}`, `Çeviri ${i}`))
+    const adjudicate = vi
+      .fn()
+      .mockImplementation(async (batch: { id: number }[]) =>
+        batch.map((c) => ({ id: c.id, problem: false, categories: [], reason: 'ok' })),
+      )
+    const verdicts = await auditEntries({ entries: many, ...base({ batchSize: 2, skipBatches: 2 }), adjudicate })
+
+    expect(verdicts.map((v) => v.key)).toEqual(['k4'])
+  })
+
   it('retries a failed batch once, then marks those entries unreviewed problems', async () => {
     const adjudicate = vi.fn().mockRejectedValue(new Error('claude exited with exit code 1'))
     const [verdict] = await auditEntries({ entries: [clean], ...base(), adjudicate })

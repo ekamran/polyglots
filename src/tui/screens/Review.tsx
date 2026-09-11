@@ -20,8 +20,9 @@ type Phase = 'pick' | 'options' | 'running'
 const PO_EXTENSIONS = ['.po']
 const FIELD_LOCALE = 0
 const FIELD_NO_AI = 1
-const FIELD_START = 2
-const FIELD_COUNT = 3
+const FIELD_FRESH = 2
+const FIELD_START = 3
+const FIELD_COUNT = 4
 
 export function Review({ cwd, onBack }: ReviewProps) {
   const commands = useCommands()
@@ -30,6 +31,7 @@ export function Review({ cwd, onBack }: ReviewProps) {
   const [file, setFile] = useState('')
   const [locale, setLocale] = useState(config.defaultLocale)
   const [noAi, setNoAi] = useState(false)
+  const [fresh, setFresh] = useState(false)
   const [focus, setFocus] = useState(FIELD_LOCALE)
   const [events, setEvents] = useState<ReviewEvent[]>([])
   const task = useTask<ReviewSummary>()
@@ -49,6 +51,7 @@ export function Review({ cwd, onBack }: ReviewProps) {
         file,
         locale: chosenLocale,
         noAi,
+        fresh,
         onProgress: (e) => setEvents((prev) => [...prev, e]),
       }),
     )
@@ -72,6 +75,7 @@ export function Review({ cwd, onBack }: ReviewProps) {
     else if (key.downArrow || key.tab) setFocus((f) => Math.min(FIELD_COUNT - 1, f + 1))
     else if (key.leftArrow || key.rightArrow || (input === ' ' && !typing)) {
       if (focus === FIELD_NO_AI) setNoAi((v) => !v)
+      else if (focus === FIELD_FRESH) setFresh((v) => !v)
     } else if (key.return && focus !== FIELD_LOCALE) {
       if (focus === FIELD_START) {
         const normalized = normalizeLocale(locale)
@@ -116,6 +120,12 @@ export function Review({ cwd, onBack }: ReviewProps) {
           </Box>
           <Text>
             {marker(FIELD_NO_AI)}Skip AI checks: {noAi ? 'yes (rules only, fast)' : 'no (rules, then AI review)'}
+          </Text>
+          {/* A review that was interrupted picks up from the marker in its
+              problems file. This is the way to make it forget that and start
+              from the first batch again. */}
+          <Text>
+            {marker(FIELD_FRESH)}Start over: {fresh ? 'yes (ignore saved progress)' : 'no (resume if interrupted)'}
           </Text>
           <Text>{marker(FIELD_START)}Start review</Text>
           <Hint>↑↓ move · ←→ change · enter select · esc back to menu</Hint>

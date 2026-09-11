@@ -172,13 +172,18 @@ export function createProgressReporter(stream: ProgressStream): ProgressReporter
 // slow call, short enough to follow a real change in throughput.
 const ETA_WINDOW = 5
 
+// Below this the estimate is noise: the wait is over before anyone has read it.
+const MIN_ESTIMATE_MS = 10_000
+
 // Median rather than mean: one batch that stalls near the timeout would otherwise
 // dominate the estimate for the rest of the run.
 export function estimateRemainingMs(durations: number[], remaining: number): number | undefined {
   if (durations.length < 2 || remaining <= 0) return undefined
   const recent = [...durations.slice(-ETA_WINDOW)].sort((a, b) => a - b)
   const median = recent[Math.floor(recent.length / 2)]
-  return median === undefined ? undefined : median * remaining
+  if (median === undefined) return undefined
+  const estimate = median * remaining
+  return estimate < MIN_ESTIMATE_MS ? undefined : estimate
 }
 
 export function formatDuration(ms: number): string {
@@ -262,6 +267,10 @@ export function createReviewProgressReporter(stream: ProgressStream): ReviewProg
     switch (event.type) {
       case 'start':
         notice = `Reviewing ${event.file}: ${event.reviewable} of ${event.total} entries submitted`
+        if (event.resumed) {
+          const n = event.resumed
+          notice += `\nResuming an interrupted run: ${n} batch${n === 1 ? '' : 'es'} already reviewed`
+        }
         break
       case 'batch-start':
         of = event.of

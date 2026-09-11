@@ -84,7 +84,9 @@ export interface ReviewSummary {
 }
 
 export type ReviewEvent =
-  | { type: 'start'; file: string; total: number; reviewable: number }
+  // `resumed` is the batches an earlier, interrupted run already finished; the
+  // progress bar starts there rather than at zero.
+  | { type: 'start'; file: string; total: number; reviewable: number; resumed?: number }
   | { type: 'rules-done'; flagged: number; suspects: number }
   // `at` lets a pure reducer measure how long each batch took, which is what the
   // remaining-time estimate is built from.

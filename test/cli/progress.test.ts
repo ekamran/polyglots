@@ -240,6 +240,25 @@ describe('createReviewProgressReporter', () => {
     expect(out.text).toMatch(/flagged 5/)
   })
 
+  it('says up front when it is picking up an interrupted run', () => {
+    const out = sink()
+    const report = createReviewProgressReporter(out)
+    report({ type: 'start', file: 'a.po', total: 2831, reviewable: 2805, resumed: 40 })
+    report.finish()
+
+    expect(out.text).toMatch(/resuming/i)
+    expect(out.text).toContain('40')
+  })
+
+  it('says nothing about resuming on a run that starts from the top', () => {
+    const out = sink()
+    const report = createReviewProgressReporter(out)
+    report({ type: 'start', file: 'a.po', total: 120, reviewable: 116 })
+    report.finish()
+
+    expect(out.text).not.toMatch(/resuming/i)
+  })
+
   // The batch clock is the only thing a long review shows; the estimate is what
   // tells the user whether to wait up or go to bed.
   it('projects the remaining time from finished batches', () => {
@@ -299,6 +318,13 @@ describe('estimateRemainingMs', () => {
 
   it('returns nothing when there is nothing left', () => {
     expect(estimateRemainingMs([40_000, 40_000], 0)).toBeUndefined()
+  })
+
+  // Seen on a small file against a fast model: "~0s left" is noise, and the wait
+  // is over before anyone has read it.
+  it('says nothing when the wait is too short to be worth reporting', () => {
+    expect(estimateRemainingMs([200, 200], 3)).toBeUndefined()
+    expect(estimateRemainingMs([6_000, 6_000], 3)).toBe(18_000)
   })
 })
 
