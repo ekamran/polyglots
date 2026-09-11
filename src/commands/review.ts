@@ -12,7 +12,7 @@ import {
   type ReviewMarker,
 } from '../audit/resume.js'
 import { writeMcpConfig, MCP_ENV } from '../mcp/config.js'
-import { loadPo } from '../po/po-file.js'
+import { loadPo, type Annotation } from '../po/po-file.js'
 import { loadConfig } from '../config.js'
 import { allGlossary, openDb } from '../storage/index.js'
 import type { AuditEntry, Locale, ReviewEvent, ReviewSummary } from '../types.js'
@@ -125,7 +125,7 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
         )
       }
       resumed = marker
-      carried = previous.notes()
+      carried = new Map([...previous.carried()].map(([key, entry]) => [key, entry.notes]))
     }
   }
 
@@ -156,13 +156,10 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
   const decided: Verdict[] = []
   let wrote = false
   const persist = async (): Promise<number> => {
-    const annotations = new Map(carried)
+    const annotations = new Map<string, Annotation>([...carried].map(([key, notes]) => [key, { notes }]))
     for (const verdict of decided) {
       if (!verdict.problem && !verdict.needsReview) continue
-      annotations.set(
-        verdict.key,
-        verdict.findings.map((f) => f.message),
-      )
+      annotations.set(verdict.key, { notes: verdict.findings.map((f) => f.message) })
     }
     if (opts.outDir) await mkdir(opts.outDir, { recursive: true })
     const out = await loadPo(opts.file)

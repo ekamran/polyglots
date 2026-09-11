@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { loadPo, unitKey } from '../../src/po/po-file.js'
+import { loadPo, unitKey, type Annotation } from '../../src/po/po-file.js'
 
 const PO = `msgid ""
 msgstr ""
@@ -41,7 +41,7 @@ describe('PoFile.keepOnly', () => {
     await rm(home, { recursive: true, force: true })
   })
 
-  async function keep(annotations: Map<string, string[]>): Promise<string> {
+  async function keep(annotations: Map<string, Annotation>): Promise<string> {
     const po = await loadPo(file)
     po.keepOnly(annotations)
     await po.save(out)
@@ -49,64 +49,68 @@ describe('PoFile.keepOnly', () => {
   }
 
   it('drops every entry that was not kept', async () => {
-    const text = await keep(new Map([['Settings', ['title case']]]))
+    const text = await keep(new Map([['Settings', { notes: ['title case'] }]]))
     expect(text).toContain('msgid "Settings"')
     expect(text).not.toContain('msgid "Draft"')
     expect(text).not.toContain('msgid "%s comments"')
   })
 
   it('marks kept entries fuzzy and preserves the submitted translation', async () => {
-    const text = await keep(new Map([['Settings', ['title case']]]))
+    const text = await keep(new Map([['Settings', { notes: ['title case'] }]]))
     expect(text).toMatch(/#,\s*fuzzy/)
     expect(text).toContain('msgstr "Ayarlar"')
   })
 
   it('writes each annotation as a translator comment', async () => {
-    const text = await keep(new Map([['Settings', ['title case mirrors the source', 'glossary term not used']]]))
+    const text = await keep(
+      new Map([['Settings', { notes: ['title case mirrors the source', 'glossary term not used'] }]]),
+    )
     expect(text).toContain('# polyglots: title case mirrors the source')
     expect(text).toContain('# polyglots: glossary term not used')
   })
 
   it('keeps existing flags alongside fuzzy', async () => {
-    const text = await keep(new Map([['%s comments', ['placeholder missing']]]))
+    const text = await keep(new Map([['%s comments', { notes: ['placeholder missing'] }]]))
     expect(text).toMatch(/#,.*php-format/)
     expect(text).toMatch(/#,.*fuzzy/)
   })
 
   it('keeps a context-qualified entry by its key', async () => {
-    const text = await keep(new Map([[unitKey('Draft', 'post status'), ['meaning']]]))
+    const text = await keep(new Map([[unitKey('Draft', 'post status'), { notes: ['meaning'] }]]))
     expect(text).toContain('msgctxt "post status"')
     expect(text).toContain('msgid "Draft"')
     expect(text).not.toContain('msgid "Settings"')
   })
 
-  // Resuming a review reads its own notes back out of the file it wrote, which is
-  // the only record of what the interrupted run had flagged.
-  it('reads its own notes back, keyed the same way it wrote them', async () => {
-    await keep(
-      new Map([
-        ['Settings', ['title case mirrors the source', 'glossary term not used']],
-        [unitKey('Draft', 'post status'), ['meaning']],
-      ]),
-    )
-    const reparsed = await loadPo(out)
-    expect(reparsed.notes()).toEqual(
-      new Map([
-        ['Settings', ['title case mirrors the source', 'glossary term not used']],
-        [unitKey('Draft', 'post status'), ['meaning']],
-      ]),
-    )
-  })
-
-  it('reads back no notes for a file that has none of ours', async () => {
-    const source = await loadPo(file)
-    expect(source.notes().size).toBe(0)
-  })
-
   it('preserves the header so the result is a valid po file', async () => {
-    const text = await keep(new Map([['Settings', ['x']]]))
+    const text = await keep(new Map([['Settings', { notes: ['x'] }]]))
     expect(text).toContain('Plural-Forms: nplurals=2')
     const reparsed = await loadPo(out)
     expect(reparsed.auditEntries().map((e) => e.key)).toEqual(['Settings'])
+  })
+
+  it('writes a repaired translation in place of the submitted one', async () => {
+    const text = await keep(new Map([['Settings', { notes: ['glossary'], text: ['Ayarlar bölümü'] }]]))
+    expect(text).toContain('msgstr "Ayarlar bölümü"')
+    expect(text).not.toContain('msgstr "Ayarlar"')
+  })
+
+  it('leaves the submitted translation alone when there is no repair', async () => {
+    const text = await keep(new Map([['Settings', { notes: ['glossary'] }]]))
+    expect(text).toContain('msgstr "Ayarlar"')
+  })
+
+  // Resume rebuilds the output from the source file, so the repaired text has to
+  // come back out of the file the interrupted run wrote or it silently reverts.
+  it('reads back both its notes and the text it wrote', async () => {
+    await keep(new Map([['Settings', { notes: ['glossary term not used'], text: ['Ayarlar bölümü'] }]]))
+    const reparsed = await loadPo(out)
+    expect(reparsed.carried()).toEqual(
+      new Map([['Settings', { notes: ['glossary term not used'], msgstr: ['Ayarlar bölümü'] }]]),
+    )
+  })
+
+  it('reads back nothing from a file with none of our notes', async () => {
+    expect((await loadPo(file)).carried().size).toBe(0)
   })
 })

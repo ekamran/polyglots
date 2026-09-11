@@ -7,6 +7,17 @@ import type { AuditEntry, TranslationUnit } from '../types.js'
 
 export type UnitMode = 'pending' | 'all'
 
+export interface Annotation {
+  notes: string[]
+  // The repaired translation, when the reviewer produced one.
+  text?: string[]
+}
+
+export interface CarriedEntry {
+  notes: string[]
+  msgstr: string[]
+}
+
 export interface ApplyResult {
   key: string
   text: string[]
@@ -196,34 +207,41 @@ export class PoFile {
     return out.sort((a, b) => this.rank(a.key) - this.rank(b.key))
   }
 
-  // The notes this tool wrote, keyed as keepOnly takes them. A resumed review
-  // recovers what the interrupted run had already flagged from here, since the
-  // problems file is the only record of it.
-  notes(): Map<string, string[]> {
-    const out = new Map<string, string[]>()
+  // What this tool wrote into a file, keyed as keepOnly takes it. A resumed
+  // review recovers the earlier run's work from here: the notes say what was
+  // wrong, and the msgstr may be a repair that exists nowhere else, since the
+  // output is otherwise rebuilt from the untouched source file.
+  carried(): Map<string, CarriedEntry> {
+    const out = new Map<string, CarriedEntry>()
     for (const entry of this.entries()) {
-      const mine = splitLines(entry.comments?.translator)
+      const notes = splitLines(entry.comments?.translator)
         .filter((line) => line.startsWith(NOTE_PREFIX))
         .map((line) => line.slice(NOTE_PREFIX.length))
-      if (mine.length > 0) out.set(unitKey(entry.msgid, entry.msgctxt), mine)
+      if (notes.length > 0) out.set(unitKey(entry.msgid, entry.msgctxt), { notes, msgstr: [...entry.msgstr] })
     }
     return out
   }
 
   // Reduces the file to the annotated entries, each marked fuzzy with its reasons
   // attached, so `translate` picks them up (fuzzy is what it selects by default).
-  keepOnly(annotations: Map<string, string[]>): void {
+  keepOnly(annotations: Map<string, Annotation>): void {
     for (const ctx of Object.keys(this.raw.translations)) {
       for (const msgid of Object.keys(this.raw.translations[ctx])) {
         if (ctx === '' && msgid === '') continue
         const entry = this.raw.translations[ctx][msgid]
         const key = unitKey(entry.msgid, entry.msgctxt)
-        const reasons = annotations.get(key)
-        if (!reasons) {
+        const annotation = annotations.get(key)
+        if (!annotation) {
           delete this.raw.translations[ctx][msgid]
           continue
         }
-        setNotes(entry, reasons)
+        if (annotation.text) {
+          entry.msgstr =
+            entry.msgid_plural !== undefined
+              ? Array.from({ length: this.nplurals }, (_, i) => annotation.text![i] ?? '')
+              : [annotation.text[0] ?? '']
+        }
+        setNotes(entry, annotation.notes)
         const flags = flagList(entry).filter((f) => f !== 'fuzzy')
         flags.push('fuzzy')
         entry.comments = { ...entry.comments, flag: flags.join(', ') }
