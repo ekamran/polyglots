@@ -181,7 +181,7 @@ export function ReviewProgress({ events }: { events: ReviewEvent[] }) {
           )}
           {breakdown.length > 0 && <Text>{breakdown.join(' · ')}</Text>}
           {summary.problemsFile ? (
-            <Text>Fix them with: polyglots translate {summary.problemsFile}</Text>
+            <Text>Wrote {summary.problemsFile}. Open it in PoEdit to review.</Text>
           ) : (
             <Text color="green">Nothing flagged; the whole submission looks approvable.</Text>
           )}

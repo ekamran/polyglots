@@ -282,6 +282,17 @@ describe('ReviewProgress', () => {
     expect(frame).not.toContain('-report.md')
   })
 
+  // Repaired entries are written fuzzy, and fuzzy is what `translate` selects, so
+  // telling the user to run it over this file re-translates every repair the
+  // review just made. The repair exists in no other file.
+  it('sends the user to PoEdit rather than back through translate', async () => {
+    const { lastFrame } = render(<ReviewProgress events={events} />)
+    await tick()
+    const frame = flat(lastFrame())
+    expect(frame).not.toContain('polyglots translate')
+    expect(frame).toMatch(/PoEdit/i)
+  })
+
   it('says the submission is clean when nothing was flagged', async () => {
     const clean: ReviewEvent[] = [
       { type: 'start', file: FILE, total: 10, reviewable: 10 },
