@@ -24,6 +24,7 @@ export const auditBatchJsonSchema = {
           problem: { type: 'boolean' },
           categories: { type: 'array', items: { type: 'string', enum: [...AUDIT_CATEGORIES] } },
           reason: { type: 'string' },
+          fix: { type: 'array', minItems: 1, items: { type: 'string' } },
         },
         required: ['id', 'problem', 'categories', 'reason'],
       },
@@ -39,6 +40,7 @@ export const auditBatchSchema = z.object({
       problem: z.boolean(),
       categories: z.array(z.enum(AUDIT_CATEGORIES)),
       reason: z.string(),
+      fix: z.array(z.string()).min(1).optional(),
     }),
   ),
 })

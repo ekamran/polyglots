@@ -368,4 +368,19 @@ describe('mapAuditResults', () => {
       mapAuditResults(candidates, { results: [{ id: 9, problem: false, categories: [], reason: 'x' }] }),
     ).toThrow(/unknown id 9/)
   })
+
+  it('carries a proposed fix through', () => {
+    const payload = { results: [{ id: 1, problem: true, categories: ['placeholder'], reason: 'x', fix: ['%s yorum'] }] }
+    expect(mapAuditResults([{ id: 1, key: 'a' }], payload)[0]).toMatchObject({ fix: ['%s yorum'] })
+  })
+
+  it('accepts a result with no fix at all', () => {
+    const payload = { results: [{ id: 1, problem: true, categories: ['meaning'], reason: 'x' }] }
+    expect(mapAuditResults([{ id: 1, key: 'a' }], payload)[0]?.fix).toBeUndefined()
+  })
+
+  it('rejects a fix that is not an array of strings', () => {
+    const payload = { results: [{ id: 1, problem: true, categories: [], reason: 'x', fix: 'just a string' }] }
+    expect(() => mapAuditResults([{ id: 1, key: 'a' }], payload)).toThrow(/schema validation/)
+  })
 })
