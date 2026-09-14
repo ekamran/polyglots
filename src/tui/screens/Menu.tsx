@@ -1,6 +1,11 @@
+import { createRequire } from 'node:module'
 import { Box, Text, useInput } from 'ink'
 import SelectInput from 'ink-select-input'
 import { Hint } from '../components/Hint.js'
+
+// Read the same way the CLI reads it, so the two can never disagree about
+// which build is running.
+const { version: VERSION } = createRequire(import.meta.url)('../../../package.json') as { version: string }
 
 export type MenuAction = 'translate' | 'review' | 'import-tm' | 'sync-glossary' | 'configure-keys'
 
@@ -23,7 +28,9 @@ export function Menu({ onSelect, onQuit }: MenuProps) {
   })
   return (
     <Box flexDirection="column">
-      <Text bold>polyglots</Text>
+      <Text bold>
+        polyglots <Text dimColor>v{VERSION}</Text>
+      </Text>
       <SelectInput items={MENU_ITEMS} onSelect={(item) => onSelect(item.value)} />
       <Hint>↑↓ move · enter select · q quit</Hint>
     </Box>
