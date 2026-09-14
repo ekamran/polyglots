@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AuditEntry, GlossaryEntry } from '../../src/types.js'
 import { auditEntries } from '../../src/audit/audit.js'
+import { createRunControl } from '../../src/run-control.js'
 import { buildAuditPrompt } from '../../src/audit/prompt.js'
 import { mapAuditResults } from '../../src/audit/schema.js'
 
@@ -392,6 +393,116 @@ describe('auditEntries', () => {
     const verdicts = await auditEntries({ entries: [clean], ...base(), adjudicate })
     expect(verdicts[0]!.text).toBeUndefined()
     expect(verdicts[0]!.repairedBy).toBeUndefined()
+  })
+})
+
+// Pausing is for a subscription that ran out of quota mid-run, so it has to stop
+// between calls, never inside one: a batch abandoned in flight is quota already
+// spent for nothing.
+describe('auditEntries under a run control', () => {
+  const four = () => Array.from({ length: 4 }, (_, i) => entry(`k${i}`, `Source ${i}`, `Çeviri ${i}`))
+  const ok = (batch: { id: number }[]) => batch.map((c) => ({ id: c.id, problem: false, categories: [], reason: 'ok' }))
+
+  it('runs to the end when nothing asks it to stop', async () => {
+    const adjudicate = vi.fn().mockImplementation(async (batch: { id: number }[]) => ok(batch))
+    await auditEntries({ entries: four(), ...base({ batchSize: 1 }), adjudicate, control: createRunControl() })
+    expect(adjudicate).toHaveBeenCalledTimes(4)
+  })
+
+  it('finishes the batch it is in before it parks', async () => {
+    const control = createRunControl()
+    const finished: number[] = []
+    const adjudicate = vi.fn().mockImplementation(async (batch: { id: number }[]) => {
+      control.pause()
+      return ok(batch)
+    })
+
+    const run = auditEntries({
+      entries: four(),
+      ...base({ batchSize: 1 }),
+      adjudicate,
+      control,
+      onBatch: (b: { index: number }) => {
+        finished.push(b.index)
+      },
+    })
+    await new Promise((r) => setTimeout(r, 30))
+
+    // The batch that was in flight completed and was reported; the next never started.
+    expect(finished).toEqual([1])
+    expect(adjudicate).toHaveBeenCalledTimes(1)
+
+    control.stop()
+    await run
+  })
+
+  it('carries on from where it parked when resumed', async () => {
+    const control = createRunControl()
+    let seen = 0
+    const adjudicate = vi.fn().mockImplementation(async (batch: { id: number }[]) => {
+      if (++seen === 1) control.pause()
+      return ok(batch)
+    })
+
+    const run = auditEntries({ entries: four(), ...base({ batchSize: 1 }), adjudicate, control })
+    await new Promise((r) => setTimeout(r, 20))
+    expect(adjudicate).toHaveBeenCalledTimes(1)
+
+    control.resume()
+    await run
+    expect(adjudicate).toHaveBeenCalledTimes(4)
+  })
+
+  it('stops at the next boundary when told to quit', async () => {
+    const control = createRunControl()
+    const adjudicate = vi.fn().mockImplementation(async (batch: { id: number }[]) => {
+      control.stop()
+      return ok(batch)
+    })
+    await auditEntries({ entries: four(), ...base({ batchSize: 1 }), adjudicate, control })
+    expect(adjudicate).toHaveBeenCalledTimes(1)
+  })
+
+  // The caller needs the exact number to report, not an estimate: entries it never
+  // attempted must never be counted approvable.
+  it('says exactly how many entries it never got to', async () => {
+    const control = createRunControl()
+    const stopped: number[] = []
+    const adjudicate = vi.fn().mockImplementation(async (batch: { id: number }[]) => {
+      control.stop()
+      return ok(batch)
+    })
+    await auditEntries({
+      entries: four(),
+      ...base({ batchSize: 1 }),
+      adjudicate,
+      control,
+      onStopped: (pending: number) => stopped.push(pending),
+    })
+    expect(stopped).toEqual([3])
+  })
+
+  it('says nothing about stopping on a run that finished', async () => {
+    const stopped: number[] = []
+    const adjudicate = vi.fn().mockImplementation(async (batch: { id: number }[]) => ok(batch))
+    await auditEntries({
+      entries: four(),
+      ...base({ batchSize: 1 }),
+      adjudicate,
+      control: createRunControl(),
+      onStopped: (pending: number) => stopped.push(pending),
+    })
+    expect(stopped).toEqual([])
+  })
+
+  it('returns only the verdicts it actually decided', async () => {
+    const control = createRunControl()
+    const adjudicate = vi.fn().mockImplementation(async (batch: { id: number }[]) => {
+      control.stop()
+      return ok(batch)
+    })
+    const verdicts = await auditEntries({ entries: four(), ...base({ batchSize: 1 }), adjudicate, control })
+    expect(verdicts.map((v) => v.key)).toEqual(['k0'])
   })
 })
 

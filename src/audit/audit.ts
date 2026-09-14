@@ -1,4 +1,5 @@
 import { chunk } from '../batch.js'
+import type { RunControl } from '../run-control.js'
 import { runClaude, type ClaudeRunOptions } from '../claude/run.js'
 import type { AuditEntry, Finding, GlossaryEntry, Locale } from '../types.js'
 import { buildAuditPrompt, type AuditCandidate } from './prompt.js'
@@ -53,11 +54,19 @@ export interface AuditOptions extends Partial<ClaudeRunOptions> {
   // re-adjudicated and their entries are not returned: what they decided lives
   // in the problems file, not in this call.
   skipBatches?: number
+  // Lets a caller park or end the run at a batch boundary. A subscription that
+  // runs out of quota mid-review wants to stop between calls and come back, not
+  // abandon a call it has already paid for.
+  control?: RunControl
   adjudicate?: Adjudicator
   onRules?: (summary: { flagged: number; suspects: number }) => void
   onBatchStart?: (batch: BatchStart) => void
   // Awaited, so a caller writing to disk finishes before the next batch starts.
   onBatch?: (progress: BatchProgress) => void | Promise<void>
+  // Called once if the run ended early, with the number of entries in batches it
+  // never attempted. Exact rather than derived, because a caller must never
+  // report an entry it did not look at as approvable.
+  onStopped?: (pending: number) => void
 }
 
 export const DEFAULT_BATCH_SIZE = 25
@@ -144,6 +153,12 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
 
   for (const [i, rawBatch] of batches.entries()) {
     if (i < skipBatches) continue
+    // Before the batch, never inside it: whatever the previous batch decided has
+    // already been persisted by its onBatch, so parking here loses nothing.
+    if (opts.control && (await opts.control.gate()) === 'stop') {
+      opts.onStopped?.(batches.slice(i).reduce((n, batch) => n + batch.length, 0))
+      break
+    }
     // Ids are per batch and 1-based: the model never has to echo a gettext key,
     // whose msgctxt separator does not survive a JSON schema round-trip.
     const batch = rawBatch.map((c, n) => ({ ...c, id: n + 1 }))
