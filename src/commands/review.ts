@@ -13,6 +13,7 @@ import {
 } from '../audit/resume.js'
 import { writeMcpConfig, MCP_ENV } from '../mcp/config.js'
 import { loadPo, type Annotation, type CarriedEntry } from '../po/po-file.js'
+import type { RunControl } from '../run-control.js'
 import { loadConfig } from '../config.js'
 import { allGlossary, openDb } from '../storage/index.js'
 import type { AuditEntry, Locale, ReviewEvent, ReviewSummary } from '../types.js'
@@ -26,6 +27,8 @@ export interface ReviewOptions extends Partial<ClaudeRunOptions> {
   properNouns?: string[]
   // Ignore an unfinished review left in the problems file and start over.
   fresh?: boolean
+  // Lets the caller park the run between batches, or end it early and come back.
+  control?: RunControl
   db?: Database.Database
   adjudicate?: Adjudicator
   onProgress?: (event: ReviewEvent) => void
@@ -158,6 +161,9 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
   // acceptable, and re-parsing the source each time is cheaper than the AI call
   // that preceded it.
   const decided: Verdict[] = []
+  // Entries in batches the run never reached. Reported by auditEntries rather
+  // than derived here, so a stopped run cannot mis-state what it looked at.
+  let pending = 0
   let wrote = false
   const persist = async (): Promise<number> => {
     const annotations = new Map<string, Annotation>()
@@ -201,6 +207,10 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
     batchSize,
     ...(opts.noAi === undefined ? {} : { noAi: opts.noAi }),
     ...(resumed ? { skipBatches: resumed.done } : {}),
+    ...(opts.control ? { control: opts.control } : {}),
+    onStopped: (left) => {
+      pending = left
+    },
     ...(opts.adjudicate ? { adjudicate: opts.adjudicate } : {}),
     ...(opts.claudeBin ? { claudeBin: opts.claudeBin } : {}),
     ...(opts.model ? { model: opts.model } : {}),
@@ -223,6 +233,9 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
   })
 
   const problems = verdicts.filter((v) => v.problem)
+  // Set only when the run was stopped part way, by auditEntries, which is the
+  // only thing that knows exactly which batches it never reached.
+
   const needsReview = verdicts.filter((v) => v.needsReview)
   // Counts from the batches this run skipped come off the marker: their entries
   // are in the file but their verdicts were never in memory.
@@ -244,7 +257,8 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
     reviewed: reviewable.length,
     problems: problems.length + before.problems,
     needsReview: needsReview.length,
-    approvable: reviewable.length - problems.length - needsReview.length - before.problems,
+    approvable: reviewable.length - problems.length - needsReview.length - before.problems - pending,
+    pending,
     unreviewed: verdicts.filter((v) => v.unreviewed).length + before.unreviewed,
     repaired: verdicts.filter((v) => v.text !== undefined).length + before.repaired,
     written,
@@ -252,9 +266,11 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
   }
 
   if (written > 0) summary.problemsFile = target
-  // Nothing was flagged, so the only thing left in the file is the marker, and a
-  // finished review has nothing to resume.
-  else await rm(target, { force: true })
+  // Nothing was flagged, so the only thing left in the file is the marker. A
+  // finished review has nothing to resume, so the file goes. A run that was
+  // stopped part way keeps it: the marker is the only record of where to pick up,
+  // and deleting it would silently turn a pause into a restart.
+  else if (pending === 0) await rm(target, { force: true })
 
   emit({ type: 'done', summary })
   return summary

@@ -79,6 +79,11 @@ export interface ReviewSummary {
   needsReview: number
   approvable: number
   unreviewed: number
+  // Entries in batches the run never attempted, because it was stopped part way.
+  // Kept apart from `unreviewed`, which means a batch that was attempted and
+  // failed, and excluded from `approvable`: nothing looked at these, so nothing
+  // may invite the user to bulk-approve them.
+  pending: number
   // Entries that carry a correction, whether the rules or the model made it. The
   // rest still need a human to write something.
   repaired: number
