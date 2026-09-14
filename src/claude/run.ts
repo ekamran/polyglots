@@ -79,6 +79,14 @@ export function spawnClaude(argv: string[], prompt: string, opts: ClaudeRunOptio
     let settled = false
     let killTimer: NodeJS.Timeout | undefined
     const excerpt = (): string => stderr.slice(0, STDERR_EXCERPT)
+    // claude reports a usage limit on stdout and exits non-zero, so a failure
+    // whose stderr is empty still has its reason in hand. Reporting only stderr
+    // turned "your quota ran out" into a bare exit code.
+    const why = (): string => {
+      const out = stdout.trim().slice(0, STDERR_EXCERPT)
+      const err = excerpt().trim()
+      return [err && `stderr: ${err}`, out && `stdout: ${out}`].filter(Boolean).join('; ') || 'no output'
+    }
 
     const timer = setTimeout(() => {
       if (settled) return
@@ -111,7 +119,7 @@ export function spawnClaude(argv: string[], prompt: string, opts: ClaudeRunOptio
       clearTimeout(timer)
       if (code !== 0) {
         const how = code === null ? `signal ${signal}` : `exit code ${code}`
-        reject(new ClaudeError(`claude exited with ${how}; stderr: ${excerpt()}`, { stderr: excerpt() }))
+        reject(new ClaudeError(`claude exited with ${how}; ${why()}`, { stderr: excerpt() }))
         return
       }
       resolve(stdout)

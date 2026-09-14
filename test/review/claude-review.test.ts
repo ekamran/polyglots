@@ -171,6 +171,17 @@ describe('reviewBatch', () => {
     expect((err as ReviewError).message).toContain('fake claude failure')
   })
 
+  // The run that burned a whole overnight review reported only "exit code 1;
+  // stderr:" with nothing after it, because claude had written the reason to
+  // stdout and the runner kept only stderr.
+  it('says why the call failed even when the reason came out on stdout', async () => {
+    await setup()
+    process.env.FAKE_CLAUDE_MODE = 'quota'
+    const err = await reviewBatch(inputs, base()).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(ReviewError)
+    expect((err as ReviewError).message).toContain('usage limit reached')
+  })
+
   it('throws ReviewError naming the missing key (the original gettext key, not the id)', async () => {
     await setup()
     process.env.FAKE_CLAUDE_MODE = 'missing-id'

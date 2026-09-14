@@ -208,8 +208,12 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
     ...(opts.noAi === undefined ? {} : { noAi: opts.noAi }),
     ...(resumed ? { skipBatches: resumed.done } : {}),
     ...(opts.control ? { control: opts.control } : {}),
-    onStopped: (left) => {
-      pending = left
+    onStopped: (info) => {
+      pending = info.pending
+      // Rewind past a failed streak so the next run re-attempts those batches
+      // instead of trusting entries that only got flagged because the model
+      // could not be reached.
+      marker.done = Math.min(marker.done, info.lastGood)
     },
     ...(opts.adjudicate ? { adjudicate: opts.adjudicate } : {}),
     ...(opts.claudeBin ? { claudeBin: opts.claudeBin } : {}),

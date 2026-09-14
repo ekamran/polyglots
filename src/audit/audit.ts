@@ -63,13 +63,22 @@ export interface AuditOptions extends Partial<ClaudeRunOptions> {
   onBatchStart?: (batch: BatchStart) => void
   // Awaited, so a caller writing to disk finishes before the next batch starts.
   onBatch?: (progress: BatchProgress) => void | Promise<void>
-  // Called once if the run ended early, with the number of entries in batches it
-  // never attempted. Exact rather than derived, because a caller must never
-  // report an entry it did not look at as approvable.
-  onStopped?: (pending: number) => void
+  // Called once if the run ended early. `lastGood` is the batch to resume after,
+  // and `pending` counts every entry from there on, including a failed streak
+  // that must be re-attempted rather than trusted. Reported rather than derived,
+  // because a caller must never present an entry it did not look at as
+  // approvable.
+  onStopped?: (info: { pending: number; lastGood: number }) => void
 }
 
 export const DEFAULT_BATCH_SIZE = 25
+
+// Each batch already retries once on its own, so this many in a row is six
+// failed calls: past any transient blip and into something systemic, almost
+// always an exhausted quota. Grinding on from here costs two process spawns per
+// remaining batch and flags every entry it touches as needing a human look, for
+// a reason that has nothing to do with the translations.
+const MAX_CONSECUTIVE_FAILURES = 3
 
 export const adjudicateWithClaude: Adjudicator = async (batch, opts) => {
   const payload = await runClaude(buildAuditPrompt(batch, opts.locale, opts.nplurals), auditBatchJsonSchema, opts)
@@ -150,13 +159,25 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
   const batches = chunk(candidates, opts.batchSize ?? DEFAULT_BATCH_SIZE)
 
   const skipBatches = opts.skipBatches ?? 0
+  // 1-based index of the first batch in the current run of failures, so the
+  // breaker can rewind past the whole streak rather than just the last one.
+  let streakStart = 0
+  let consecutiveFailures = 0
+
+  // `at` is the 0-based index of the first batch that should NOT be trusted.
+  const stopAfter = (at: number): void => {
+    opts.onStopped?.({
+      lastGood: at,
+      pending: batches.slice(at).reduce((n, batch) => n + batch.length, 0),
+    })
+  }
 
   for (const [i, rawBatch] of batches.entries()) {
     if (i < skipBatches) continue
     // Before the batch, never inside it: whatever the previous batch decided has
     // already been persisted by its onBatch, so parking here loses nothing.
     if (opts.control && (await opts.control.gate()) === 'stop') {
-      opts.onStopped?.(batches.slice(i).reduce((n, batch) => n + batch.length, 0))
+      stopAfter(i)
       break
     }
     // Ids are per batch and 1-based: the model never has to echo a gettext key,
@@ -183,6 +204,17 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
       verdicts: decided,
       ...(outcome.failed ? { failed: outcome.failed } : {}),
     })
+
+    if (outcome.failed) {
+      if (consecutiveFailures === 0) streakStart = position.index
+      consecutiveFailures += 1
+      if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+        stopAfter(streakStart - 1)
+        break
+      }
+    } else {
+      consecutiveFailures = 0
+    }
   }
 
   return opts.entries.map((e) => verdicts.get(e.key)!).filter(Boolean)

@@ -226,6 +226,13 @@ async function main() {
     case 'malformed':
       process.stdout.write('this is not { json at all\n')
       return
+    // Claude prints its usage-limit notice on stdout and exits non-zero, so this
+    // mode reproduces a failure whose only explanation is in the stream the
+    // runner used to discard.
+    case 'quota':
+      process.stdout.write('Claude usage limit reached. Your limit will reset at 3:00pm.\n')
+      process.exit(1)
+      break
     case 'exit1':
       process.stderr.write('fake claude failure: something went wrong\n')
       process.exit(1)

@@ -477,7 +477,7 @@ describe('auditEntries under a run control', () => {
       ...base({ batchSize: 1 }),
       adjudicate,
       control,
-      onStopped: (pending: number) => stopped.push(pending),
+      onStopped: (info: { pending: number }) => stopped.push(info.pending),
     })
     expect(stopped).toEqual([3])
   })
@@ -490,7 +490,7 @@ describe('auditEntries under a run control', () => {
       ...base({ batchSize: 1 }),
       adjudicate,
       control: createRunControl(),
-      onStopped: (pending: number) => stopped.push(pending),
+      onStopped: (info: { pending: number }) => stopped.push(info.pending),
     })
     expect(stopped).toEqual([])
   })
@@ -503,6 +503,71 @@ describe('auditEntries under a run control', () => {
     })
     const verdicts = await auditEntries({ entries: four(), ...base({ batchSize: 1 }), adjudicate, control })
     expect(verdicts.map((v) => v.key)).toEqual(['k0'])
+  })
+})
+
+// Quota does not announce itself. It just starts failing every call, and a run
+// that grinds on marks thousands of entries "needs a human look" for a reason
+// that has nothing to do with the translations.
+describe('auditEntries when the model keeps failing', () => {
+  const ten = () => Array.from({ length: 10 }, (_, i) => entry(`k${i}`, `Source ${i}`, `Çeviri ${i}`))
+  const ok = (batch: { id: number }[]) => batch.map((c) => ({ id: c.id, problem: false, categories: [], reason: 'ok' }))
+
+  it('gives up after a run of failures rather than burning the rest of the file', async () => {
+    const adjudicate = vi.fn().mockRejectedValue(new Error('claude exited with exit code 1'))
+    await auditEntries({ entries: ten(), ...base({ batchSize: 1 }), adjudicate })
+
+    // Three batches, each attempted twice, then it stops. Not ten.
+    expect(adjudicate).toHaveBeenCalledTimes(6)
+  })
+
+  it('keeps going when a failure is isolated rather than systemic', async () => {
+    let call = 0
+    const adjudicate = vi.fn().mockImplementation(async (batch: { id: number }[]) => {
+      // Only the very first attempt fails; its retry succeeds.
+      if (++call === 1) throw new Error('transient')
+      return ok(batch)
+    })
+    await auditEntries({ entries: ten(), ...base({ batchSize: 1 }), adjudicate })
+
+    expect(adjudicate).toHaveBeenCalledTimes(11)
+  })
+
+  it('says which batch to resume after, so the failures are re-attempted', async () => {
+    let batches = 0
+    const adjudicate = vi.fn().mockImplementation(async (batch: { id: number }[]) => {
+      // Five batches land, then the quota wall.
+      if (++batches > 5) throw new Error('claude exited with exit code 1')
+      return ok(batch)
+    })
+    const stopped: { pending: number; lastGood: number }[] = []
+    await auditEntries({
+      entries: ten(),
+      ...base({ batchSize: 1 }),
+      adjudicate,
+      onStopped: (info: { pending: number; lastGood: number }) => {
+        stopped.push(info)
+      },
+    })
+
+    // Resume after batch 5, and treat everything from 6 on as still to do,
+    // including the three that failed.
+    expect(stopped).toEqual([{ lastGood: 5, pending: 5 }])
+  })
+
+  it('counts the whole failed streak as still to do, not as reviewed', async () => {
+    const adjudicate = vi.fn().mockRejectedValue(new Error('claude exited with exit code 1'))
+    const stopped: { pending: number; lastGood: number }[] = []
+    await auditEntries({
+      entries: ten(),
+      ...base({ batchSize: 1 }),
+      adjudicate,
+      onStopped: (info: { pending: number; lastGood: number }) => {
+        stopped.push(info)
+      },
+    })
+
+    expect(stopped).toEqual([{ lastGood: 0, pending: 10 }])
   })
 })
 
