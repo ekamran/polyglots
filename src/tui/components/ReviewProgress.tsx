@@ -174,6 +174,11 @@ export function ReviewProgress({ events }: { events: ReviewEvent[] }) {
               decided.
             </Text>
           )}
+          {summary.pending > 0 && (
+            <Text color="yellow">
+              Stopped early with {summary.pending} entries not reviewed. Run it again to carry on.
+            </Text>
+          )}
           {summary.repaired > 0 && (
             <Text color="green">
               {summary.repaired} repaired, {summary.written - summary.repaired} left for you.

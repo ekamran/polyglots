@@ -404,6 +404,11 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
         )
       }
       if (summary.unreviewed > 0) cli.out(`${summary.unreviewed} entries could not be reviewed and were flagged.`)
+      // Without this the counts just look small: a run that stopped on an
+      // exhausted quota would read exactly like one that finished.
+      if (summary.pending > 0) {
+        cli.out(`Stopped early with ${summary.pending} entries not reviewed. Re-run the same command to carry on.`)
+      }
       // written - repaired, not flagged - repaired: a whitespace-only fix is neither
       // a problem nor a needsReview entry, so flagged - repaired can go negative.
       if (summary.repaired > 0) {

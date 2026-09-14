@@ -459,6 +459,26 @@ describe('review', () => {
     expect(review.calls[0]).toMatchObject({ batchSize: 50 })
   })
 
+  // A run that stops on an exhausted quota must say so. Silently printing a
+  // smaller "approvable" than the file contains would read as a finished review.
+  it('says it stopped early and how much is left', async () => {
+    const h = harness()
+    const review = fakeReview(summary({ problems: 12, approvable: 40, pending: 2850, written: 12 }))
+    await h.run(['review', file], { reviewFile: review.fn })
+
+    expect(h.stdout.text).toMatch(/stopped early/i)
+    expect(h.stdout.text).toContain('2850')
+    expect(h.stdout.text).toMatch(/re-run/i)
+  })
+
+  it('says nothing about stopping when the run reached the end', async () => {
+    const h = harness()
+    const review = fakeReview(summary({ pending: 0 }))
+    await h.run(['review', file], { reviewFile: review.fn })
+
+    expect(h.stdout.text).not.toMatch(/stopped early/i)
+  })
+
   // An interrupted review picks up from its marker by default, so starting over
   // needs a word for it.
   it('forwards --fresh so a resume can be refused', async () => {

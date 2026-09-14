@@ -331,6 +331,16 @@ describe('ReviewProgress', () => {
     expect(flat(lastFrame())).not.toContain('unreviewed')
   })
 
+  it('says it stopped early when entries were left unreviewed', () => {
+    const events: ReviewEvent[] = [
+      { type: 'start', file: FILE, total: 200, reviewable: 200 },
+      { type: 'done', summary: reviewSummaryOf(FILE, { problems: 12, approvable: 40, pending: 148, written: 12 }) },
+    ]
+    const frame = flat(render(<ReviewProgress events={events} />).lastFrame())
+    expect(frame).toMatch(/stopped early/i)
+    expect(frame).toContain('148')
+  })
+
   it('reports repairs in the summary', () => {
     const repairEvents: ReviewEvent[] = [
       { type: 'start', file: FILE, total: 120, reviewable: 100 },
