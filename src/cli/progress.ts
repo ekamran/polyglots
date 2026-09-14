@@ -19,6 +19,7 @@ export interface ProgressState {
   batchDurations: number[]
   batchesDone: number
   batchSize: number
+  paused: boolean
 }
 
 export const initialProgress: ProgressState = {
@@ -31,6 +32,7 @@ export const initialProgress: ProgressState = {
   batchDurations: [],
   batchesDone: 0,
   batchSize: 0,
+  paused: false,
 }
 
 const BAR_WIDTH = 10
@@ -76,6 +78,11 @@ export function applyEvent(state: ProgressState, event: TranslateEvent): Progres
       }
     case 'batch-phase':
       return { ...state, phase: { name: event.phase, since: event.at } }
+    // A parked run has no phase running, so the elapsed clock stops with it.
+    case 'paused':
+      return { ...state, paused: true, phase: undefined }
+    case 'resumed':
+      return { ...state, paused: false }
     case 'batch-done':
       return {
         ...state,
@@ -106,6 +113,12 @@ export function formatProgress(state: ProgressState, now: number = Date.now()): 
   }
   if (state.phase) {
     parts.push(`${state.phase.name} ${Math.max(0, Math.round((now - state.phase.since) / 1000))}s`)
+  }
+  // A finish time computed through an indefinite hold is fiction, so a parked run
+  // says so instead of guessing.
+  if (state.paused) {
+    parts.push('paused, r to resume, q to stop')
+    return parts.join('  ')
   }
   const remaining = estimateRemainingMs(state.batchDurations, (state.batch?.of ?? 0) - state.batchesDone, state.batchSize)
   if (remaining !== undefined) {
@@ -267,6 +280,7 @@ export function createReviewProgressReporter(stream: ProgressStream): ReviewProg
   let inFlightSince: number | undefined
   let ticker: NodeJS.Timeout | undefined
   let batchSize = 0
+  let paused = false
   const durations: number[] = []
   const tty = stream.isTTY === true
 
@@ -311,6 +325,10 @@ export function createReviewProgressReporter(stream: ProgressStream): ReviewProg
     if (inFlightSince !== undefined) {
       parts.push(`reviewing ${Math.max(0, Math.round((now - inFlightSince) / 1000))}s`)
     }
+    if (paused) {
+      parts.push('paused')
+      return parts.join('  ')
+    }
     const remaining = estimateRemainingMs(durations, of - done, batchSize)
     if (remaining !== undefined) {
       parts.push(`~${formatDuration(remaining)} left, done by ${formatFinishTime(remaining, now)}`)
@@ -345,6 +363,15 @@ export function createReviewProgressReporter(stream: ProgressStream): ReviewProg
       case 'written':
         notice = `wrote ${event.file}`
         break
+      case 'paused':
+        paused = true
+        inFlightSince = undefined
+        notice = 'Paused. r to resume, q to stop and keep what is done.'
+        break
+      case 'resumed':
+        paused = false
+        notice = 'Resumed.'
+        break
       default:
         break
     }
@@ -359,7 +386,7 @@ export function createReviewProgressReporter(stream: ProgressStream): ReviewProg
       return
     }
     if (notice) stream.write(`${CLEAR_LINE}${notice}\n`)
-    if (notice || event.type === 'batch-start' || event.type === 'batch-done') {
+    if (notice || event.type === 'batch-start' || event.type === 'batch-done' || event.type === 'paused') {
       stream.write(`${CLEAR_LINE}${line()}`)
       liveLine = true
     }

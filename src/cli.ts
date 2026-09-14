@@ -9,6 +9,8 @@ import { Command, CommanderError } from 'commander'
 import { exportGlossary } from './commands/glossary-export.js'
 import { syncGlossary } from './commands/glossary-sync.js'
 import { reviewFile } from './commands/review.js'
+import { watchKeys } from './cli/keys.js'
+import { createRunControl, type RunState } from './run-control.js'
 import { importTmx } from './commands/tm-import.js'
 import { translateFile, type TranslateSummary } from './commands/translate.js'
 import { DEFAULT_CONFIG, loadConfig, loadSecrets, maskSecret, saveConfig, saveSecret } from './config.js'
@@ -380,7 +382,21 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
       const config = cli.config()
       const locale = parseLocaleArg(flags.locale ?? config.defaultLocale)
       const report = createReviewProgressReporter(cli.streams.stderr)
+      // Only binds on a terminal. A piped or scheduled run has nobody to press
+      // anything, and raw mode on a pipe would break it.
+      const control = createRunControl()
+      const unwatchKeys = watchKeys(cli.streams.stdin, control, {
+        onInterrupt: () => {
+          unwatchKeys()
+          process.kill(process.pid, 'SIGINT')
+        },
+      })
+      const unsubscribe = control.subscribe((state: RunState) => {
+        if (state === 'paused') report({ type: 'paused', at: Date.now() })
+        if (state === 'running') report({ type: 'resumed', at: Date.now() })
+      })
       const summary = await cli.reviewFile({
+        control,
         file: target!,
         locale,
         ...(flags.outDir ? { outDir: flags.outDir } : {}),
@@ -390,7 +406,11 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
         ...(flags.fresh ? { fresh: true } : {}),
         claudeBin: process.env.POLYGLOTS_CLAUDE_BIN || undefined,
         onProgress: report,
-      }).finally(() => report.finish())
+      }).finally(() => {
+        unsubscribe()
+        unwatchKeys()
+        report.finish()
+      })
       // Undecided entries are written to the file alongside decided ones, so the
       // flagged count is both; needsReview then qualifies how many are guesses.
       const flagged = summary.problems + summary.needsReview
@@ -415,7 +435,10 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
         cli.out(`${summary.repaired} repaired, ${summary.written - summary.repaired} left for you.`)
       }
       if (summary.problemsFile) cli.out(`Wrote ${summary.problemsFile}`)
-      else cli.out('Nothing flagged; the whole submission looks approvable.')
+      // Only a run that reached the end can say that. A stopped one has entries
+      // nothing has looked at, and saying they look approvable invites exactly
+      // the bulk approval this tool exists to make safe.
+      else if (summary.pending === 0) cli.out('Nothing flagged; the whole submission looks approvable.')
     })
 
   const glossary = program.command('glossary').description('translate.wordpress.org glossary cache')

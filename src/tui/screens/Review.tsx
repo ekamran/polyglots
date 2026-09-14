@@ -1,5 +1,5 @@
 import { basename } from 'node:path'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Box, Text, useInput } from 'ink'
 import TextInput from 'ink-text-input'
 import { normalizeLocale } from '../../tmx/parse.js'
@@ -9,6 +9,7 @@ import { FilePicker } from '../components/FilePicker.js'
 import { BACK_HINT, DONE_HINT, Hint } from '../components/Hint.js'
 import { ReviewProgress } from '../components/ReviewProgress.js'
 import { useTask } from '../hooks/useTask.js'
+import { createRunControl, type RunControl } from '../../run-control.js'
 
 export interface ReviewProps {
   cwd: string
@@ -50,6 +51,9 @@ export function Review({ cwd, onBack }: ReviewProps) {
   const [batchSize, setBatchSize] = useState(config.batchSize)
   const [focus, setFocus] = useState(FIELD_LOCALE)
   const [events, setEvents] = useState<ReviewEvent[]>([])
+  // Held in a ref so a keypress reaches the run in flight without re-rendering
+  // the whole screen on every state change.
+  const control = useRef<RunControl | undefined>(undefined)
   const task = useTask<ReviewSummary>()
 
   const finished = phase === 'running' && task.state.status !== 'running'
@@ -62,22 +66,38 @@ export function Review({ cwd, onBack }: ReviewProps) {
   const start = (chosenLocale: string) => {
     setEvents([])
     setPhase('running')
+    const run = createRunControl()
+    control.current = run
+    const unsubscribe = run.subscribe((state) => {
+      if (state === 'paused') setEvents((prev) => [...prev, { type: 'paused', at: Date.now() }])
+      if (state === 'running') setEvents((prev) => [...prev, { type: 'resumed', at: Date.now() }])
+    })
     task.run(() =>
       commands.reviewFile({
+        control: run,
         file,
         locale: chosenLocale,
         noAi,
         fresh,
         batchSize,
         onProgress: (e) => setEvents((prev) => [...prev, e]),
-      }),
+      }).finally(unsubscribe),
     )
   }
 
   // Stays subscribed during the run: Ink only reads stdin (and so only sees Ctrl+C)
   // while some useInput is active.
   useInput((input, key) => {
-    if (stage === 'running') return
+    if (stage === 'running') {
+      const run = control.current
+      if (!run) return
+      // Pausing parks the run after the batch in flight, so the call already paid
+      // for still finishes and saves.
+      if (input === 'p') run.pause()
+      else if (input === 'r') run.resume()
+      else if (input === 'q') run.stop()
+      return
+    }
     if (isBack(input, key)) {
       onBack()
       return
@@ -160,6 +180,7 @@ export function Review({ cwd, onBack }: ReviewProps) {
       {(stage === 'running' || stage === 'done') && (
         <>
           <ReviewProgress events={events} />
+          {stage === 'running' && <Hint>p pause · r resume · q stop and keep what is done</Hint>}
           {task.state.status === 'error' && <Text color="red">Review failed: {task.state.message}</Text>}
           {stage === 'done' && <Hint>{DONE_HINT}</Hint>}
         </>

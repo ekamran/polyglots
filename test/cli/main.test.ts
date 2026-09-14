@@ -471,6 +471,16 @@ describe('review', () => {
     expect(h.stdout.text).toMatch(/re-run/i)
   })
 
+  // It used to print both, which reads as a finished review that found nothing.
+  it('does not call a stopped submission approvable', async () => {
+    const h = harness()
+    const review = fakeReview(summary({ problems: 0, approvable: 0, pending: 6, written: 0, problemsFile: undefined, byRule: {} }))
+    await h.run(['review', file], { reviewFile: review.fn })
+
+    expect(h.stdout.text).toMatch(/stopped early/i)
+    expect(h.stdout.text).not.toMatch(/looks approvable/i)
+  })
+
   it('says nothing about stopping when the run reached the end', async () => {
     const h = harness()
     const review = fakeReview(summary({ pending: 0 }))

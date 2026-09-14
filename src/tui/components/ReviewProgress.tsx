@@ -25,6 +25,7 @@ export interface ReviewProgressState {
   batchIndex: number
   batchDurations: number[]
   remainingMs?: number
+  paused: boolean
   failures: string[]
   written: string[]
   summary?: ReviewSummary
@@ -45,6 +46,7 @@ export function reduceReviewProgress(events: ReviewEvent[]): ReviewProgressState
     inFlight: false,
     batchIndex: 0,
     batchDurations: [],
+    paused: false,
     failures: [],
     written: [],
   }
@@ -98,6 +100,14 @@ export function reduceReviewProgress(events: ReviewEvent[]): ReviewProgressState
       case 'written':
         state.written.push(e.file)
         break
+      // The clock stops with the run: a parked batch is not a slow one.
+      case 'paused':
+        state.paused = true
+        state.inFlight = false
+        break
+      case 'resumed':
+        state.paused = false
+        break
       case 'done':
         state.summary = e.summary
         break
@@ -105,6 +115,8 @@ export function reduceReviewProgress(events: ReviewEvent[]): ReviewProgressState
   }
 
   state.remainingMs = estimateRemainingMs(state.batchDurations, state.batchesTotal - state.batchesDone, batchSize)
+
+  if (state.paused) state.remainingMs = undefined
 
   if (state.summary) {
     state.inFlight = false
@@ -136,9 +148,11 @@ export function ReviewProgress({ events }: { events: ReviewEvent[] }) {
           reads as a contradiction (2/8 next to batch 3/8). */}
       <Text>
         {renderBar(state.batchesDone, state.batchesTotal || 1)}{' '}
-        {state.inFlight
-          ? `batch ${state.batchIndex}/${state.batchesTotal} · reviewing ${elapsed}s`
-          : `${state.batchesDone}/${state.batchesTotal} batches`}
+        {state.paused
+          ? `paused after batch ${state.batchesDone}/${state.batchesTotal}`
+          : state.inFlight
+            ? `batch ${state.batchIndex}/${state.batchesTotal} · reviewing ${elapsed}s`
+            : `${state.batchesDone}/${state.batchesTotal} batches`}
         {state.remainingMs === undefined
           ? ''
           : ` · ~${formatDuration(state.remainingMs)} left, done by ${formatFinishTime(state.remainingMs)}`}{' '}
@@ -188,7 +202,7 @@ export function ReviewProgress({ events }: { events: ReviewEvent[] }) {
           {summary.problemsFile ? (
             <Text>Wrote {summary.problemsFile}. Open it in PoEdit to review.</Text>
           ) : (
-            <Text color="green">Nothing flagged; the whole submission looks approvable.</Text>
+            summary.pending === 0 && <Text color="green">Nothing flagged; the whole submission looks approvable.</Text>
           )}
         </Box>
       )}

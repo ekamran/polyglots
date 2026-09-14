@@ -106,6 +106,10 @@ export type ReviewEvent =
   | { type: 'batch-done'; index: number; problems: number; at: number }
   | { type: 'batch-failed'; index: number; size: number; reason: string; at: number }
   | { type: 'written'; file: string }
+  // Emitted by whichever surface owns the keyboard, not by the run itself, so a
+  // progress line can say it is parked rather than wedged.
+  | { type: 'paused'; at: number }
+  | { type: 'resumed'; at: number }
   | { type: 'done'; summary: ReviewSummary }
 
 export type ConsistencyScope = 'core' | 'all'

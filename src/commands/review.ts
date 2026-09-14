@@ -249,6 +249,15 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
     repaired: resumed?.repaired ?? 0,
   }
 
+  // The marker is accumulated per batch so a Ctrl+C between batches leaves a
+  // usable one, but these are the authority at the end: a run that dropped an
+  // untrusted tail must not leave those counts behind in the header. The summary
+  // then reads the same numbers, so the file and the report cannot disagree.
+  marker.problems = problems.length + before.problems
+  marker.unreviewed = verdicts.filter((v) => v.unreviewed).length + before.unreviewed
+  marker.repaired = verdicts.filter((v) => v.text !== undefined).length + before.repaired
+  marker.byRule = addTally(tally(verdicts), resumed?.byRule ?? {})
+
   // The rules-only path decides everything up front, so nothing was persisted yet.
   decided.length = 0
   decided.push(...verdicts)
@@ -259,14 +268,14 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
     total: all.length,
     skipped: all.length - reviewable.length,
     reviewed: reviewable.length,
-    problems: problems.length + before.problems,
+    problems: marker.problems,
     needsReview: needsReview.length,
     approvable: reviewable.length - problems.length - needsReview.length - before.problems - pending,
     pending,
-    unreviewed: verdicts.filter((v) => v.unreviewed).length + before.unreviewed,
-    repaired: verdicts.filter((v) => v.text !== undefined).length + before.repaired,
+    unreviewed: marker.unreviewed,
+    repaired: marker.repaired,
     written,
-    byRule: addTally(tally(verdicts), resumed?.byRule ?? {}),
+    byRule: marker.byRule,
   }
 
   if (written > 0) summary.problemsFile = target

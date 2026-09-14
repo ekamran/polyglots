@@ -1,5 +1,5 @@
 import { basename } from 'node:path'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Box, Text, useInput } from 'ink'
 import TextInput from 'ink-text-input'
 import type { TranslateEvent, TranslateSummary } from '../../commands/translate.js'
@@ -9,6 +9,7 @@ import { FilePicker } from '../components/FilePicker.js'
 import { BACK_HINT, DONE_HINT, Hint } from '../components/Hint.js'
 import { Progress } from '../components/Progress.js'
 import { useTask } from '../hooks/useTask.js'
+import { createRunControl, type RunControl } from '../../run-control.js'
 
 export interface TranslateProps {
   cwd: string
@@ -43,6 +44,9 @@ export function Translate({ cwd, onBack }: TranslateProps) {
   const [locale, setLocale] = useState(config.defaultLocale)
   const [focus, setFocus] = useState(FIELD_MODE)
   const [events, setEvents] = useState<TranslateEvent[]>([])
+  // Held in a ref so a keypress reaches the run in flight without re-rendering
+  // the whole screen on every state change.
+  const control = useRef<RunControl | undefined>(undefined)
   const task = useTask<TranslateSummary>()
 
   const finished = phase === 'running' && task.state.status !== 'running'
@@ -55,21 +59,37 @@ export function Translate({ cwd, onBack }: TranslateProps) {
   const start = () => {
     setEvents([])
     setPhase('running')
+    const run = createRunControl()
+    control.current = run
+    const unsubscribe = run.subscribe((state) => {
+      if (state === 'paused') setEvents((prev) => [...prev, { type: 'paused', at: Date.now() }])
+      if (state === 'running') setEvents((prev) => [...prev, { type: 'resumed', at: Date.now() }])
+    })
     task.run(() =>
       commands.translateFile({
+        control: run,
         file,
         locale,
         mode,
         draftEngine: engine,
         onProgress: (e) => setEvents((prev) => [...prev, e]),
-      }),
+      }).finally(unsubscribe),
     )
   }
 
   // Stays subscribed during the run: Ink only reads stdin (and so only sees Ctrl+C)
   // while some useInput is active.
   useInput((input, key) => {
-    if (stage === 'running') return
+    if (stage === 'running') {
+      const run = control.current
+      if (!run) return
+      // Pausing parks the run after the batch in flight, so the call already paid
+      // for still finishes and saves.
+      if (input === 'p') run.pause()
+      else if (input === 'r') run.resume()
+      else if (input === 'q') run.stop()
+      return
+    }
     if (stage === 'confirm') {
       // [y/N]: only an explicit y starts; enter is No, so a double enter on "Start" cannot launch an all run
       if (input === 'y' || input === 'Y') start()
@@ -155,6 +175,7 @@ export function Translate({ cwd, onBack }: TranslateProps) {
       {(stage === 'running' || stage === 'done') && (
         <>
           <Progress events={events} />
+          {stage === 'running' && <Hint>p pause · r resume · q stop and keep what is done</Hint>}
           {task.state.status === 'error' && <Text color="red">Translation failed: {task.state.message}</Text>}
           {stage === 'done' && <Hint>{DONE_HINT}</Hint>}
         </>

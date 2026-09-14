@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3'
 import { chunk } from '../batch.js'
+import type { RunControl } from '../run-control.js'
 import { loadConfig, loadSecrets } from '../config.js'
 import { DraftQuotaError, DraftRateLimitError, getDraftEngine } from '../draft/index.js'
 import { MCP_ENV, writeMcpConfig } from '../mcp/config.js'
@@ -22,6 +23,8 @@ export type TranslateEvent =
   | { type: 'batch-skipped'; index: number; size: number; reason: string; at: number }
   | { type: 'warning'; message: string }
   | { type: 'saved' }
+  | { type: 'paused'; at: number }
+  | { type: 'resumed'; at: number }
   | { type: 'done'; summary: TranslateSummary }
 
 export interface TranslateSummary {
@@ -43,6 +46,8 @@ export interface TranslateOptions {
   dryRun?: boolean
   batchSize?: number
   model?: string
+  // Lets the caller park the run between batches, or end it early.
+  control?: RunControl
   db?: Database.Database
   secrets?: Secrets
   engine?: DraftEngine
@@ -53,6 +58,11 @@ export interface TranslateOptions {
 }
 
 type Emit = (e: TranslateEvent) => void
+
+// The draft engines raise a typed quota error, but the claude review step just
+// fails, and a run that keeps going past an exhausted subscription spends two
+// process spawns per batch to learn the same thing again.
+const MAX_CONSECUTIVE_SKIPS = 3
 
 function isStopError(err: unknown): err is DraftQuotaError | DraftRateLimitError {
   return err instanceof DraftQuotaError || err instanceof DraftRateLimitError
@@ -171,7 +181,16 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
     const review = opts.review ?? reviewBatch
     const mcpConfigPath = opts.mcpConfigPath ?? (await writeMcpConfig({ env: { [MCP_ENV.locale]: locale } }))
 
+    let consecutiveSkips = 0
+
     for (const [i, batch] of batches.entries()) {
+      // Between batches, never inside one: the batch in flight has already been
+      // paid for, so it finishes and saves before anything parks.
+      if (opts.control && (await opts.control.gate()) === 'stop') {
+        summary.stopped = 'stopped before batch ' + String(i + 1)
+        emit({ type: 'done', summary })
+        return summary
+      }
       const index = i + 1
       emit({ type: 'batch-start', index, of: batches.length, size: batch.length, at: Date.now() })
       emit({ type: 'batch-phase', index, phase: 'drafting', at: Date.now() })
@@ -197,8 +216,14 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
       if (results === undefined) {
         summary.skipped += batch.length
         emit({ type: 'batch-skipped', index, size: batch.length, reason: errorMessage(lastError), at: Date.now() })
+        if (++consecutiveSkips >= MAX_CONSECUTIVE_SKIPS) {
+          summary.stopped = `${consecutiveSkips} batches failed in a row: ${errorMessage(lastError)}`
+          emit({ type: 'done', summary })
+          return summary
+        }
         continue
       }
+      consecutiveSkips = 0
 
       const saved = await persist(po, results, opts.dryRun)
       const fuzzy = results.filter((r) => r.fuzzy).length

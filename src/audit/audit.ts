@@ -165,7 +165,13 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
   let consecutiveFailures = 0
 
   // `at` is the 0-based index of the first batch that should NOT be trusted.
+  // Everything from there on is pending, so its verdicts are dropped rather than
+  // returned: an entry counted both as a problem and as still-to-do is counted
+  // twice, and the arithmetic that follows goes negative.
   const stopAfter = (at: number): void => {
+    for (const batch of batches.slice(at)) {
+      for (const candidate of batch) verdicts.delete(candidate.key)
+    }
     opts.onStopped?.({
       lastGood: at,
       pending: batches.slice(at).reduce((n, batch) => n + batch.length, 0),
