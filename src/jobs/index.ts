@@ -1,4 +1,5 @@
 export { openJobsDb } from './db.js'
+export { parseStringArray, type Clock } from './json.js'
 export { configHash, draftHash, srcHash, translateConfigHash, type ConfigHashInput } from './hash.js'
 export {
   getAuditVerdict,
@@ -6,7 +7,6 @@ export {
   pruneStaleConfigs,
   type CachedTable,
   type CachedVerdict,
-  type Clock,
   type VerdictKey,
 } from './verdicts.js'
 export {

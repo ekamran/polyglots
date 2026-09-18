@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 import type { Locale } from '../types.js'
-import type { Clock } from './verdicts.js'
+import { parseStringArray, type Clock } from './json.js'
 
 export interface DraftKey {
   srcHash: string
@@ -23,22 +23,13 @@ export interface DraftReview {
   reason: string
 }
 
-function parse(json: string): string[] | undefined {
-  try {
-    const value: unknown = JSON.parse(json)
-    return Array.isArray(value) && value.every((v) => typeof v === 'string') ? value : undefined
-  } catch {
-    return undefined
-  }
-}
-
 export function getDraft(db: Database.Database, key: DraftKey): string[] | undefined {
   const row = db
     .prepare<[string, string, string], { text: string }>(
       'SELECT text FROM draft WHERE src_hash = ? AND locale = ? AND engine = ?',
     )
     .get(key.srcHash, key.locale, key.engine)
-  return row ? parse(row.text) : undefined
+  return row ? parseStringArray(row.text) : undefined
 }
 
 export function putDraft(
@@ -61,7 +52,7 @@ export function getDraftVerdict(db: Database.Database, key: DraftVerdictKey): Dr
     )
     .get(key.srcHash, key.draftHash, key.configHash, key.locale, key.engine)
   if (!row) return undefined
-  const text = parse(row.text)
+  const text = parseStringArray(row.text)
   return text ? { text, fuzzy: row.fuzzy === 1, reason: row.reason } : undefined
 }
 

@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 import type { Locale } from '../types.js'
-import type { Clock } from './verdicts.js'
+import type { Clock } from './json.js'
 
 // The first three mirror RunState in run-control.ts exactly, so the pause key
 // needs no new vocabulary. `done` is the terminal state RunState has no need to

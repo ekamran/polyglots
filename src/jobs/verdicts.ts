@@ -1,8 +1,7 @@
 import type Database from 'better-sqlite3'
 import { AUDIT_CATEGORIES, type AuditCategory } from '../audit/schema.js'
 import type { Locale } from '../types.js'
-
-export type Clock = () => number
+import { parseStringArray, type Clock } from './json.js'
 
 export interface VerdictKey {
   srcHash: string
@@ -33,24 +32,13 @@ interface Row {
   fix: string | null
 }
 
-// A hand-edited or truncated row reads as a miss rather than as a crash: the
-// cache is disposable, and re-asking the model is always a correct answer.
-function parse(json: string): string[] | undefined {
-  try {
-    const value: unknown = JSON.parse(json)
-    return Array.isArray(value) && value.every((v) => typeof v === 'string') ? value : undefined
-  } catch {
-    return undefined
-  }
-}
-
 const isCategory = (value: string): value is AuditCategory =>
   (AUDIT_CATEGORIES as readonly string[]).includes(value)
 
 // filter with a type guard narrows; comparing the lengths is what turns
 // "some were unrecognised" into a miss rather than a quietly shortened list.
 function parseCategories(json: string): AuditCategory[] | undefined {
-  const all = parse(json)
+  const all = parseStringArray(json)
   if (!all) return undefined
   const known = all.filter(isCategory)
   return known.length === all.length ? known : undefined
@@ -77,7 +65,7 @@ export function getAuditVerdict(db: Database.Database, key: VerdictKey): CachedV
   if (!categories) return undefined
   let fix: string[] | undefined
   if (row.fix !== null) {
-    fix = parse(row.fix)
+    fix = parseStringArray(row.fix)
     if (!fix) return undefined
   }
 
