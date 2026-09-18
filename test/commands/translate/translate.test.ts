@@ -277,8 +277,19 @@ describe('translateFile: failures', () => {
 
     const engine2 = fakeEngine()
     const second = await translateFile(base({ engine: engine2, review: fakeReview() }))
-    expect(engine2.calls).toEqual([[`post type singular name${CTX}Form`, 'One submission was deleted.']])
+    // The first run already bought and cached these drafts; only its review
+    // of them failed. Resuming re-runs the review, not the draft, so the
+    // second run never re-pays the engine for work already on hand.
+    expect(engine2.calls).toEqual([])
+    // But the entries the first run gave up on are not stuck: the resumed run
+    // completes them using the cached drafts.
     expect(second).toMatchObject({ pending: 2, translated: 2, skipped: 0 })
+    const resumed = await parseFile(ws.file)
+    expect(entryOf(resumed, `post type singular name${CTX}Form`).msgstr).toEqual(['[draft] Form'])
+    expect(entryOf(resumed, 'One submission was deleted.').msgstr).toEqual([
+      '[draft] One submission was deleted.',
+      '[draft] %d submissions were deleted.',
+    ])
   })
 
   it('treats a non-quota engine error like a review failure: retry once, then skip', async () => {

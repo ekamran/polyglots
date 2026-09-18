@@ -95,7 +95,11 @@ describe('translateFile: engine must return a draft for every unit', () => {
 
     const summary = await translateFile(base({ engine, review, batchSize: 2, onProgress }))
 
-    expect(engine.calls.map((c) => c.length)).toEqual([2, 2, 2, 2, 1])
+    // The retry on batch 1 asks the engine for only 'Form entries', not the
+    // whole batch again: 'Save Changes' drafted fine on the first attempt and
+    // is cached, so the retry is a targeted re-ask of the one unit that
+    // actually failed rather than a re-buy of a draft already paid for.
+    expect(engine.calls.map((c) => c.length)).toEqual([2, 1, 2, 2, 1])
     expect(review.calls).toHaveLength(3)
     expect(review.calls.flatMap((c) => c.inputs.map((i) => i.key))).not.toContain('Form entries')
     const skipped = ofType(events, 'batch-skipped')
