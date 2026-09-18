@@ -7,8 +7,8 @@ const HASH_LENGTH = 16
 
 // Written as escapes, not literal control bytes, so the file stays text to git
 // and grep. Same convention as resume.ts.
-const FIELD = ''
-const PART = ''
+const FIELD = '\u0001'
+const PART = '\u0002'
 
 function hash(...parts: string[]): string {
   return createHash('sha256').update(parts.join(PART)).digest('hex').slice(0, HASH_LENGTH)
