@@ -203,6 +203,17 @@ describe('PoFile.apply', () => {
     expect(file.raw.translations['']['Form entries'].comments?.flag).toBe('php-format')
   })
 
+  it('does not leave a multi-line reason behind as an unowned comment', async () => {
+    const file = await loadPo(path)
+    const key = 'Thank you for installing %s.'
+    file.apply([{ key, text: ['%s icin tesekkurler.'], fuzzy: true, reason: 'first line\nsecond line' }])
+    // Written as one note, so the second half cannot be mistaken for a comment
+    // the contributor wrote, which setNotes would then preserve for good.
+    expect(file.raw.translations[''][key].comments?.translator).toBe('polyglots: first line second line')
+    file.apply([{ key, text: ['%s icin tesekkurler.'], fuzzy: false }])
+    expect(file.raw.translations[''][key].comments?.translator).toBeUndefined()
+  })
+
   it('ignores unknown keys and does not touch other entries', async () => {
     const file = await loadPo(path)
     const before = structuredClone(file.raw.translations)

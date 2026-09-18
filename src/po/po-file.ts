@@ -140,22 +140,27 @@ const FALLBACK_NOTE = 'flagged for review'
 // output file is rebuilt from the untouched source on every save. An annotation
 // written without a readable note is therefore deleted on the next resume, along
 // with a repair that exists in no other file, so one is always substituted here.
-// A note is read back through splitLines, which trims each line and keeps only
-// the first: a newline in the note text truncates it, and one at the front
-// leaves a bare "# polyglots:" whose lost trailing space no longer matches
-// NOTE_PREFIX. Flattening the note to a single line here keeps the round trip
-// whole whatever the reviewer, or the model's reason string, put in it.
 function readableNotes(notes: string[]): string[] {
-  const said = notes.map((note) => note.replace(/\s*\n\s*/g, ' ').trim()).filter((note) => note !== '')
+  const said = notes.filter((note) => note.trim() !== '')
   return said.length > 0 ? said : [FALLBACK_NOTE]
 }
 
 // Our own notes are rewritten on every pass rather than appended, so resuming a
 // run cannot stack duplicates, and a note disappears once its reason does.
 // Comments that came from the source or from a contributor are left alone.
+//
+// Each note is flattened to a single line first. A note is read back through
+// splitLines, which trims each line and keeps only the first, so a newline in
+// the note text truncates it and strands the remainder as a line that no longer
+// starts with NOTE_PREFIX: unrecoverable by carried(), and indistinguishable
+// from a contributor's own comment, which every later pass then preserves. The
+// note text is whatever a reviewer or the model's reason string put in it, so
+// this is done here, at the one point all of them pass through, rather than
+// asked of each caller.
 function setNotes(entry: GetTextTranslation, notes: string[]): void {
+  const said = notes.map((note) => note.replace(/\s*\n\s*/g, ' ').trim()).filter((note) => note !== '')
   const kept = splitLines(entry.comments?.translator).filter((line) => !line.startsWith(NOTE_PREFIX))
-  const all = [...notes.map((n) => `${NOTE_PREFIX}${n}`), ...kept]
+  const all = [...said.map((n) => `${NOTE_PREFIX}${n}`), ...kept]
   const comments = { ...entry.comments }
   if (all.length > 0) comments.translator = all.join('\n')
   else delete comments.translator
