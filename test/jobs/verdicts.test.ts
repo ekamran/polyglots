@@ -73,6 +73,26 @@ describe('audit verdict cache', () => {
     const n = db.prepare<[], { n: number }>('SELECT COUNT(*) AS n FROM audit_verdict').get()!.n
     expect(n).toBe(1)
   })
+
+  it('reads an unparseable categories column as a miss, not as a verdict with no categories', () => {
+    // A verdict that lost its categories still looks intact to the caller, so
+    // it would be trusted rather than re-asked, and the findings it drives
+    // would silently differ from what the model actually said.
+    putAuditVerdict(db, key(), { problem: true, categories: ['glossary'], reason: 'x' })
+    db.prepare('UPDATE audit_verdict SET categories = ?').run('{not json')
+    expect(getAuditVerdict(db, key())).toBeUndefined()
+  })
+
+  it('reads an unparseable fix column as a miss', () => {
+    putAuditVerdict(db, key(), { problem: true, categories: [], reason: 'x', fix: ['a'] })
+    db.prepare('UPDATE audit_verdict SET fix = ?').run('{not json')
+    expect(getAuditVerdict(db, key())).toBeUndefined()
+  })
+
+  it('still reads a null fix as a hit, because a cleared entry has no repair', () => {
+    putAuditVerdict(db, key(), { problem: false, categories: [], reason: '' })
+    expect(getAuditVerdict(db, key())).toBeDefined()
+  })
 })
 
 describe('pruneStaleConfigs', () => {

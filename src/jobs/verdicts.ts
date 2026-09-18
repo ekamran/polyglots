@@ -29,12 +29,12 @@ interface Row {
 
 // A hand-edited or truncated row reads as a miss rather than as a crash: the
 // cache is disposable, and re-asking the model is always a correct answer.
-function parse(json: string, fallback: string[]): string[] {
+function parse(json: string): string[] | undefined {
   try {
     const value: unknown = JSON.parse(json)
-    return Array.isArray(value) && value.every((v) => typeof v === 'string') ? value : fallback
+    return Array.isArray(value) && value.every((v) => typeof v === 'string') ? value : undefined
   } catch {
-    return fallback
+    return undefined
   }
 }
 
@@ -46,10 +46,26 @@ export function getAuditVerdict(db: Database.Database, key: VerdictKey): CachedV
     )
     .get(key.srcHash, key.configHash, key.locale, key.engine)
   if (!row) return undefined
-  const fix = row.fix === null ? undefined : parse(row.fix, [])
+  // A hand-edited or truncated row reads as a miss, not as a degraded hit.
+  // Substituting an empty array for unreadable categories would hand back a
+  // verdict that looks intact but has lost the findings it was built from, and
+  // the caller would trust it rather than re-ask. The cache is disposable, so
+  // re-asking the model is always a correct answer; returning a wrong verdict
+  // never is.
+  //
+  // A null `fix` is not corruption: a cleared entry legitimately has no repair,
+  // and must still read as a hit.
+  const categories = parse(row.categories)
+  if (!categories) return undefined
+  let fix: string[] | undefined
+  if (row.fix !== null) {
+    fix = parse(row.fix)
+    if (!fix) return undefined
+  }
+
   return {
     problem: row.problem === 1,
-    categories: parse(row.categories, []),
+    categories,
     reason: row.reason,
     ...(fix && fix.length > 0 ? { fix } : {}),
   }
