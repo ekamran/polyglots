@@ -241,4 +241,35 @@ describe('review backed by the job store', () => {
     const entries = (await loadPo(join(dir, 'plugin-tr-repaired.po'))).auditEntries().map((e) => e.msgid)
     expect(entries).toContain('Save')
   })
+
+  // finishRun already froze the totals and marked the row 'done' before this
+  // event fires. A caller's own progress handler throwing here is not a review
+  // that failed part way through, and must not be able to rewrite history into
+  // looking like one: a 'stopped' row with real totals is worse than either
+  // state alone, because it would read as genuine data to anything that later
+  // trusts a run's totals just because its state is terminal.
+  it('leaves the run done, with its totals intact, even if the done notification itself throws', async () => {
+    await expect(
+      reviewFile({
+        file: join(dir, 'plugin-tr.po'),
+        locale: 'tr',
+        db,
+        jobsDb,
+        adjudicate: clean,
+        mcpConfigPath: '',
+        onProgress: (e) => {
+          if (e.type === 'done') throw new Error('handler blew up')
+        },
+      }),
+    ).rejects.toThrow('handler blew up')
+
+    const row = jobsDb
+      .prepare<[], { state: string; entries: number | null; flagged: number | null }>(
+        'SELECT state, entries, flagged FROM run ORDER BY id DESC LIMIT 1',
+      )
+      .get()!
+    expect(row.state).toBe('done')
+    expect(row.entries).toBe(2)
+    expect(row.flagged).toBe(0)
+  })
 })

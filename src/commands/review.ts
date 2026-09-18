@@ -136,6 +136,7 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
   // could not even produce an unreviewed verdict — must not leak the handle
   // this call opened, nor leave history claiming the run is still going.
   let runId: number | undefined
+  let summary: ReviewSummary
   try {
     const config = computeConfigHash({ locale: opts.locale, glossary, properNouns })
     // The cache holds verdicts for the current configuration and nothing else.
@@ -290,7 +291,7 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
     decided.push(...verdicts)
     const written = await persist()
 
-    const summary: ReviewSummary = {
+    summary = {
       file: opts.file,
       total: all.length,
       skipped: all.length - reviewable.length,
@@ -327,9 +328,6 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
         byCategory: summary.byRule,
       })
     }
-
-    emit({ type: 'done', summary })
-    return summary
   } catch (err) {
     // A run in progress when this throws is neither done nor still running: mark
     // it stopped so history does not claim otherwise, before the handle it needs
@@ -339,4 +337,10 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
   } finally {
     if (ownsJobsDb) jobs.close()
   }
+
+  // Outside the try on purpose: by here the run's history is settled, and a
+  // caller whose progress handler throws must not be able to rewrite it. A
+  // failed notification is not a failed review.
+  emit({ type: 'done', summary })
+  return summary
 }
