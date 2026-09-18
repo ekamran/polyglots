@@ -20,8 +20,11 @@ file and the resume point stopped being three things that had to agree.
 - `translate` can resume, which it never could. A re-run reuses the drafts and the
   reviews of them that it already has, so it no longer re-pays the metered draft API
   for work it already did.
-- A verdict is reused across files. The same interface string appears in many
-  submissions, and is now judged once.
+- A review that was interrupted picks up where it stopped. Re-run the same command
+  and only the entries that were never decided go back to the model; the rest come
+  back from what the earlier run already established about that file.
+- `translate --fresh` ignores the drafts and reviews kept from an earlier run and
+  asks for them again, for when the first answer was not good enough.
 - Per-run totals are kept as history, so a reporting command can be written later
   against real numbers rather than starting from the day it ships.
 
