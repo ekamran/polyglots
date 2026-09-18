@@ -211,11 +211,7 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
       outstanding.push(candidate)
       continue
     }
-    // The cache stores categories as plain strings (Task 3's corrupt-row-is-a-miss
-    // guarantee only checks that they are strings, not that they are one of
-    // AUDIT_CATEGORIES): a hit is trusted to be well-formed, since it was written
-    // from a real AuditResult by the `put` below.
-    const verdict = toVerdict(candidate, { id: 0, ...hit } as AuditResult, ctx, opts.nplurals)
+    const verdict = toVerdict(candidate, { id: 0, ...hit }, ctx, opts.nplurals)
     verdicts.set(candidate.key, verdict)
     fromCache.push(verdict)
   }

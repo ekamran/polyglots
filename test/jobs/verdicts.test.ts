@@ -93,6 +93,14 @@ describe('audit verdict cache', () => {
     putAuditVerdict(db, key(), { problem: false, categories: [], reason: '' })
     expect(getAuditVerdict(db, key())).toBeDefined()
   })
+
+  it('reads an unrecognised category as a miss, not as a category it will pass on', () => {
+    // Categories become ai:<category> findings written into the output file.
+    // A row from an older build must not smuggle one this build cannot read.
+    putAuditVerdict(db, key(), { problem: true, categories: ['glossary'], reason: 'x' })
+    db.prepare('UPDATE audit_verdict SET categories = ?').run('["not-a-real-category"]')
+    expect(getAuditVerdict(db, key())).toBeUndefined()
+  })
 })
 
 describe('pruneStaleConfigs', () => {

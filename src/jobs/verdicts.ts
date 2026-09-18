@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3'
+import { AUDIT_CATEGORIES, type AuditCategory } from '../audit/schema.js'
 import type { Locale } from '../types.js'
 
 export type Clock = () => number
@@ -15,7 +16,12 @@ export interface VerdictKey {
 // from here is fed through the same toVerdict() a fresh result would be.
 export interface CachedVerdict {
   problem: boolean
-  categories: string[]
+  // The same narrow union the model's schema enforces, not bare strings. A
+  // stored category is re-validated on the way out rather than trusted: these
+  // become `ai:<category>` findings that are written into the reviewer's output
+  // file, so a row left behind by an older build must not smuggle a category
+  // this one does not understand into a submission.
+  categories: AuditCategory[]
   reason: string
   fix?: string[]
 }
@@ -38,6 +44,18 @@ function parse(json: string): string[] | undefined {
   }
 }
 
+const isCategory = (value: string): value is AuditCategory =>
+  (AUDIT_CATEGORIES as readonly string[]).includes(value)
+
+// filter with a type guard narrows; comparing the lengths is what turns
+// "some were unrecognised" into a miss rather than a quietly shortened list.
+function parseCategories(json: string): AuditCategory[] | undefined {
+  const all = parse(json)
+  if (!all) return undefined
+  const known = all.filter(isCategory)
+  return known.length === all.length ? known : undefined
+}
+
 export function getAuditVerdict(db: Database.Database, key: VerdictKey): CachedVerdict | undefined {
   const row = db
     .prepare<[string, string, string, string], Row>(
@@ -55,7 +73,7 @@ export function getAuditVerdict(db: Database.Database, key: VerdictKey): CachedV
   //
   // A null `fix` is not corruption: a cleared entry legitimately has no repair,
   // and must still read as a hit.
-  const categories = parse(row.categories)
+  const categories = parseCategories(row.categories)
   if (!categories) return undefined
   let fix: string[] | undefined
   if (row.fix !== null) {
