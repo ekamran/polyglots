@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { fingerprintReview } from '../audit/resume.js'
+import { draftSystemPrompt } from '../draft/prompt.js'
 import { buildReviewPrompt } from '../review/prompt.js'
 import type { GlossaryEntry, Locale } from '../types.js'
 
@@ -117,6 +118,21 @@ export function configHash(input: ConfigHashInput): string {
 // they key are pruned separately.
 export function translateConfigHash(locale: Locale): string {
   return hash(buildReviewPrompt([], locale, 2))
+}
+
+// What invalidates a cached draft: the draft engine's own prompt. Without it a
+// draft would be immortal, never invalidated by a prompt change and never
+// pruned, and it is the one cache whose contents are written straight into the
+// user's .po rather than into an annotation.
+//
+// Deliberately not per engine, even though the draft table is keyed by engine:
+// pruning deletes every row for a locale whose config_hash differs, so an
+// engine-specific value would have a DeepL run delete every OpenAI draft and an
+// OpenAI run delete them straight back. One value for both means a prompt edit
+// invalidates both, which is the wanted behaviour anyway. nplurals is not in
+// here because it is part of the per-entry key instead.
+export function draftConfigHash(locale: Locale): string {
+  return hash(draftSystemPrompt(locale, 2))
 }
 
 export function draftHash(text: string[]): string {

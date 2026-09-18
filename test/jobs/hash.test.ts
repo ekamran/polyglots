@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   auditSrcHash,
   configHash,
+  draftConfigHash,
   draftHash,
   draftSrcHash,
   srcHash,
@@ -129,6 +130,20 @@ describe('draftSrcHash', () => {
     expect(draftSrcHash(source, { comments: [], nplurals: 2 })).not.toBe(
       draftSrcHash(source, { comments: [], nplurals: 6 }),
     )
+  })
+})
+
+describe('draftConfigHash', () => {
+  it('is stable for a locale', () => {
+    expect(draftConfigHash('tr')).toBe(draftConfigHash('tr'))
+  })
+
+  it('differs per locale, since the prompt names the target language', () => {
+    expect(draftConfigHash('tr')).not.toBe(draftConfigHash('de'))
+  })
+
+  it('differs from the draft review prompt, which is why the two tables prune separately', () => {
+    expect(draftConfigHash('tr')).not.toBe(translateConfigHash('tr'))
   })
 })
 

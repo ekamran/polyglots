@@ -5,6 +5,7 @@ import { loadConfig, loadSecrets } from '../config.js'
 import { DraftQuotaError, DraftRateLimitError, getDraftEngine } from '../draft/index.js'
 import {
   abandonRun,
+  draftConfigHash,
   draftHash,
   finishRun,
   getDraft,
@@ -230,10 +231,15 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
   // opened, nor leave history claiming the run is still going.
   let runId: number | undefined
   try {
-    // Translate runs no rules and its prompt inlines no glossary, so the only
-    // thing that can invalidate a draft review is the prompt itself.
+    // Translate runs no rules and its review prompt inlines no glossary, so the
+    // only thing that can invalidate a draft review is that prompt itself. The
+    // draft has its own configuration, the draft engine's prompt, and its own
+    // pruning: a cached draft is written straight into the user's .po, so it
+    // must not outlive the instructions that produced it.
     const config = translateConfigHash(locale)
+    const draftConfig = draftConfigHash(locale)
     pruneStaleConfigs(jobs, 'draft_verdict', locale, config)
+    pruneStaleConfigs(jobs, 'draft', locale, draftConfig)
 
     // What the draft prompt shows the engine, and nothing it does not: the
     // comments are handed over as disambiguation hints and the plural count
@@ -255,26 +261,27 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
       )
 
     const engineName = opts.engine?.name ?? opts.draftEngine
+    const draftKey = (unit: TranslationUnit) => ({
+      srcHash: unitHash(unit),
+      configHash: draftConfig,
+      locale,
+      engine: engineName,
+    })
     const draftCache = {
-      get: (unit: TranslationUnit) => getDraft(jobs, { srcHash: unitHash(unit), locale, engine: engineName }),
-      put: (unit: TranslationUnit, text: string[]) =>
-        putDraft(jobs, { srcHash: unitHash(unit), locale, engine: engineName }, text),
+      get: (unit: TranslationUnit) => getDraft(jobs, draftKey(unit)),
+      put: (unit: TranslationUnit, text: string[]) => putDraft(jobs, draftKey(unit), text),
     }
+    // The draft review is keyed by the review prompt, not the draft prompt, so
+    // its own configHash replaces the draft's.
+    const verdictKey = (unit: TranslationUnit, text: string[]) => ({
+      ...draftKey(unit),
+      draftHash: draftHash(text),
+      configHash: config,
+      engine: 'claude',
+    })
     const reviewCache: ReviewCache = {
-      get: (unit, text) =>
-        getDraftVerdict(jobs, {
-          srcHash: unitHash(unit),
-          draftHash: draftHash(text),
-          configHash: config,
-          locale,
-          engine: 'claude',
-        }),
-      put: (unit, text, value) =>
-        putDraftVerdict(
-          jobs,
-          { srcHash: unitHash(unit), draftHash: draftHash(text), configHash: config, locale, engine: 'claude' },
-          value,
-        ),
+      get: (unit, text) => getDraftVerdict(jobs, verdictKey(unit, text)),
+      put: (unit, text, value) => putDraftVerdict(jobs, verdictKey(unit, text), value),
     }
 
     runId = startRun(jobs, {

@@ -50,12 +50,13 @@ CREATE TABLE IF NOT EXISTS audit_verdict (
 ) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS draft (
-  src_hash TEXT NOT NULL,
-  locale   TEXT NOT NULL,
-  engine   TEXT NOT NULL,
-  text     TEXT NOT NULL,
-  at       INTEGER NOT NULL,
-  PRIMARY KEY (src_hash, locale, engine)
+  src_hash    TEXT NOT NULL,
+  config_hash TEXT NOT NULL,
+  locale      TEXT NOT NULL,
+  engine      TEXT NOT NULL,
+  text        TEXT NOT NULL,
+  at          INTEGER NOT NULL,
+  PRIMARY KEY (src_hash, config_hash, locale, engine)
 ) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS draft_verdict (

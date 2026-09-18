@@ -3,6 +3,7 @@ export { parseStringArray, type Clock } from './json.js'
 export {
   auditSrcHash,
   configHash,
+  draftConfigHash,
   draftHash,
   draftSrcHash,
   srcHash,

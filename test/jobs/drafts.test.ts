@@ -19,7 +19,12 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true })
 })
 
-const dk = { srcHash: 'aaaaaaaaaaaaaaaa', locale: 'tr' as const, engine: 'deepl' }
+const dk = {
+  srcHash: 'aaaaaaaaaaaaaaaa',
+  configHash: 'bbbbbbbbbbbbbbbb',
+  locale: 'tr' as const,
+  engine: 'deepl',
+}
 const vk = { ...dk, draftHash: 'dddddddddddddddd', configHash: 'cccccccccccccccc' }
 
 describe('draft cache', () => {
@@ -42,6 +47,14 @@ describe('draft cache', () => {
     putDraft(db, dk, ['Sakla'])
     expect(getDraft(db, dk)).toEqual(['Sakla'])
     expect(db.prepare<[], { n: number }>('SELECT COUNT(*) AS n FROM draft').get()!.n).toBe(1)
+  })
+
+  // A draft is written straight into the user's .po, so it must not outlive the
+  // prompt that produced it. Before the draft table had a config_hash, a cached
+  // draft was immortal: nothing invalidated it and pruning could not see it.
+  it('misses when the draft prompt has changed', () => {
+    putDraft(db, dk, ['Kaydet'])
+    expect(getDraft(db, { ...dk, configHash: 'ffffffffffffffff' })).toBeUndefined()
   })
 
   it('reads an unparseable draft as a miss, never as half a translation', () => {

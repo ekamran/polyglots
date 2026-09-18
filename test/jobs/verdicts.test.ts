@@ -145,6 +145,27 @@ describe('pruneStaleConfigs', () => {
     expect(n).toBe(0)
   })
 
+  // The draft table carries a config_hash of its own, covering the draft
+  // engine's prompt. Without it a cached draft was immortal: never invalidated
+  // by a prompt change and never pruned, and it is the one cache whose contents
+  // are written straight into the user's .po.
+  it('prunes drafts left behind by a previous draft prompt', () => {
+    db.prepare(
+      `INSERT INTO draft (src_hash, config_hash, locale, engine, text, at)
+       VALUES ('a', 'old0old0old0old0', 'tr', 'deepl', '["x"]', 0),
+              ('a', 'new0new0new0new0', 'tr', 'deepl', '["y"]', 0),
+              ('a', 'old0old0old0old0', 'de', 'deepl', '["z"]', 0)`,
+    ).run()
+    expect(pruneStaleConfigs(db, 'draft', 'tr', 'new0new0new0new0')).toBe(1)
+    const rows = db
+      .prepare<[], { locale: string; config_hash: string }>('SELECT locale, config_hash FROM draft ORDER BY locale')
+      .all()
+    expect(rows).toEqual([
+      { locale: 'de', config_hash: 'old0old0old0old0' },
+      { locale: 'tr', config_hash: 'new0new0new0new0' },
+    ])
+  })
+
   it('reports nothing pruned when the configuration has not moved', () => {
     putAuditVerdict(db, key(), { problem: true, categories: [], reason: 'x' })
     expect(pruneStaleConfigs(db, 'audit_verdict', 'tr', 'bbbbbbbbbbbbbbbb')).toBe(0)

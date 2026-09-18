@@ -2,6 +2,7 @@ import OpenAI, { APIError } from 'openai'
 import { z } from 'zod'
 import type { DraftEngine, DraftResult, Locale, TranslationUnit } from '../types.js'
 import { DraftQuotaError, DraftRateLimitError } from './errors.js'
+import { draftSystemPrompt } from './prompt.js'
 import { warnMissingPlaceholders, type WarningSink } from './placeholders.js'
 
 export interface OpenAIChatMessage {
@@ -38,34 +39,6 @@ const ResponseSchema = z.object({
 
 class MalformedOutputError extends Error {
   override readonly name = 'MalformedOutputError'
-}
-
-const languageNames = new Intl.DisplayNames(['en'], { type: 'language' })
-
-export function describeLocale(locale: Locale): string {
-  const tag = locale.replaceAll('_', '-')
-  let name: string | undefined
-  try {
-    name = languageNames.of(tag)
-  } catch {
-    name = undefined
-  }
-  return name && name !== tag ? `${name} (${locale})` : locale
-}
-
-function systemPrompt(locale: Locale, nplurals: number): string {
-  return [
-    `You are a professional WordPress UI translator. Translate each item from English (en) into ${describeLocale(locale)}.`,
-    'These are gettext strings from WordPress core, plugins and themes: UI labels, messages, settings.',
-    'Rules:',
-    '- Keep every placeholder exactly as written (%s, %d, %1$s, %2$d, %.2f, {name}, ###TOKEN###) and in a natural position.',
-    '- Keep HTML tags, attributes, entities, Markdown, whitespace, leading/trailing spaces and newlines intact.',
-    '- Do not translate code, URLs, shortcodes, or option/CSS/PHP identifiers.',
-    '- Use the msgctxt and comments as disambiguation hints; produce natural, concise UI wording.',
-    `- The target locale has ${nplurals} plural form(s). For an item WITHOUT "msgidPlural", return exactly 1 draft. For an item WITH "msgidPlural", return exactly ${nplurals} drafts: index 0 translates "msgid" (singular), the remaining indexes translate "msgidPlural" for the locale's other plural forms, in order.`,
-    '- Return every input item, using its "key" unchanged.',
-    'Return ONLY a JSON object of the shape {"items":[{"key":"...","drafts":["..."]}]} with no prose.',
-  ].join('\n')
 }
 
 function userPrompt(units: TranslationUnit[]): string {
@@ -120,7 +93,7 @@ export function createOpenAIEngine(opts: OpenAIEngineOptions): DraftEngine {
       if (units.length === 0) return []
 
       const messages: OpenAIChatMessage[] = [
-        { role: 'system', content: systemPrompt(locale, nplurals) },
+        { role: 'system', content: draftSystemPrompt(locale, nplurals) },
         { role: 'user', content: userPrompt(units) },
       ]
 

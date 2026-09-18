@@ -105,14 +105,15 @@ export function putAuditVerdict(
   )
 }
 
-export type CachedTable = 'audit_verdict' | 'draft_verdict'
+export type CachedTable = 'audit_verdict' | 'draft' | 'draft_verdict'
 
 // The cache holds verdicts for the current configuration and nothing else.
 //
-// One table at a time, because review and translate compute different
-// configuration hashes: review's covers the glossary and the rules, translate's
-// covers only its own prompt. Pruning both from one call would mean running
-// translate deleted every review verdict, and vice versa.
+// One table at a time, because each holds rows formed under a different
+// configuration: review's covers the glossary and the rules, the draft review's
+// covers only its own prompt, and the draft's covers the draft engine's prompt.
+// Pruning them from one call would mean running translate deleted every review
+// verdict, and vice versa.
 //
 // The locale predicate is load-bearing too: the glossary is per locale, so
 // config_hash differs per locale, and without it reviewing a `de` submission
