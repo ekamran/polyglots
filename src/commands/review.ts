@@ -41,7 +41,8 @@ export interface ReviewOptions extends Partial<ClaudeRunOptions> {
   noAi?: boolean
   batchSize?: number
   properNouns?: string[]
-  // Ignore an unfinished review left in the problems file and start over.
+  // Ignore the verdicts an earlier run cached for this file and ask the model
+  // again. The cache is still written, so the next run resumes from this one.
   fresh?: boolean
   // Lets the caller park the run between batches, or end it early and come back.
   control?: RunControl
@@ -261,9 +262,11 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
       ...(opts.control ? { control: opts.control } : {}),
       onStopped: (info) => {
         pending = info.pending
-        // Rewind past a failed streak so the next run re-attempts those batches
-        // instead of trusting entries that only got flagged because the model
-        // could not be reached.
+        // Rewind past a failed streak, so the marker written into the file does
+        // not claim batches whose verdicts were dropped. Nothing reads `done`
+        // back: this is about what a person opening the file is told, not about
+        // what the next run does. The next run re-attempts those entries because
+        // no verdict was ever cached for them.
         marker.done = Math.min(marker.done, info.lastGood)
       },
       ...(opts.adjudicate ? { adjudicate: opts.adjudicate } : {}),
@@ -330,10 +333,11 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
     }
 
     if (written > 0) summary.problemsFile = target
-    // Nothing was flagged, so the only thing left in the file is the marker. A
-    // finished review has nothing to resume, so the file goes. A run that was
-    // stopped part way keeps it: the marker is the only record of where to pick up,
-    // and deleting it would silently turn a pause into a restart.
+    // Nothing was flagged, so the only thing left in the file is the marker,
+    // which nothing reads back. A finished review has said all it has to say, so
+    // the file goes rather than sitting there looking like a result. A run that
+    // was stopped part way keeps it: it has entries nothing has looked at yet,
+    // and no file at all reads as "nothing to fix here".
     else if (pending === 0) await rm(target, { force: true })
 
     // Written once, from the same numbers the caller is about to be given, so the

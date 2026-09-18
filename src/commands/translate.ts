@@ -229,8 +229,18 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
 
   const ownsDb = opts.db === undefined
   const db = opts.db ?? openDb()
-  const jobs = opts.jobsDb ?? openJobsDb()
   const ownsJobsDb = opts.jobsDb === undefined
+  // Opening the job store can throw, and until the try below is entered nothing
+  // closes the handle already open on polyglots.db. That one holds the
+  // translation memory, months of TMX imports, and in the long-lived TUI the
+  // leak outlives the command.
+  let jobs: Database.Database
+  try {
+    jobs = opts.jobsDb ?? openJobsDb()
+  } catch (err) {
+    if (ownsDb) db.close()
+    throw err
+  }
   // Everything below opens a run in `jobs` and does real work against it, so
   // from here on a throw — a caller's onProgress blowing up, a batch that
   // could not even produce a draft — must not leak the handle this call

@@ -378,7 +378,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
     .option('--out-dir <dir>', 'Where to write the problems file (default: beside the input)')
     .option('--no-ai', 'Run the deterministic checks only, skipping AI adjudication')
     .option('--batch-size <n>', `Entries per AI batch (default: ${shown.batchSize})`)
-    .option('--fresh', 'Ignore an unfinished review left in the problems file and start over')
+    .option('--fresh', 'Ignore the cached verdicts for this file and review it again')
     .action(async (raw: string, flags: ReviewFlags) => {
       const [target] = expandFileArgs([raw])
       const config = cli.config()
