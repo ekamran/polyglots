@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { MARKER_HEADER, encodeMarker, fingerprintReview, type ReviewMarker } from '../../src/audit/resume.js'
+import {
+  MARKER_HEADER,
+  encodeMarker,
+  fingerprintReview,
+  writtenByEarlierVersion,
+  type ReviewMarker,
+} from '../../src/audit/resume.js'
+import { VERSION } from '../../src/version.js'
 import type { GlossaryEntry } from '../../src/types.js'
 
 const GLOSSARY: GlossaryEntry[] = [{ locale: 'tr', sourceTerm: 'sidebar', translation: 'kenar çubuğu' }]
@@ -30,6 +37,24 @@ describe('review marker', () => {
 
   it('names itself so a human reading the file can tell what it is', () => {
     expect(MARKER_HEADER).toMatch(/^X-/)
+  })
+
+  it('stamps the build that wrote it', () => {
+    expect(JSON.parse(encodeMarker(MARKER))).toMatchObject({ polyglots: VERSION })
+  })
+})
+
+describe('writtenByEarlierVersion', () => {
+  it('is false for a marker this build wrote', () => {
+    expect(writtenByEarlierVersion(encodeMarker(MARKER))).toBe(false)
+  })
+
+  it('is true for a 0.2.0-0.4.0 marker, which is the population the notice is for', () => {
+    expect(writtenByEarlierVersion('{"v":2,"done":3,"of":12}')).toBe(true)
+  })
+
+  it('is true for a marker nobody can parse', () => {
+    expect(writtenByEarlierVersion('{not json')).toBe(true)
   })
 })
 

@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import { realpathSync } from 'node:fs'
-import { createRequire } from 'node:module'
 import { createInterface } from 'node:readline'
 import { Writable } from 'node:stream'
 import { text } from 'node:stream/consumers'
@@ -29,13 +28,13 @@ import { createProgressReporter, createReviewProgressReporter } from './cli/prog
 import { loadPo } from './po/po-file.js'
 import type { RunTuiOptions } from './tui/index.js'
 import type { Locale, PolyglotsConfig } from './types.js'
+import { VERSION } from './version.js'
 
 const EXIT_OK = 0
 const EXIT_ERROR = 1
 const EXIT_USAGE = 2
 const EXIT_STOPPED = 3
 
-const { version: VERSION } = createRequire(import.meta.url)('../package.json') as { version: string }
 
 export interface CliStreams {
   stdin: NodeJS.ReadableStream & { isTTY?: boolean }

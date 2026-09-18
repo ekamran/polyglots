@@ -291,4 +291,27 @@ describe('review backed by the job store', () => {
     })
     expect(events).toContain('marker-ignored')
   })
+
+  // persist() writes the marker on every save, so firing on the header's mere
+  // presence told the user their unfinished review had been discarded on every
+  // ordinary second run, when nothing had been: this run serves the entries
+  // from the cache rather than reviewing from the top.
+  it('says nothing about a marker this build wrote seconds ago', async () => {
+    const flags: Adjudicator = async (batch) =>
+      batch.map((c) => ({ id: c.id, problem: true, categories: ['meaning' as const], reason: 'says the opposite' }))
+    await run(flags)
+    expect(await readFile(join(dir, 'plugin-tr-repaired.po'), 'utf8')).toContain('X-Polyglots-Review')
+
+    const events: string[] = []
+    await reviewFile({
+      file: join(dir, 'plugin-tr.po'),
+      locale: 'tr',
+      db,
+      jobsDb,
+      adjudicate: flags,
+      mcpConfigPath: '',
+      onProgress: (e) => void events.push(e.type),
+    })
+    expect(events).not.toContain('marker-ignored')
+  })
 })

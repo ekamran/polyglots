@@ -9,7 +9,13 @@ import {
   type Verdict,
   type VerdictCache,
 } from '../audit/audit.js'
-import { encodeMarker, fingerprintReview, MARKER_HEADER, type ReviewMarker } from '../audit/resume.js'
+import {
+  encodeMarker,
+  fingerprintReview,
+  MARKER_HEADER,
+  writtenByEarlierVersion,
+  type ReviewMarker,
+} from '../audit/resume.js'
 import {
   abandonRun,
   configHash as computeConfigHash,
@@ -145,9 +151,15 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
     // A marker written by 0.2.0 through 0.4.0 no longer means anything, and this
     // run will review the file from the top. Saying nothing would look like a
     // resume that silently redid five hours of work.
+    //
+    // Only for those, though. This build writes a marker on every save, so
+    // firing on the header's mere presence told a reviewer their unfinished
+    // work had been discarded every time they re-ran over the same submission,
+    // when in fact the run was about to serve most of it from the cache.
     if (!opts.fresh) {
       const previous = await loadPo(target).catch(() => undefined)
-      if (previous?.headers[MARKER_HEADER]) emit({ type: 'marker-ignored', file: target })
+      const header = previous?.headers[MARKER_HEADER]
+      if (header !== undefined && writtenByEarlierVersion(header)) emit({ type: 'marker-ignored', file: target })
     }
 
     // --no-ai reaches no model, so there is nothing to cache and nothing to reuse.

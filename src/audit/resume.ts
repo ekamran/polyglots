@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import type { GlossaryEntry, Locale } from '../types.js'
+import { VERSION } from '../version.js'
 import { buildAuditPrompt } from './prompt.js'
 import { REPAIRABLE_RULES } from './repair.js'
 import { profileFor } from './rules/profiles.js'
@@ -42,8 +43,30 @@ export interface ReviewMarker {
   byRule: Record<string, number>
 }
 
+// The build that wrote it. Nothing reads the marker back for its counts, but
+// this one field is read: it is what tells an ignored marker from 0.2.0-0.4.0
+// apart from one this build wrote seconds ago, which is the difference between
+// a true notice and telling a reviewer their work was thrown away.
 export function encodeMarker(marker: ReviewMarker): string {
-  return JSON.stringify({ v: FORMAT, ...marker })
+  return JSON.stringify({ v: FORMAT, polyglots: VERSION, ...marker })
+}
+
+// True for a marker from a build that predates the job store, which is the
+// population the "ignored, reviewing from the top" notice exists for. Those
+// markers meant something and no longer do. One this build wrote means nothing
+// and never did, so saying it is being ignored would be noise on the most
+// common workflow there is: running review over the same submission twice.
+//
+// Unreadable counts as earlier. A marker nobody can parse is not one this build
+// wrote, and erring towards the notice costs a line of output.
+export function writtenByEarlierVersion(header: string): boolean {
+  try {
+    const value: unknown = JSON.parse(header)
+    if (typeof value !== 'object' || value === null) return true
+    return typeof (value as { polyglots?: unknown }).polyglots !== 'string'
+  } catch {
+    return true
+  }
 }
 
 const HASH_LENGTH = 16
