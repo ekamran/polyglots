@@ -96,6 +96,61 @@ describe('translate backed by the job store', () => {
     expect(asked).toEqual(['Dismiss'])
   })
 
+  // The run table is history that cannot be backfilled. `entries` means the
+  // entries a run worked on, which is what review freezes in the same column;
+  // recording every unit in the file made a throughput query over the column
+  // mix two definitions.
+  it('freezes the entries it worked on, not every unit in the file', async () => {
+    await writeFile(
+      join(dir, 'plugin-tr.po'),
+      PO.replace('msgid "Cancel"\nmsgstr ""', 'msgid "Cancel"\nmsgstr "Iptal"'),
+    )
+    const summary = await run(engine(), review)
+    expect(summary.total).toBe(2)
+    expect(summary.pending).toBe(1)
+    const row = jobsDb
+      .prepare<[], { entries: number; unreviewed: number }>(
+        'SELECT entries, unreviewed FROM run ORDER BY id DESC LIMIT 1',
+      )
+      .get()!
+    expect(row.entries).toBe(1)
+    expect(row.unreviewed).toBe(0)
+  })
+
+  // A run that gave up on a batch under the failure breaker was recorded with
+  // unreviewed = 0, so history said it was clean and complete.
+  it('records the batches it gave up on as unreviewed', async () => {
+    let call = 0
+    const flaky = async (inputs: ReviewInput[]): Promise<ReviewResult[]> => {
+      // The first batch fails both of its attempts, the second succeeds.
+      if (++call <= 2) throw new Error('review failed')
+      return review(inputs)
+    }
+    const summary = await translateFile({
+      file: join(dir, 'plugin-tr.po'),
+      locale: 'tr',
+      mode: 'pending',
+      draftEngine: 'deepl',
+      engine: engine(),
+      review: flaky as never,
+      batchSize: 1,
+      db,
+      jobsDb,
+      mcpConfigPath: '',
+    })
+    expect(summary.skipped).toBe(1)
+    expect(summary.stopped).toBeUndefined()
+
+    const row = jobsDb
+      .prepare<[], { state: string; entries: number; unreviewed: number }>(
+        'SELECT state, entries, unreviewed FROM run ORDER BY id DESC LIMIT 1',
+      )
+      .get()!
+    expect(row.state).toBe('done')
+    expect(row.entries).toBe(2)
+    expect(row.unreviewed).toBe(1)
+  })
+
   it('records the run in history', async () => {
     await run(engine(), review)
     const row = jobsDb

@@ -378,10 +378,16 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
       abandonRun(jobs, runId)
     } else {
       finishRun(jobs, runId, {
-        entries: summary.total,
+        // The entries this run worked on, which is what review freezes in the
+        // same column. `total` is every unit in the file including ones nothing
+        // touched, and a throughput query grouping over a column that means two
+        // different things reports neither. `skipped` is what the failure
+        // breaker gave up on, which is precisely what `unreviewed` means:
+        // recording 0 filed a run that gave up as clean and complete.
+        entries: summary.pending,
         flagged: summary.fuzzy,
         repaired: summary.translated,
-        unreviewed: 0,
+        unreviewed: summary.skipped,
         approvable: summary.translated - summary.fuzzy,
         byCategory: {},
       })

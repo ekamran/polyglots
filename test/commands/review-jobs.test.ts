@@ -68,6 +68,15 @@ describe('review backed by the job store', () => {
     expect(row.entries).toBe(2)
   })
 
+  // Same unbackfillable history: a --no-ai run reaches no model, so recording
+  // it as judged by claude would poison a per-engine quality breakdown built on
+  // these rows later.
+  it('records a --no-ai run as judged by the rules, not by a model', async () => {
+    await reviewFile({ file: join(dir, 'plugin-tr.po'), locale: 'tr', db, jobsDb, noAi: true, mcpConfigPath: '' })
+    const row = jobsDb.prepare<[], { engine: string }>('SELECT engine FROM run ORDER BY id DESC LIMIT 1').get()!
+    expect(row.engine).toBe('rules')
+  })
+
   it('freezes totals that match the summary the caller was given', async () => {
     const summary = await run(clean)
     const row = jobsDb

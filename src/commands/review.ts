@@ -177,7 +177,10 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
       locale: opts.locale,
       nplurals: po.nplurals,
       batchSize,
-      engine: 'claude',
+      // --no-ai reaches no model, so nothing in this run was judged by one.
+      // History cannot be backfilled, and a per-engine quality breakdown built
+      // on it later would be reading rule findings as Claude's opinions.
+      engine: opts.noAi ? 'rules' : 'claude',
     })
     recordEntries(
       jobs,
