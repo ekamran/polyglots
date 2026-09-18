@@ -1,6 +1,8 @@
 import { chunk } from '../batch.js'
 import type { RunControl } from '../run-control.js'
 import { runClaude, type ClaudeRunOptions } from '../claude/run.js'
+import { srcHash } from '../jobs/hash.js'
+import type { CachedVerdict, VerdictKey } from '../jobs/verdicts.js'
 import type { AuditEntry, Finding, GlossaryEntry, Locale } from '../types.js'
 import { buildAuditPrompt, type AuditCandidate } from './prompt.js'
 import { judgeFix, repairMechanically } from './repair.js'
@@ -42,6 +44,13 @@ export interface BatchProgress extends BatchStart {
   failed?: string
 }
 
+// Narrow on purpose: auditEntries needs a map from a key to a verdict, not a
+// database. Tests pass a Map; review.ts passes one backed by jobs.db.
+export interface VerdictCache {
+  get(key: VerdictKey): CachedVerdict | undefined
+  put(key: VerdictKey, verdict: CachedVerdict): void
+}
+
 export interface AuditOptions extends Partial<ClaudeRunOptions> {
   entries: AuditEntry[]
   locale: Locale
@@ -69,6 +78,22 @@ export interface AuditOptions extends Partial<ClaudeRunOptions> {
   // because a caller must never present an entry it did not look at as
   // approvable.
   onStopped?: (info: { pending: number; lastGood: number }) => void
+  // When present, an entry whose verdict is already known is never sent to the
+  // model, and every verdict the model reaches is written back. Absent, this
+  // behaves exactly as it did before: every entry is asked about every time.
+  store?: VerdictCache
+  // Which model produced a verdict, so two engines' opinions coexist rather
+  // than one overwriting the other.
+  engine?: string
+  // Identifies the glossary, rules and prompt a verdict was formed under.
+  // Required whenever `store` is set.
+  configHash?: string
+  // The verdicts answered from the cache, handed over once before the first
+  // batch runs. A caller that writes the output file after every batch needs
+  // these in it from the start: they never pass through onBatch, so without
+  // this an interrupted resume would write a file missing every entry an
+  // earlier run had flagged.
+  onCached?: (verdicts: Verdict[]) => void | Promise<void>
 }
 
 export const DEFAULT_BATCH_SIZE = 25
@@ -156,7 +181,47 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
   })
 
   const adjudicate = opts.adjudicate ?? adjudicateWithClaude
-  const batches = chunk(candidates, opts.batchSize ?? DEFAULT_BATCH_SIZE)
+
+  const cacheKey = (candidate: AuditCandidate): VerdictKey => ({
+    srcHash: srcHash({
+      key: candidate.key,
+      msgid: candidate.msgid,
+      ...(candidate.msgctxt ? { msgctxt: candidate.msgctxt } : {}),
+      ...(candidate.msgidPlural ? { msgidPlural: candidate.msgidPlural } : {}),
+      msgstr: candidate.msgstr,
+      comments: candidate.comments,
+      references: candidate.references,
+      fuzzy: false,
+    }),
+    configHash: opts.configHash ?? '',
+    locale: opts.locale,
+    engine: opts.engine ?? 'claude',
+  })
+
+  // An entry already judged under this configuration is settled, so it never
+  // reaches a batch. That is the whole of resume, and the whole of the
+  // cross-file cache: a first run finds nothing here and does all the work, a
+  // resumed one finds most of it, and a run over a different file finds
+  // whatever strings it shares with files reviewed before.
+  const outstanding: AuditCandidate[] = []
+  const fromCache: Verdict[] = []
+  for (const candidate of candidates) {
+    const hit = opts.store?.get(cacheKey(candidate))
+    if (!hit) {
+      outstanding.push(candidate)
+      continue
+    }
+    // The cache stores categories as plain strings (Task 3's corrupt-row-is-a-miss
+    // guarantee only checks that they are strings, not that they are one of
+    // AUDIT_CATEGORIES): a hit is trusted to be well-formed, since it was written
+    // from a real AuditResult by the `put` below.
+    const verdict = toVerdict(candidate, { id: 0, ...hit } as AuditResult, ctx, opts.nplurals)
+    verdicts.set(candidate.key, verdict)
+    fromCache.push(verdict)
+  }
+  if (fromCache.length > 0) await opts.onCached?.(fromCache)
+
+  const batches = chunk(outstanding, opts.batchSize ?? DEFAULT_BATCH_SIZE)
 
   const skipBatches = opts.skipBatches ?? 0
   // 1-based index of the first batch in the current run of failures, so the
@@ -202,6 +267,18 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
         : unreviewed(candidate)
       if (verdict.problem) problems += 1
       verdicts.set(candidate.key, verdict)
+      // Only what the model actually said, and only when it said something. A
+      // failed batch produces `unreviewed` verdicts, and caching those would
+      // turn a quota outage into a permanent verdict.
+      if (opts.store && outcome.results) {
+        const result = outcome.results[n]!
+        opts.store.put(cacheKey(candidate), {
+          problem: result.problem,
+          categories: result.categories,
+          reason: result.reason,
+          ...(result.fix ? { fix: result.fix } : {}),
+        })
+      }
       decided.push(verdict)
     }
     await opts.onBatch?.({
