@@ -43,6 +43,12 @@ describe('draft cache', () => {
     expect(getDraft(db, dk)).toEqual(['Sakla'])
     expect(db.prepare<[], { n: number }>('SELECT COUNT(*) AS n FROM draft').get()!.n).toBe(1)
   })
+
+  it('reads an unparseable draft as a miss, never as half a translation', () => {
+    putDraft(db, dk, ['Kaydet'])
+    db.prepare('UPDATE draft SET text = ?').run('{not json')
+    expect(getDraft(db, dk)).toBeUndefined()
+  })
 })
 
 describe('draft verdict cache', () => {
@@ -61,5 +67,11 @@ describe('draft verdict cache', () => {
   it('misses when the prompt has changed', () => {
     putDraftVerdict(db, vk, { text: ['Kaydet'], fuzzy: false, reason: '' })
     expect(getDraftVerdict(db, { ...vk, configHash: 'ffffffffffffffff' })).toBeUndefined()
+  })
+
+  it('reads an unparseable verdict as a miss, never as a partial one', () => {
+    putDraftVerdict(db, vk, { text: ['Kaydet'], fuzzy: false, reason: '' })
+    db.prepare('UPDATE draft_verdict SET text = ?').run('{not json')
+    expect(getDraftVerdict(db, vk)).toBeUndefined()
   })
 })
