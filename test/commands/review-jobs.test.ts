@@ -272,4 +272,23 @@ describe('review backed by the job store', () => {
     expect(row.entries).toBe(2)
     expect(row.flagged).toBe(0)
   })
+
+  it('says so when it ignores a marker from an earlier version', async () => {
+    const withMarker = PO.replace(
+      '"Language: tr\\n"',
+      '"Language: tr\\n"\n"X-Polyglots-Review: {\\"v\\":2,\\"done\\":3,\\"of\\":12}\\n"',
+    )
+    await writeFile(join(dir, 'plugin-tr-repaired.po'), withMarker)
+    const events: string[] = []
+    await reviewFile({
+      file: join(dir, 'plugin-tr.po'),
+      locale: 'tr',
+      db,
+      jobsDb,
+      adjudicate: clean,
+      mcpConfigPath: '',
+      onProgress: (e) => void events.push(e.type),
+    })
+    expect(events).toContain('marker-ignored')
+  })
 })

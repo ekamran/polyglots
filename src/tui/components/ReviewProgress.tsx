@@ -28,6 +28,10 @@ export interface ReviewProgressState {
   paused: boolean
   failures: string[]
   written: string[]
+  // Set when the output file from a previous run still carried a marker from
+  // before resume moved to the job store. Reviewing from the top either way,
+  // but the person waiting on this deserves to know that's what's happening.
+  markerIgnored?: string
   summary?: ReviewSummary
 }
 
@@ -100,6 +104,9 @@ export function reduceReviewProgress(events: ReviewEvent[]): ReviewProgressState
       case 'written':
         state.written.push(e.file)
         break
+      case 'marker-ignored':
+        state.markerIgnored = e.file
+        break
       // The clock stops with the run: a parked batch is not a slow one.
       case 'paused':
         state.paused = true
@@ -162,6 +169,13 @@ export function ReviewProgress({ events }: { events: ReviewEvent[] }) {
         {state.file} · {state.total} entries, {state.reviewable} reviewable, {state.ruleFlagged} flagged by rules
         {state.resumed > 0 ? `, resuming after ${state.resumed} batch${state.resumed === 1 ? '' : 'es'}` : ''}
       </Text>
+
+      {state.markerIgnored && (
+        <Text color="yellow">
+          Ignoring the unfinished review in {state.markerIgnored}: it was written by an earlier version. Reviewing
+          from the top.
+        </Text>
+      )}
 
       {state.failures.length > 0 && (
         <Box flexDirection="column" marginTop={1}>

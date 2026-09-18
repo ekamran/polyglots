@@ -142,6 +142,14 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
     // The cache holds verdicts for the current configuration and nothing else.
     pruneStaleConfigs(jobs, 'audit_verdict', opts.locale, config)
 
+    // A marker written by 0.2.0 through 0.4.0 no longer means anything, and this
+    // run will review the file from the top. Saying nothing would look like a
+    // resume that silently redid five hours of work.
+    if (!opts.fresh) {
+      const previous = await loadPo(target).catch(() => undefined)
+      if (previous?.headers[MARKER_HEADER]) emit({ type: 'marker-ignored', file: target })
+    }
+
     // --no-ai reaches no model, so there is nothing to cache and nothing to reuse.
     const store: VerdictCache | undefined = opts.noAi
       ? undefined

@@ -106,6 +106,10 @@ export type ReviewEvent =
   | { type: 'batch-done'; index: number; problems: number; at: number }
   | { type: 'batch-failed'; index: number; size: number; reason: string; at: number }
   | { type: 'written'; file: string }
+  // Emitted when the output file from a previous run still carries the
+  // FORMAT=2-era marker: nothing reads it back any more, so the run is
+  // starting from the top and this is the only way anyone would know.
+  | { type: 'marker-ignored'; file: string }
   // Emitted by whichever surface owns the keyboard, not by the run itself, so a
   // progress line can say it is parked rather than wedged.
   | { type: 'paused'; at: number }

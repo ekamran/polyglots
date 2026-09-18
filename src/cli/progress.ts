@@ -363,6 +363,9 @@ export function createReviewProgressReporter(stream: ProgressStream): ReviewProg
       case 'written':
         notice = `wrote ${event.file}`
         break
+      case 'marker-ignored':
+        notice = `Ignoring the unfinished review in ${event.file}: it was written by an earlier version. Reviewing from the top.`
+        break
       case 'paused':
         paused = true
         inFlightSince = undefined
