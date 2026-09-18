@@ -86,6 +86,31 @@ describe('translate backed by the job store', () => {
     expect(reviewDrafts).not.toHaveBeenCalled()
   })
 
+  // The draft table is invalidated by nothing but a prompt change, so --mode
+  // all, whose whole purpose is to translate an entry again, replayed the same
+  // cached draft forever.
+  it('re-drafts and re-reviews when asked for a fresh translation', async () => {
+    await run(engine(), review)
+
+    const second = engine()
+    const translate = vi.fn(second.translate)
+    const reviewDrafts = vi.fn(review)
+    await translateFile({
+      file: join(dir, 'plugin-tr.po'),
+      locale: 'tr',
+      mode: 'all',
+      draftEngine: 'deepl',
+      fresh: true,
+      engine: { ...second, translate },
+      review: reviewDrafts as never,
+      db,
+      jobsDb,
+      mcpConfigPath: '',
+    })
+    expect(translate).toHaveBeenCalled()
+    expect(reviewDrafts).toHaveBeenCalled()
+  })
+
   it('re-drafts only the entry whose source changed', async () => {
     await run(engine(), review)
     await writeFile(join(dir, 'plugin-tr.po'), PO.replace('msgid "Cancel"', 'msgid "Dismiss"'))

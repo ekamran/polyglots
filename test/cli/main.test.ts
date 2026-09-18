@@ -144,6 +144,17 @@ describe('translate summary output', () => {
     expect(h.stdout.text).not.toContain('PoEdit')
   })
 
+  // --mode all exists to translate an entry again. Without a word for it, a
+  // cached draft was replayed forever and a user re-running after a bad batch
+  // had no recourse short of deleting jobs.db.
+  it('forwards --fresh so a cached draft can be refused', async () => {
+    const h = harness()
+    const translate = fakeTranslate()
+    const code = await h.run(['translate', file, '--fresh'], { translate: translate.fn })
+    expect(code).toBe(0)
+    expect(translate.calls[0]).toMatchObject({ fresh: true })
+  })
+
   it('processes several files in order and prints one summary per file', async () => {
     const second = join(home, 'second.po')
     await copyFile(samplePo, second)

@@ -148,6 +148,7 @@ async function countTranslated(files: string[]): Promise<number> {
 
 interface TranslateFlags {
   all?: boolean
+  fresh?: boolean
   dryRun?: boolean
   draftEngine?: string
   locale?: string
@@ -204,6 +205,7 @@ async function runTranslate(cli: Cli, patterns: string[], flags: TranslateFlags)
         locale,
         mode: flags.all ? 'all' : 'pending',
         draftEngine,
+        ...(flags.fresh ? { fresh: true } : {}),
         dryRun,
         batchSize,
         model: flags.model,
@@ -338,6 +340,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
     .command('translate <files...>')
     .description('Translate pending (empty or fuzzy) entries of one or more .po files')
     .option('--all', 'Re-translate every entry, including already-translated ones (asks for confirmation)')
+    .option('--fresh', 'Ignore the cached drafts and reviews, and translate again')
     .option('--dry-run', 'Run the pipeline without writing to the .po files')
     .option('--draft-engine <engine>', `Draft engine: deepl or openai (default: ${shown.defaultDraftEngine})`)
     .option('--locale <locale>', `Target locale (default: ${shown.defaultLocale})`)

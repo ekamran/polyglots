@@ -60,6 +60,12 @@ export interface TranslateOptions {
   locale: Locale
   mode: 'pending' | 'all'
   draftEngine: 'deepl' | 'openai'
+  // Ignore the cached draft and its review, and ask again. `--mode all` exists
+  // to re-translate entries that already have a translation, and without this
+  // it replayed a cached draft forever: a user re-running after a bad batch, or
+  // after their engine shipped a better model, had no recourse short of
+  // deleting jobs.db.
+  fresh?: boolean
   dryRun?: boolean
   batchSize?: number
   model?: string
@@ -268,7 +274,8 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
       engine: engineName,
     })
     const draftCache = {
-      get: (unit: TranslationUnit) => getDraft(jobs, draftKey(unit)),
+      // Bypasses the read and keeps the write, exactly as review's --fresh does.
+      get: (unit: TranslationUnit) => (opts.fresh ? undefined : getDraft(jobs, draftKey(unit))),
       put: (unit: TranslationUnit, text: string[]) => putDraft(jobs, draftKey(unit), text),
     }
     // The draft review is keyed by the review prompt, not the draft prompt, so
@@ -280,7 +287,7 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
       engine: 'claude',
     })
     const reviewCache: ReviewCache = {
-      get: (unit, text) => getDraftVerdict(jobs, verdictKey(unit, text)),
+      get: (unit, text) => (opts.fresh ? undefined : getDraftVerdict(jobs, verdictKey(unit, text))),
       put: (unit, text, value) => putDraftVerdict(jobs, verdictKey(unit, text), value),
     }
 
