@@ -10,6 +10,37 @@ Run `polyglots --version` to see which build you have; the TUI shows it beside i
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-18
+
+Run state moved out of the `.po` file and into a database, so the counts, the output
+file and the resume point stopped being three things that had to agree.
+
+### Added
+
+- `translate` can resume, which it never could. A re-run reuses the drafts and the
+  reviews of them that it already has, so it no longer re-pays the metered draft API
+  for work it already did.
+- A verdict is reused across files. The same interface string appears in many
+  submissions, and is now judged once.
+- Per-run totals are kept as history, so a reporting command can be written later
+  against real numbers rather than starting from the day it ships.
+
+### Changed
+
+- Resume is per entry rather than per file. Editing three strings in a 294-entry
+  submission re-reviews three entries instead of all 294.
+- A failed batch no longer discards the entries it did judge. Only the ones it could
+  not reach are re-attempted.
+- Changing the glossary, the rules or the prompt discards every cached verdict for
+  that locale, and only that locale. Verdicts formed under different instructions
+  cannot be mixed, and reviewing a `de` submission must not throw away the `tr` work.
+
+### Removed
+
+- The `X-Polyglots-Review` resume marker. It is still written, because it is useful
+  to read in the file, but nothing reads it back. A marker written by 0.2.0 through
+  0.4.0 is ignored with a message saying so, and the review starts from the top.
+
 ## [0.4.0] - 2026-09-14
 
 Pause a long run, and have it stop itself when the subscription runs out.

@@ -13,11 +13,6 @@ export interface Annotation {
   text?: string[]
 }
 
-export interface CarriedEntry {
-  notes: string[]
-  msgstr: string[]
-}
-
 export interface ApplyResult {
   key: string
   text: string[]
@@ -136,27 +131,25 @@ const NOTE_PREFIX = 'polyglots: '
 // wording, but it is better than the alternative: see readableNotes.
 const FALLBACK_NOTE = 'flagged for review'
 
-// carried() can only recover an entry that carries one of our notes, and the
-// output file is rebuilt from the untouched source on every save. An annotation
-// written without a readable note is therefore deleted on the next resume, along
-// with a repair that exists in no other file, so one is always substituted here.
+// An entry with no comment reads, to a human opening the file, as no reason to
+// have been kept at all, so one is always substituted here.
 function readableNotes(notes: string[]): string[] {
   const said = notes.filter((note) => note.trim() !== '')
   return said.length > 0 ? said : [FALLBACK_NOTE]
 }
 
-// Our own notes are rewritten on every pass rather than appended, so resuming a
-// run cannot stack duplicates, and a note disappears once its reason does.
-// Comments that came from the source or from a contributor are left alone.
+// Our own notes are rewritten on every pass rather than appended, so a later
+// pass over the same entry cannot stack duplicates, and a note disappears once
+// its reason does. Comments that came from the source or from a contributor
+// are left alone.
 //
 // Each note is flattened to a single line first. A note is read back through
 // splitLines, which trims each line and keeps only the first, so a newline in
-// the note text truncates it and strands the remainder as a line that no longer
-// starts with NOTE_PREFIX: unrecoverable by carried(), and indistinguishable
-// from a contributor's own comment, which every later pass then preserves. The
-// note text is whatever a reviewer or the model's reason string put in it, so
-// this is done here, at the one point all of them pass through, rather than
-// asked of each caller.
+// the note text would truncate it and strand the remainder as a line that no
+// longer starts with NOTE_PREFIX: indistinguishable from a contributor's own
+// comment, which every later pass then preserves. The note text is whatever a
+// reviewer or the model's reason string put in it, so this is done here, at
+// the one point all of them pass through, rather than asked of each caller.
 function setNotes(entry: GetTextTranslation, notes: string[]): void {
   const said = notes.map((note) => note.replace(/\s*\n\s*/g, ' ').trim()).filter((note) => note !== '')
   const kept = splitLines(entry.comments?.translator).filter((line) => !line.startsWith(NOTE_PREFIX))
@@ -228,21 +221,6 @@ export class PoFile {
       out.push({ ...unit, msgstr: [...entry.msgstr], fuzzy: isFuzzy(entry) })
     }
     return out.sort((a, b) => this.rank(a.key) - this.rank(b.key))
-  }
-
-  // What this tool wrote into a file, keyed as keepOnly takes it. A resumed
-  // review recovers the earlier run's work from here: the notes say what was
-  // wrong, and the msgstr may be a repair that exists nowhere else, since the
-  // output is otherwise rebuilt from the untouched source file.
-  carried(): Map<string, CarriedEntry> {
-    const out = new Map<string, CarriedEntry>()
-    for (const entry of this.entries()) {
-      const notes = splitLines(entry.comments?.translator)
-        .filter((line) => line.startsWith(NOTE_PREFIX))
-        .map((line) => line.slice(NOTE_PREFIX.length))
-      if (notes.length > 0) out.set(unitKey(entry.msgid, entry.msgctxt), { notes, msgstr: [...entry.msgstr] })
-    }
-    return out
   }
 
   // Reduces the file to the annotated entries, each marked fuzzy with its reasons

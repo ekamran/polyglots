@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import type Database from 'better-sqlite3'
 import { openDb, replaceGlossary } from '../../../src/storage/index.js'
 import { loadPo } from '../../../src/po/po-file.js'
-import { decodeMarker, MARKER_HEADER } from '../../../src/audit/resume.js'
+import { MARKER_HEADER } from '../../../src/audit/resume.js'
 import { reviewFile } from '../../../src/commands/review.js'
 import { createRunControl } from '../../../src/run-control.js'
 
@@ -94,7 +94,7 @@ describe('a review stopped part way', () => {
     const { control, adjudicate } = quitAfterFirstBatch()
     await run({ control, adjudicate })
 
-    const marker = decodeMarker((await loadPo(repaired)).headers[MARKER_HEADER])
+    const marker = JSON.parse((await loadPo(repaired)).headers[MARKER_HEADER]!)
     expect(marker).toMatchObject({ done: 1, of: 3 })
   })
 

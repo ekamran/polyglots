@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type Database from 'better-sqlite3'
 import { openJobsDb } from '../../src/jobs/db.js'
-import { abandonRun, finishRun, getRun, recordEntries, setRunState, startRun } from '../../src/jobs/runs.js'
+import { abandonRun, finishRun, getRun, recordEntries, startRun } from '../../src/jobs/runs.js'
 
 let db: Database.Database
 let dir: string
@@ -109,15 +109,6 @@ describe('finishRun', () => {
     finishRun(db, id, totals)
     const n = db.prepare<[number], { n: number }>('SELECT COUNT(*) AS n FROM entry WHERE run_id = ?').get(id)!.n
     expect(n).toBe(0)
-  })
-})
-
-describe('setRunState', () => {
-  it('records that a run was stopped part way, keeping it in history', () => {
-    const id = startRun(db, input)
-    setRunState(db, id, 'stopping')
-    expect(getRun(db, id)!.state).toBe('stopping')
-    expect(getRun(db, id)!.flagged).toBeUndefined()
   })
 })
 

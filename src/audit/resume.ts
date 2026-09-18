@@ -4,18 +4,20 @@ import { buildAuditPrompt } from './prompt.js'
 import { REPAIRABLE_RULES } from './repair.js'
 import { profileFor } from './rules/profiles.js'
 
-// A long review is hours of `claude -p` calls. The marker records how far one got
-// so an interrupted run can pick up rather than start over, and it lives in the
-// problems file's own header because that file is the only artifact of the run.
+// A long review is hours of `claude -p` calls. Resume itself now lives in the
+// job store, keyed by what each entry looked like, but the marker is still
+// written into the problems file's header because it is useful for a human to
+// read there: it says how far a run got. Nothing reads it back.
 export const MARKER_HEADER = 'X-Polyglots-Review'
 
-// Bumped when `repaired` became a required field, so old markers are rejected
-// on purpose rather than by accident of validation.
+// The last format anything ever decoded. Kept as a fixed value, not bumped
+// further, since a marker is write-only now.
 const FORMAT = 2
 
-// Kept as named parts rather than one hash so a refusal can say what moved. The
-// user's next step differs: a changed submission means the input was replaced, a
-// changed glossary only means the verdicts would no longer agree.
+// Kept as named parts rather than one hash. `glossary` and `rules` feed
+// configHash, which is the key the verdict cache is pruned by when either
+// changes; `source`, `batchSize` and `ai` ride along only because the written
+// marker is informational and used to say more than that.
 export interface Fingerprint {
   source: string
   glossary: string
@@ -44,47 +46,7 @@ export function encodeMarker(marker: ReviewMarker): string {
   return JSON.stringify({ v: FORMAT, ...marker })
 }
 
-function isCount(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value >= 0
-}
-
-function isTally(value: unknown): value is Record<string, number> {
-  return (
-    typeof value === 'object' && value !== null && !Array.isArray(value) && Object.values(value).every((n) => isCount(n))
-  )
-}
-
 const HASH_LENGTH = 16
-
-function isFingerprint(value: unknown): value is Fingerprint {
-  if (typeof value !== 'object' || value === null) return false
-  const { source, glossary, rules, batchSize, ai } = value as Record<string, unknown>
-  const hashes = [source, glossary, rules]
-  return (
-    hashes.every((h) => typeof h === 'string' && h.length === HASH_LENGTH) && isCount(batchSize) && typeof ai === 'boolean'
-  )
-}
-
-// A hand-edited, truncated or future-format marker reads as no marker at all.
-// Resuming from a number we guessed at would silently skip unreviewed entries.
-export function decodeMarker(value: string | undefined): ReviewMarker | undefined {
-  if (!value) return undefined
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(value)
-  } catch {
-    return undefined
-  }
-  if (typeof parsed !== 'object' || parsed === null) return undefined
-  const { v, fingerprint, done, of, problems, unreviewed, repaired, byRule } = parsed as Record<string, unknown>
-  if (v !== FORMAT) return undefined
-  if (!isFingerprint(fingerprint)) return undefined
-  if (!isCount(done) || !isCount(of) || !isCount(problems) || !isCount(unreviewed)) return undefined
-  if (!isCount(repaired)) return undefined
-  if (!isTally(byRule)) return undefined
-  const { source, glossary, rules, batchSize, ai } = fingerprint
-  return { fingerprint: { source, glossary, rules, batchSize, ai }, done, of, problems, unreviewed, repaired, byRule }
-}
 
 export interface FingerprintInput {
   source: string
@@ -105,8 +67,9 @@ function hash(...parts: string[]): string {
 }
 
 // Everything that decides what a batch contains and how it is judged. If any of
-// it moved, the earlier batches answered a different question and their verdicts
-// cannot be mixed with new ones, so resuming is refused rather than approximated.
+// it moved, the earlier verdicts answered a different question: `configHash`
+// (jobs/hash.ts) is built from this, and a change to it prunes every cached
+// verdict for the locale rather than letting old and new answers mix.
 export function fingerprintReview(input: FingerprintInput): Fingerprint {
   const profile = profileFor(input.locale)
   return {
@@ -129,19 +92,4 @@ export function fingerprintReview(input: FingerprintInput): Fingerprint {
     batchSize: input.batchSize,
     ai: !input.noAi,
   }
-}
-
-// One reason, not a list: the first difference is already enough to refuse, and
-// enumerating the rest buries it.
-export function describeMismatch(saved: Fingerprint, current: Fingerprint): string | undefined {
-  if (saved.source !== current.source) return 'the submission file has changed since'
-  if (saved.batchSize !== current.batchSize) {
-    return `the batch size has changed since (${saved.batchSize} then, ${current.batchSize} now)`
-  }
-  if (saved.ai !== current.ai) {
-    return saved.ai ? 'that run used the AI reviewer and this one does not' : 'that run skipped the AI reviewer'
-  }
-  if (saved.glossary !== current.glossary) return 'the glossary has changed since'
-  if (saved.rules !== current.rules) return 'the locale rules or review guidance have changed since'
-  return undefined
 }

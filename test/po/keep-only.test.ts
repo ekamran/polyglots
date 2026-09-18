@@ -100,62 +100,33 @@ describe('PoFile.keepOnly', () => {
     expect(text).toContain('msgstr "Ayarlar"')
   })
 
-  // Resume rebuilds the output from the source file, so the repaired text has to
-  // come back out of the file the interrupted run wrote or it silently reverts.
-  it('reads back both its notes and the text it wrote', async () => {
-    await keep(new Map([['Settings', { notes: ['glossary term not used'], text: ['Ayarlar bölümü'] }]]))
-    const reparsed = await loadPo(out)
-    expect(reparsed.carried()).toEqual(
-      new Map([['Settings', { notes: ['glossary term not used'], msgstr: ['Ayarlar bölümü'] }]]),
-    )
-  })
-
-  // The key a context-qualified entry reads back under is msgctxt + U+0004 +
-  // msgid, which is the one shape a round trip can quietly get wrong.
-  it('reads back a context-qualified entry under the key it was written with', async () => {
-    const key = unitKey('Draft', 'post status')
-    await keep(new Map([[key, { notes: ['meaning'], text: ['Müsvedde'] }]]))
-    const reparsed = await loadPo(out)
-    expect(reparsed.carried()).toEqual(new Map([[key, { notes: ['meaning'], msgstr: ['Müsvedde'] }]]))
-  })
-
-  // carried() can only see an entry that carries one of our notes, so an
-  // annotation written without one would be dropped the next time the output is
-  // rebuilt from the source, taking any repair in it along.
+  // An entry kept with no note of its own must still say something, so a human
+  // opening the file can tell why it was flagged at all.
   it('writes a note even for an annotation that came with none', async () => {
-    await keep(new Map([['Settings', { notes: [] }]]))
-    const reparsed = await loadPo(out)
-    expect([...reparsed.carried().keys()]).toEqual(['Settings'])
+    const text = await keep(new Map([['Settings', { notes: [] }]]))
+    expect(text).toContain('# polyglots: flagged for review')
   })
 
-  // The note text on the audit path is the model's own reason string, so a reply
-  // that begins with a newline lands here. splitLines trims every line, so the
-  // note was written as a bare "# polyglots:" that carried()'s prefix check can
-  // never match, and the entry was dropped on the next rebuild with its repair.
-  it('reads back a note that begins with a newline, and the repair with it', async () => {
-    await keep(new Map([['Settings', { notes: ['\nglossary term not used'], text: ['Ayarlar bölümü'] }]]))
-    const reparsed = await loadPo(out)
-    expect(reparsed.carried()).toEqual(
-      new Map([['Settings', { notes: ['glossary term not used'], msgstr: ['Ayarlar bölümü'] }]]),
-    )
+  // The note text on the audit path is the model's own reason string, so a
+  // reply that begins with a newline lands here. splitLines trims every line,
+  // so without flattening, the note would be written as a bare "# polyglots:"
+  // followed by an unprefixed continuation line.
+  it('flattens a note that begins with a newline into a single comment line', async () => {
+    const text = await keep(new Map([['Settings', { notes: ['\nglossary term not used'], text: ['Ayarlar bölümü'] }]]))
+    expect(text).toContain('# polyglots: glossary term not used')
+    expect(text).toContain('msgstr "Ayarlar bölümü"')
   })
 
-  // A newline inside the note split it across two comment lines, only the first
-  // of which carries the prefix, so everything after it was silently lost.
-  it('reads back the whole of a note with a newline inside it', async () => {
-    await keep(new Map([['Settings', { notes: ['title case mirrors the source\nand the glossary term is not used'] }]]))
-    const reparsed = await loadPo(out)
-    expect(reparsed.carried().get('Settings')?.notes).toEqual([
-      'title case mirrors the source and the glossary term is not used',
-    ])
+  // A newline inside the note would otherwise split it across two comment
+  // lines, only the first of which carries the prefix, silently losing the
+  // rest.
+  it('flattens a note with a newline inside it into one comment line', async () => {
+    const text = await keep(new Map([['Settings', { notes: ['title case mirrors the source\nand the glossary term is not used'] }]]))
+    expect(text).toContain('# polyglots: title case mirrors the source and the glossary term is not used')
   })
 
   it('leaves the submitted translation alone when the repair is an empty list', async () => {
     const text = await keep(new Map([['Settings', { notes: ['glossary'], text: [] }]]))
     expect(text).toContain('msgstr "Ayarlar"')
-  })
-
-  it('reads back nothing from a file with none of our notes', async () => {
-    expect((await loadPo(file)).carried().size).toBe(0)
   })
 })

@@ -14,7 +14,6 @@ export {
   finishRun,
   getRun,
   recordEntries,
-  setRunState,
   startRun,
   type RunRow,
   type RunRowState,

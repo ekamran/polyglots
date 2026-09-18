@@ -75,10 +75,6 @@ export function recordEntries(db: Database.Database, runId: number, keys: string
   write()
 }
 
-export function setRunState(db: Database.Database, runId: number, state: RunRowState): void {
-  db.prepare('UPDATE run SET state = ? WHERE id = ?').run(state, runId)
-}
-
 // Written once, from the same numbers the user was shown, and never
 // recalculated. Not a denormalisation to be kept in sync with anything: a
 // record of what was true at a moment, whose value comes precisely from not

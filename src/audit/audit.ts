@@ -59,10 +59,6 @@ export interface AuditOptions extends Partial<ClaudeRunOptions> {
   properNouns?: string[]
   noAi?: boolean
   batchSize?: number
-  // Batches a previous run already finished and wrote out. They are not
-  // re-adjudicated and their entries are not returned: what they decided lives
-  // in the problems file, not in this call.
-  skipBatches?: number
   // Lets a caller park or end the run at a batch boundary. A subscription that
   // runs out of quota mid-review wants to stop between calls and come back, not
   // abandon a call it has already paid for.
@@ -219,7 +215,6 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
 
   const batches = chunk(outstanding, opts.batchSize ?? DEFAULT_BATCH_SIZE)
 
-  const skipBatches = opts.skipBatches ?? 0
   // 1-based index of the first batch in the current run of failures, so the
   // breaker can rewind past the whole streak rather than just the last one.
   let streakStart = 0
@@ -240,7 +235,6 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
   }
 
   for (const [i, rawBatch] of batches.entries()) {
-    if (i < skipBatches) continue
     // Before the batch, never inside it: whatever the previous batch decided has
     // already been persisted by its onBatch, so parking here loses nothing.
     if (opts.control && (await opts.control.gate()) === 'stop') {
