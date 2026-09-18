@@ -341,10 +341,6 @@ export function createReviewProgressReporter(stream: ProgressStream): ReviewProg
     switch (event.type) {
       case 'start':
         notice = `Reviewing ${event.file}: ${event.reviewable} of ${event.total} entries submitted`
-        if (event.resumed) {
-          const n = event.resumed
-          notice += `\nResuming an interrupted run: ${n} batch${n === 1 ? '' : 'es'} already reviewed`
-        }
         break
       case 'batch-start':
         of = event.of

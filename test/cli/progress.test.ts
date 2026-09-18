@@ -305,17 +305,9 @@ describe('createReviewProgressReporter', () => {
     expect(out.text).toMatch(/flagged 5/)
   })
 
-  it('says up front when it is picking up an interrupted run', () => {
-    const out = sink()
-    const report = createReviewProgressReporter(out)
-    report({ type: 'start', file: 'a.po', total: 2831, reviewable: 2805, resumed: 40 })
-    report.finish()
-
-    expect(out.text).toMatch(/resuming/i)
-    expect(out.text).toContain('40')
-  })
-
-  it('says nothing about resuming on a run that starts from the top', () => {
+  // Resume is per entry and lives in the job store: a resumed run has fewer
+  // entries to batch and nothing to announce about batches it inherited.
+  it('says nothing about resuming, which is no longer a thing a run does', () => {
     const out = sink()
     const report = createReviewProgressReporter(out)
     report({ type: 'start', file: 'a.po', total: 120, reviewable: 116 })

@@ -15,10 +15,6 @@ export interface ReviewProgressState {
   unreviewed: number
   batchesDone: number
   batchesTotal: number
-  // Batches an interrupted run had already finished. Counted as done so the bar
-  // shows where the work actually stands, but never timed: their pace was that
-  // run's, not this one's.
-  resumed: number
   // A batch has started and not yet finished. The bar cannot move while that is
   // true, so it is what the elapsed clock hangs off.
   inFlight: boolean
@@ -46,7 +42,6 @@ export function reduceReviewProgress(events: ReviewEvent[]): ReviewProgressState
     unreviewed: 0,
     batchesDone: 0,
     batchesTotal: 0,
-    resumed: 0,
     inFlight: false,
     batchIndex: 0,
     batchDurations: [],
@@ -73,8 +68,6 @@ export function reduceReviewProgress(events: ReviewEvent[]): ReviewProgressState
         state.file = e.file
         state.total = e.total
         state.reviewable = e.reviewable
-        state.resumed = e.resumed ?? 0
-        state.batchesDone = state.resumed
         break
       case 'rules-done':
         state.ruleFlagged = e.flagged
@@ -167,7 +160,6 @@ export function ReviewProgress({ events }: { events: ReviewEvent[] }) {
       </Text>
       <Text dimColor>
         {state.file} · {state.total} entries, {state.reviewable} reviewable, {state.ruleFlagged} flagged by rules
-        {state.resumed > 0 ? `, resuming after ${state.resumed} batch${state.resumed === 1 ? '' : 'es'}` : ''}
       </Text>
 
       {state.markerIgnored && (

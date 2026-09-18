@@ -89,30 +89,30 @@ describe('reduceReviewProgress', () => {
   })
 })
 
-// An interrupted run leaves batches already done. Counting the bar from zero
-// would tell the user they are three hours behind where they actually are.
+// Resume is per entry and lives in the job store, so a resumed run batches only
+// its outstanding entries and the bar counts those from zero. Nothing is
+// inherited, and nothing on screen claims otherwise.
 describe('reduceReviewProgress on a resumed run', () => {
-  const resumed: ReviewEvent[] = [
-    { type: 'start', file: FILE, total: 200, reviewable: 200, resumed: 40 },
-    { type: 'batch-start', index: 41, of: 50, size: 25, at: 1_000_000 },
-    { type: 'batch-done', index: 41, problems: 2, at: 1_060_000 },
+  const events: ReviewEvent[] = [
+    { type: 'start', file: FILE, total: 200, reviewable: 200 },
+    { type: 'batch-start', index: 1, of: 10, size: 25, at: 1_000_000 },
+    { type: 'batch-done', index: 1, problems: 2, at: 1_060_000 },
   ]
 
-  it('counts the batches the earlier run finished as done', () => {
-    expect(reduceReviewProgress(resumed)).toMatchObject({ batchesDone: 41, batchesTotal: 50, resumed: 40 })
+  it('counts the batches this run has to do, and no inherited ones', () => {
+    expect(reduceReviewProgress(events)).toMatchObject({ batchesDone: 1, batchesTotal: 10 })
   })
 
-  it('says on screen that it picked up an earlier run', () => {
-    const frame = flat(render(<ReviewProgress events={resumed} />).lastFrame())
-    expect(frame).toMatch(/resum\w+ after 40 batches/i)
+  it('says nothing on screen about picking up an earlier run', () => {
+    const frame = flat(render(<ReviewProgress events={events} />).lastFrame())
+    expect(frame).not.toMatch(/resum\w+ after/i)
   })
 
-  // The earlier run's pace is unknown and probably not this one's.
-  it('estimates from the batches this run timed, not the ones it inherited', () => {
+  it('estimates from the batches it timed', () => {
     const state = reduceReviewProgress([
-      ...resumed,
-      { type: 'batch-start', index: 42, of: 50, size: 25, at: 1_060_000 },
-      { type: 'batch-done', index: 42, problems: 0, at: 1_120_000 },
+      ...events,
+      { type: 'batch-start', index: 2, of: 10, size: 25, at: 1_060_000 },
+      { type: 'batch-done', index: 2, problems: 0, at: 1_120_000 },
     ])
     expect(state.batchDurations).toEqual([60_000, 60_000])
     expect(state.remainingMs).toBe(8 * 60_000)

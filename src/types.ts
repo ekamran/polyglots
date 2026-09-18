@@ -96,9 +96,10 @@ export interface ReviewSummary {
 }
 
 export type ReviewEvent =
-  // `resumed` is the batches an earlier, interrupted run already finished; the
-  // progress bar starts there rather than at zero.
-  | { type: 'start'; file: string; total: number; reviewable: number; resumed?: number }
+  // Resume is per entry and lives in the job store, so a resumed run simply has
+  // fewer entries to batch. There is no count of inherited batches to carry: the
+  // bar counts from zero out of however many batches are left.
+  | { type: 'start'; file: string; total: number; reviewable: number }
   | { type: 'rules-done'; flagged: number; suspects: number }
   // `at` lets a pure reducer measure how long each batch took, which is what the
   // remaining-time estimate is built from.
