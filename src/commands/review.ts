@@ -2,17 +2,27 @@ import { mkdir, readFile, rm } from 'node:fs/promises'
 import { basename, dirname, extname, join } from 'node:path'
 import type Database from 'better-sqlite3'
 import type { ClaudeRunOptions } from '../claude/run.js'
-import { auditEntries, DEFAULT_BATCH_SIZE, type Adjudicator, type Verdict } from '../audit/audit.js'
 import {
-  decodeMarker,
-  describeMismatch,
-  encodeMarker,
-  fingerprintReview,
-  MARKER_HEADER,
-  type ReviewMarker,
-} from '../audit/resume.js'
+  auditEntries,
+  DEFAULT_BATCH_SIZE,
+  type Adjudicator,
+  type Verdict,
+  type VerdictCache,
+} from '../audit/audit.js'
+import { encodeMarker, fingerprintReview, MARKER_HEADER, type ReviewMarker } from '../audit/resume.js'
+import {
+  configHash as computeConfigHash,
+  finishRun,
+  getAuditVerdict,
+  openJobsDb,
+  pruneStaleConfigs,
+  putAuditVerdict,
+  recordEntries,
+  setRunState,
+  startRun,
+} from '../jobs/index.js'
 import { writeMcpConfig, MCP_ENV } from '../mcp/config.js'
-import { loadPo, type Annotation, type CarriedEntry } from '../po/po-file.js'
+import { loadPo, type Annotation } from '../po/po-file.js'
 import type { RunControl } from '../run-control.js'
 import { loadConfig } from '../config.js'
 import { allGlossary, openDb } from '../storage/index.js'
@@ -30,6 +40,7 @@ export interface ReviewOptions extends Partial<ClaudeRunOptions> {
   // Lets the caller park the run between batches, or end it early and come back.
   control?: RunControl
   db?: Database.Database
+  jobsDb?: Database.Database
   adjudicate?: Adjudicator
   onProgress?: (event: ReviewEvent) => void
 }
@@ -112,35 +123,46 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
     properNouns,
   })
 
-  // What an interrupted run left behind: how far it got, and the entries it had
-  // flagged. Those entries are only in the problems file, so they are read back
-  // and carried into the file this run writes.
-  let resumed: ReviewMarker | undefined
-  let carried = new Map<string, CarriedEntry>()
-  if (!opts.fresh) {
-    const previous = await loadPo(target).catch(() => undefined)
-    const marker = previous && decodeMarker(previous.headers[MARKER_HEADER])
-    // A marker that reached the last batch describes a finished review, and
-    // running that again means the user wants it done again, not skipped.
-    if (marker && marker.done > 0 && marker.done < marker.of) {
-      const why = describeMismatch(marker.fingerprint, fingerprint)
-      if (why) {
-        throw new Error(
-          `${target} holds a review that stopped at batch ${marker.done} of ${marker.of}, but ${why}. ` +
-            `Start over (--fresh) to review it from the top, or move that file aside.`,
-        )
+  // An unfinished review used to be recovered from a marker in the output
+  // file's header, with the flagged entries read back out of the file itself.
+  // Both are gone: what a previous run decided is in the job store, keyed by
+  // what it looked at, so resuming is just a cache that already has most of
+  // its answers. A marker written by 0.2.0 through 0.4.0 is ignored, and the
+  // run starts over, exactly as the FORMAT=2 bump did in 0.3.0.
+  const jobs = opts.jobsDb ?? openJobsDb()
+  const ownsJobsDb = opts.jobsDb === undefined
+  const config = computeConfigHash({ locale: opts.locale, glossary, properNouns })
+  // The cache holds verdicts for the current configuration and nothing else.
+  pruneStaleConfigs(jobs, 'audit_verdict', opts.locale, config)
+
+  // --no-ai reaches no model, so there is nothing to cache and nothing to reuse.
+  const store: VerdictCache | undefined = opts.noAi
+    ? undefined
+    : {
+        get: (key) => (opts.fresh ? undefined : getAuditVerdict(jobs, key)),
+        put: (key, verdict) => putAuditVerdict(jobs, key, verdict),
       }
-      resumed = marker
-      carried = previous.carried()
-    }
-  }
+
+  const runId = startRun(jobs, {
+    file: opts.file,
+    ...(po.headers['Project-Id-Version'] ? { project: po.headers['Project-Id-Version'] } : {}),
+    command: 'review',
+    locale: opts.locale,
+    nplurals: po.nplurals,
+    batchSize,
+    engine: 'claude',
+  })
+  recordEntries(
+    jobs,
+    runId,
+    reviewable.map((e) => e.key),
+  )
 
   emit({
     type: 'start',
     file: opts.file,
     total: all.length,
     reviewable: reviewable.length,
-    ...(resumed ? { resumed: resumed.done } : {}),
   })
 
   const mcpConfigPath =
@@ -148,12 +170,12 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
 
   const marker: ReviewMarker = {
     fingerprint,
-    done: resumed?.done ?? 0,
-    of: resumed?.of ?? 0,
-    problems: resumed?.problems ?? 0,
-    unreviewed: resumed?.unreviewed ?? 0,
-    repaired: resumed?.repaired ?? 0,
-    byRule: { ...resumed?.byRule },
+    done: 0,
+    of: 0,
+    problems: 0,
+    unreviewed: 0,
+    repaired: 0,
+    byRule: {},
   }
 
   // A large submission is hundreds of batches and hours of wall clock, so the file
@@ -167,9 +189,6 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
   let wrote = false
   const persist = async (): Promise<number> => {
     const annotations = new Map<string, Annotation>()
-    // The repaired text of a skipped batch survives nowhere but in the file the
-    // earlier run wrote, so it is carried back in rather than re-derived.
-    for (const [key, entry] of carried) annotations.set(key, { notes: entry.notes, text: entry.msgstr })
     for (const verdict of decided) {
       // A repair with nothing else wrong is neither a problem nor a guess, and it
       // still belongs in the file: it is the only copy of the correction.
@@ -205,8 +224,10 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
     properNouns,
     mcpConfigPath,
     batchSize,
+    engine: 'claude',
+    configHash: config,
     ...(opts.noAi === undefined ? {} : { noAi: opts.noAi }),
-    ...(resumed ? { skipBatches: resumed.done } : {}),
+    ...(store ? { store } : {}),
     ...(opts.control ? { control: opts.control } : {}),
     onStopped: (info) => {
       pending = info.pending
@@ -220,6 +241,13 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
     ...(opts.model ? { model: opts.model } : {}),
     onRules: (r) => emit({ type: 'rules-done', flagged: r.flagged, suspects: r.suspects }),
     onBatchStart: (b) => emit({ type: 'batch-start', index: b.index, of: b.of, size: b.size, at: Date.now() }),
+    // Entries an earlier run already judged. They belong in the output file
+    // from the first write, not only in the last one, or a run interrupted
+    // part way through a resume would write a file that had lost them.
+    onCached: async (cached) => {
+      decided.push(...cached)
+      await persist()
+    },
     onBatch: async (b) => {
       decided.push(...b.verdicts)
       marker.done = b.index
@@ -241,22 +269,15 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
   // only thing that knows exactly which batches it never reached.
 
   const needsReview = verdicts.filter((v) => v.needsReview)
-  // Counts from the batches this run skipped come off the marker: their entries
-  // are in the file but their verdicts were never in memory.
-  const before = {
-    problems: resumed?.problems ?? 0,
-    unreviewed: resumed?.unreviewed ?? 0,
-    repaired: resumed?.repaired ?? 0,
-  }
 
   // The marker is accumulated per batch so a Ctrl+C between batches leaves a
   // usable one, but these are the authority at the end: a run that dropped an
   // untrusted tail must not leave those counts behind in the header. The summary
   // then reads the same numbers, so the file and the report cannot disagree.
-  marker.problems = problems.length + before.problems
-  marker.unreviewed = verdicts.filter((v) => v.unreviewed).length + before.unreviewed
-  marker.repaired = verdicts.filter((v) => v.text !== undefined).length + before.repaired
-  marker.byRule = addTally(tally(verdicts), resumed?.byRule ?? {})
+  marker.problems = problems.length
+  marker.unreviewed = verdicts.filter((v) => v.unreviewed).length
+  marker.repaired = verdicts.filter((v) => v.text !== undefined).length
+  marker.byRule = tally(verdicts)
 
   // The rules-only path decides everything up front, so nothing was persisted yet.
   decided.length = 0
@@ -270,7 +291,7 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
     reviewed: reviewable.length,
     problems: marker.problems,
     needsReview: needsReview.length,
-    approvable: reviewable.length - problems.length - needsReview.length - before.problems - pending,
+    approvable: reviewable.length - problems.length - needsReview.length - pending,
     pending,
     unreviewed: marker.unreviewed,
     repaired: marker.repaired,
@@ -284,6 +305,22 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
   // stopped part way keeps it: the marker is the only record of where to pick up,
   // and deleting it would silently turn a pause into a restart.
   else if (pending === 0) await rm(target, { force: true })
+
+  // Written once, from the same numbers the caller is about to be given, so the
+  // history and the report cannot disagree. A run stopped part way is left in
+  // its control state rather than marked done: it has no totals worth freezing.
+  if (pending > 0) setRunState(jobs, runId, 'stopping')
+  else {
+    finishRun(jobs, runId, {
+      entries: summary.reviewed,
+      flagged: summary.problems,
+      repaired: summary.repaired,
+      unreviewed: summary.unreviewed,
+      approvable: summary.approvable,
+      byCategory: summary.byRule,
+    })
+  }
+  if (ownsJobsDb) jobs.close()
 
   emit({ type: 'done', summary })
   return summary

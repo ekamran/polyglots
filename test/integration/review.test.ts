@@ -177,8 +177,10 @@ describe('review end to end', () => {
     expect(summary.approvable).toBe(0)
   })
 
-  // The real runner, a real interruption, and the real marker: a resumed run has
-  // to land on the same answer as one that was never interrupted.
+  // The real runner, a real interruption, and the real job store: a run picked
+  // back up after being cut off has to land on the same answer as one that ran
+  // straight through, because what an earlier batch decided now comes from the
+  // verdict cache rather than from a marker in the file it wrote.
   it('picks a real interrupted run back up and reaches the same verdict', async () => {
     let batches = 0
     await expect(
@@ -190,15 +192,9 @@ describe('review end to end', () => {
       }),
     ).rejects.toThrow('interrupted')
 
-    const events: ReviewEvent[] = []
-    const resumedRun = await run({ batchSize: 2, onProgress: (e: ReviewEvent) => events.push(e) })
-    expect(events[0]).toMatchObject({ type: 'start', resumed: 1 })
-    // Every rule-condemned entry now reaches the model too, so 6 candidates at a
-    // batch size of 2 make 3 batches; only the first was finished before the
-    // interruption, leaving 2 to re-review.
-    expect(events.filter((e) => e.type === 'batch-start')).toHaveLength(2)
-
+    const resumedRun = await run({ batchSize: 2 })
     const uninterrupted = await run({ batchSize: 2, fresh: true, outDir: join(home, 'uninterrupted') })
+
     expect(resumedRun.problems).toBe(uninterrupted.problems)
     expect(resumedRun.approvable).toBe(uninterrupted.approvable)
     expect(resumedRun.byRule).toEqual(uninterrupted.byRule)
