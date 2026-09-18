@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { fingerprintReview } from '../audit/resume.js'
 import { buildReviewPrompt } from '../review/prompt.js'
-import type { AuditEntry, GlossaryEntry, Locale } from '../types.js'
+import type { GlossaryEntry, Locale } from '../types.js'
 
 const HASH_LENGTH = 16
 
@@ -14,11 +14,72 @@ function hash(...parts: string[]): string {
   return createHash('sha256').update(parts.join(PART)).digest('hex').slice(0, HASH_LENGTH)
 }
 
-// What the entry says, and nothing about how it is judged. Comments are left
-// out: a translator note changes neither the source nor the translation, and
-// including it would invalidate a verdict over an edit to a code comment.
-export function srcHash(entry: AuditEntry): string {
+// Deliberately the minimum: what the entry says, and nothing about how it is
+// judged or what else the model was shown. The parameter is narrowed to exactly
+// the fields hashed, so that a call site cannot go on *looking* like it hashes
+// context this never reads. Everything a prompt carries beyond the text belongs
+// in the wrappers below, which say so in their own signatures.
+export interface SourceText {
+  msgid: string
+  msgctxt?: string
+  msgidPlural?: string
+  msgstr: string[]
+}
+
+export function srcHash(entry: SourceText): string {
   return hash(entry.msgid, entry.msgctxt ?? '', entry.msgidPlural ?? '', entry.msgstr.join(FIELD))
+}
+
+// Everything the audit prompt carries beyond the entry's own text.
+export interface AuditContext {
+  // The prompt tells the model these are the best clue to a string's role,
+  // which is what decides whether a capitalised label is an exempt UI label or
+  // a title-case error. They differ between files, which is exactly why they
+  // belong in the key.
+  references: string[]
+  // gettext's own disambiguation mechanism, handed to the model verbatim.
+  comments: string[]
+  // The rule names of the hints the prompt lists as automatedChecks, excluding
+  // `repaired`, which the prompt deliberately withholds. These are
+  // file-dependent: the rule context learns brand words and prior translations
+  // from every other entry in the same file, so the same string can fire a rule
+  // in one submission and not in another.
+  rules: string[]
+  nplurals: number
+}
+
+// The key a review verdict is stored under. It covers the whole question the
+// model was asked, not just the entry: a verdict formed under one file's
+// evidence must never be served for another file's. Sorting the rule names is
+// load-bearing, because the order rules ran in must not turn a hit into a miss.
+//
+// The practical consequence is that reuse is same-file, since references differ
+// between files. That is intended; see "Why verdicts are not reused across
+// files" in the design. Resume, per-entry invalidation and partial-batch
+// recovery are unaffected, because the same file re-reviewed produces identical
+// inputs here.
+export function auditSrcHash(entry: SourceText, context: AuditContext): string {
+  return hash(
+    srcHash(entry),
+    context.references.join(FIELD),
+    context.comments.join(FIELD),
+    [...context.rules].sort().join(FIELD),
+    String(context.nplurals),
+  )
+}
+
+// Everything the draft prompt carries beyond the source text. The draft engine
+// is told to use the comments as disambiguation hints and is given the locale's
+// plural count, so a draft formed under one of them must not be served under
+// another. References are absent on purpose: the draft prompt does not carry
+// them.
+export interface DraftContext {
+  comments: string[]
+  nplurals: number
+}
+
+export function draftSrcHash(entry: SourceText, context: DraftContext): string {
+  return hash(srcHash(entry), context.comments.join(FIELD), String(context.nplurals))
 }
 
 export interface ConfigHashInput {

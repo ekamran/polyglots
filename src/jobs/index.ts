@@ -1,6 +1,17 @@
 export { openJobsDb } from './db.js'
 export { parseStringArray, type Clock } from './json.js'
-export { configHash, draftHash, srcHash, translateConfigHash, type ConfigHashInput } from './hash.js'
+export {
+  auditSrcHash,
+  configHash,
+  draftHash,
+  draftSrcHash,
+  srcHash,
+  translateConfigHash,
+  type AuditContext,
+  type ConfigHashInput,
+  type DraftContext,
+  type SourceText,
+} from './hash.js'
 export {
   getAuditVerdict,
   putAuditVerdict,

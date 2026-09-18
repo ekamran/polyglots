@@ -143,3 +143,112 @@ describe('auditEntries with a verdict cache', () => {
     expect(second).toEqual(first)
   })
 })
+
+// The whole class of defect this file did not see: every test above reviews the
+// same file twice, so a key that covers only what the entry says passes all of
+// them. The prompt carries more than that — the references, the comments and
+// the rule findings — and the findings are file-dependent, because the rule
+// context learns brand words and prior translations from every other entry in
+// the same file. Two submissions sharing a string are therefore not the same
+// question, and must not share a verdict.
+describe('a verdict formed in one file is not served for another', () => {
+  // `Widgetly` is capitalized mid-string in the translation. The title-case rule
+  // excuses that when it knows the word is a brand, and it learns brands from
+  // the sentence-case sources of the other entries in the same file.
+  const shared = (): AuditEntry => ({
+    key: 'Reset the cache',
+    msgid: 'Reset the cache',
+    msgstr: ['Onbellegi Widgetly ile sifirla'],
+    comments: [],
+    references: ['admin/cache.php:12'],
+    fuzzy: false,
+  })
+
+  // Only in file A. Its source is sentence case with a capital mid-string, which
+  // is what teaches buildRuleContext that "Widgetly" is a brand.
+  const teaches = (): AuditEntry => ({
+    key: 'Configure Widgetly options',
+    msgid: 'Configure Widgetly options',
+    msgstr: ['Widgetly seceneklerini yapilandir'],
+    comments: [],
+    references: ['admin/options.php:4'],
+    fuzzy: false,
+  })
+
+  // Stands in for a reviewer who confirms the check it was handed. An entry that
+  // arrives with no title-case hint is never asked about it, and comes back
+  // clean — which is exactly how a cross-file verdict lost a real finding.
+  const confirmsTitleCase: Adjudicator = async (batch) =>
+    batch.map((c) =>
+      c.hints.some((h) => h.rule === 'title-case')
+        ? { id: c.id, problem: true, categories: ['title-case' as const], reason: 'title case mid-string' }
+        : { id: c.id, problem: false, categories: [], reason: '' },
+    )
+
+  const verdictFor = (verdicts: Awaited<ReturnType<typeof auditEntries>>) =>
+    verdicts.find((v) => v.key === 'Reset the cache')!
+
+  it('reviews the shared entry again when the other file taught the rules something', async () => {
+    const store = memoryCache()
+
+    // File A knows the brand, so no title-case hint fires and the entry clears.
+    const fileA = await auditEntries({
+      ...base,
+      glossary: [],
+      entries: [teaches(), shared()],
+      store,
+      adjudicate: confirmsTitleCase,
+    })
+    expect(verdictFor(fileA).problem).toBe(false)
+
+    // File B does not, so the same string is a different question. Before the
+    // key covered the rule findings, this hit file A's row and came back
+    // approvable, with the finding that fired here discarded unadjudicated.
+    const adjudicate = vi.fn(confirmsTitleCase)
+    const fileB = await auditEntries({ ...base, glossary: [], entries: [shared()], store, adjudicate })
+    const asked = adjudicate.mock.calls.flatMap(([batch]) => batch.map((c) => c.key))
+    expect(asked).toEqual(['Reset the cache'])
+    expect(verdictFor(fileB).problem).toBe(true)
+
+    // And it reaches the verdict reviewing file B on its own would have.
+    const alone = await auditEntries({
+      ...base,
+      glossary: [],
+      entries: [shared()],
+      store: memoryCache(),
+      adjudicate: confirmsTitleCase,
+    })
+    expect(fileB).toEqual(alone)
+  })
+
+  it('reviews the shared entry again when only its references differ', async () => {
+    // The prompt tells the model the references are the best clue to a string's
+    // role, which is what decides whether a capital is an exempt UI label or an
+    // error. Two files citing different source files are asking about different
+    // strings.
+    const store = memoryCache()
+    await auditEntries({ ...base, glossary: [], entries: [shared()], store, adjudicate: clean })
+
+    const adjudicate = vi.fn(clean)
+    await auditEntries({
+      ...base,
+      glossary: [],
+      entries: [{ ...shared(), references: ['help/intro.php:3'] }],
+      store,
+      adjudicate,
+    })
+    expect(adjudicate).toHaveBeenCalled()
+  })
+
+  it('still answers the same file from the cache, which is what resume is', async () => {
+    // The point of the narrowing is that reuse becomes same-file, not that it
+    // stops. A file re-reviewed unchanged produces identical key inputs.
+    const store = memoryCache()
+    const entries = [teaches(), shared()]
+    await auditEntries({ ...base, glossary: [], entries, store, adjudicate: confirmsTitleCase })
+
+    const adjudicate = vi.fn(confirmsTitleCase)
+    await auditEntries({ ...base, glossary: [], entries, store, adjudicate })
+    expect(adjudicate).not.toHaveBeenCalled()
+  })
+})

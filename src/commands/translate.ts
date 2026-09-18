@@ -13,8 +13,8 @@ import {
   pruneStaleConfigs,
   putDraft,
   putDraftVerdict,
+  draftSrcHash,
   recordEntries,
-  srcHash,
   startRun,
   translateConfigHash,
   type DraftReview,
@@ -235,20 +235,24 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
     const config = translateConfigHash(locale)
     pruneStaleConfigs(jobs, 'draft_verdict', locale, config)
 
+    // What the draft prompt shows the engine, and nothing it does not: the
+    // comments are handed over as disambiguation hints and the plural count
+    // decides how many drafts are asked for, so a draft formed under one of
+    // them must not be served under another. References are absent because the
+    // draft prompt does not carry them.
     const unitHash = (unit: TranslationUnit): string =>
-      srcHash({
-        key: unit.key,
-        msgid: unit.msgid,
-        ...(unit.msgctxt !== undefined ? { msgctxt: unit.msgctxt } : {}),
-        ...(unit.msgidPlural !== undefined ? { msgidPlural: unit.msgidPlural } : {}),
-        // The draft cache is keyed by the source alone: an entry is drafted
-        // because it has no translation yet, so including msgstr would key
-        // every row on the empty string it is about to stop being.
-        msgstr: [],
-        comments: unit.comments,
-        references: unit.references,
-        fuzzy: false,
-      })
+      draftSrcHash(
+        {
+          msgid: unit.msgid,
+          ...(unit.msgctxt !== undefined ? { msgctxt: unit.msgctxt } : {}),
+          ...(unit.msgidPlural !== undefined ? { msgidPlural: unit.msgidPlural } : {}),
+          // Keyed by the source alone: an entry is drafted because it has no
+          // translation yet, so including msgstr would key every row on the
+          // empty string it is about to stop being.
+          msgstr: [],
+        },
+        { comments: unit.comments, nplurals: po.nplurals },
+      )
 
     const engineName = opts.engine?.name ?? opts.draftEngine
     const draftCache = {

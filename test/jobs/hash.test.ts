@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { configHash, draftHash, srcHash, translateConfigHash } from '../../src/jobs/hash.js'
+import {
+  auditSrcHash,
+  configHash,
+  draftHash,
+  draftSrcHash,
+  srcHash,
+  translateConfigHash,
+} from '../../src/jobs/hash.js'
 import type { AuditEntry, GlossaryEntry } from '../../src/types.js'
 
 const entry = (over: Partial<AuditEntry> = {}): AuditEntry => ({
@@ -53,8 +60,75 @@ describe('srcHash', () => {
     expect(srcHash(a)).not.toBe(srcHash(b))
   })
 
-  it('ignores the comments, which do not change what was said', () => {
+  it('covers the text alone: everything the prompt adds belongs to its own hash', () => {
+    // Narrow on purpose. A caller that needs the comments or the references in
+    // the key asks auditSrcHash or draftSrcHash for them, and says so in the
+    // call. Passing a whole entry here hashes four fields and no more.
     expect(srcHash(entry({ comments: [] }))).toBe(srcHash(entry({ comments: ['translators: a note'] })))
+  })
+})
+
+const context = (over: Partial<Parameters<typeof auditSrcHash>[1]> = {}) => ({
+  references: ['admin/menu.php:12'],
+  comments: [],
+  rules: [],
+  nplurals: 2,
+  ...over,
+})
+
+describe('auditSrcHash', () => {
+  it('is stable for the same entry in the same context', () => {
+    expect(auditSrcHash(entry(), context())).toBe(auditSrcHash(entry(), context()))
+  })
+
+  it('changes when the references change, which is what says what the string is for', () => {
+    expect(auditSrcHash(entry(), context())).not.toBe(
+      auditSrcHash(entry(), context({ references: ['help/intro.php:3'] })),
+    )
+  })
+
+  it('changes when the comments change, gettext\'s own disambiguation', () => {
+    expect(auditSrcHash(entry(), context())).not.toBe(
+      auditSrcHash(entry(), context({ comments: ['translators: a verb'] })),
+    )
+  })
+
+  it('changes when a rule fires that did not fire before', () => {
+    // The rule findings are file-dependent: the rule context learns brands and
+    // prior translations from every other entry in the same file.
+    expect(auditSrcHash(entry(), context())).not.toBe(auditSrcHash(entry(), context({ rules: ['title-case'] })))
+  })
+
+  it('does not change when the same rules fire in another order', () => {
+    // Hint order is an implementation detail of the rule list. A spurious miss
+    // here would re-ask the model for nothing.
+    expect(auditSrcHash(entry(), context({ rules: ['glossary', 'title-case'] }))).toBe(
+      auditSrcHash(entry(), context({ rules: ['title-case', 'glossary'] })),
+    )
+  })
+
+  it('changes when nplurals changes, which the prompt states outright', () => {
+    expect(auditSrcHash(entry(), context())).not.toBe(auditSrcHash(entry(), context({ nplurals: 6 })))
+  })
+
+  it('still changes when the entry itself changes', () => {
+    expect(auditSrcHash(entry(), context())).not.toBe(auditSrcHash(entry({ msgstr: ['Sakla'] }), context()))
+  })
+})
+
+describe('draftSrcHash', () => {
+  const source = { msgid: 'Save', msgstr: [] as string[] }
+
+  it('changes when the comments change, which the draft prompt is told to use', () => {
+    expect(draftSrcHash(source, { comments: [], nplurals: 2 })).not.toBe(
+      draftSrcHash(source, { comments: ['translators: a verb'], nplurals: 2 }),
+    )
+  })
+
+  it('changes when nplurals changes, which decides how many drafts are asked for', () => {
+    expect(draftSrcHash(source, { comments: [], nplurals: 2 })).not.toBe(
+      draftSrcHash(source, { comments: [], nplurals: 6 }),
+    )
   })
 })
 

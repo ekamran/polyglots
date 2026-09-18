@@ -1,7 +1,7 @@
 import { chunk } from '../batch.js'
 import type { RunControl } from '../run-control.js'
 import { runClaude, type ClaudeRunOptions } from '../claude/run.js'
-import { srcHash } from '../jobs/hash.js'
+import { auditSrcHash } from '../jobs/hash.js'
 import type { CachedVerdict, VerdictKey } from '../jobs/verdicts.js'
 import type { AuditEntry, Finding, GlossaryEntry, Locale } from '../types.js'
 import { buildAuditPrompt, type AuditCandidate } from './prompt.js'
@@ -178,27 +178,38 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
 
   const adjudicate = opts.adjudicate ?? adjudicateWithClaude
 
+  // Keyed by the whole question the model was asked, not just by what the entry
+  // says. The prompt also carries the references, the comments and the rule
+  // findings, and the findings depend on every other entry in the same file,
+  // so a key covering only the text would serve a verdict formed under one
+  // file's evidence for another file's. `repaired` is excluded because the
+  // prompt withholds it, and the rule names are sorted inside auditSrcHash so
+  // the order they fired in cannot turn a hit into a miss.
   const cacheKey = (candidate: AuditCandidate): VerdictKey => ({
-    srcHash: srcHash({
-      key: candidate.key,
-      msgid: candidate.msgid,
-      ...(candidate.msgctxt ? { msgctxt: candidate.msgctxt } : {}),
-      ...(candidate.msgidPlural ? { msgidPlural: candidate.msgidPlural } : {}),
-      msgstr: candidate.msgstr,
-      comments: candidate.comments,
-      references: candidate.references,
-      fuzzy: false,
-    }),
+    srcHash: auditSrcHash(
+      {
+        msgid: candidate.msgid,
+        ...(candidate.msgctxt ? { msgctxt: candidate.msgctxt } : {}),
+        ...(candidate.msgidPlural ? { msgidPlural: candidate.msgidPlural } : {}),
+        msgstr: candidate.msgstr,
+      },
+      {
+        references: candidate.references,
+        comments: candidate.comments,
+        rules: candidate.hints.filter((f) => f.rule !== 'repaired').map((f) => f.rule),
+        nplurals: opts.nplurals,
+      },
+    ),
     configHash: opts.configHash ?? '',
     locale: opts.locale,
     engine: opts.engine ?? 'claude',
   })
 
-  // An entry already judged under this configuration is settled, so it never
-  // reaches a batch. That is the whole of resume, and the whole of the
-  // cross-file cache: a first run finds nothing here and does all the work, a
-  // resumed one finds most of it, and a run over a different file finds
-  // whatever strings it shares with files reviewed before.
+  // An entry already judged under this configuration, in this file's context,
+  // is settled, so it never reaches a batch. That is the whole of resume: a
+  // first run finds nothing here and does all the work, a resumed one finds
+  // most of it, and a re-run after an edit finds everything but the entries
+  // that changed.
   const outstanding: AuditCandidate[] = []
   const fromCache: Verdict[] = []
   for (const candidate of candidates) {
@@ -318,6 +329,23 @@ async function runBatch(
   return { failed }
 }
 
+// The one place a candidate genuinely has to become an entry again: judgeFix
+// re-runs the rules over the model's proposed text, and the rules read the
+// whole entry. Nothing else reconstructs one, so nothing else can look like it
+// is feeding context to a hash that would ignore it.
+function candidateToEntry(candidate: AuditCandidate): AuditEntry {
+  return {
+    key: candidate.key,
+    msgid: candidate.msgid,
+    ...(candidate.msgctxt ? { msgctxt: candidate.msgctxt } : {}),
+    ...(candidate.msgidPlural ? { msgidPlural: candidate.msgidPlural } : {}),
+    msgstr: candidate.msgstr,
+    comments: candidate.comments,
+    references: candidate.references,
+    fuzzy: false,
+  }
+}
+
 function toVerdict(candidate: AuditCandidate, result: AuditResult, ctx: RuleContext, nplurals: number): Verdict {
   // A rule error is a mechanical fact. The model was asked for a fix, not for a
   // second opinion, so it cannot clear one.
@@ -338,17 +366,7 @@ function toVerdict(candidate: AuditCandidate, result: AuditResult, ctx: RuleCont
   const base: Verdict = { key: candidate.key, problem, findings, reason: result.reason, ...(candidate.repaired ?? {}) }
   if (!problem || !result.fix) return base
 
-  const entry: AuditEntry = {
-    key: candidate.key,
-    msgid: candidate.msgid,
-    ...(candidate.msgctxt ? { msgctxt: candidate.msgctxt } : {}),
-    ...(candidate.msgidPlural ? { msgidPlural: candidate.msgidPlural } : {}),
-    msgstr: candidate.msgstr,
-    comments: candidate.comments,
-    references: candidate.references,
-    fuzzy: false,
-  }
-  const verdict = judgeFix({ entry, fix: result.fix, nplurals, ctx })
+  const verdict = judgeFix({ entry: candidateToEntry(candidate), fix: result.fix, nplurals, ctx })
   if ('accepted' in verdict) return { ...base, text: verdict.accepted, repairedBy: 'model' }
   // Say so rather than dropping it. Silence here looks like the model declined,
   // which is a different thing and hides a real signal about the prompt.
