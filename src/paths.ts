@@ -27,3 +27,7 @@ export function secretsFile(): string {
 export function dbFile(): string {
   return join(dataDir(), 'polyglots.db')
 }
+
+export function jobsDbFile(): string {
+  return join(dataDir(), 'jobs.db')
+}
