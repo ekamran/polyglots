@@ -17,13 +17,25 @@ import { afterEach, beforeEach } from 'vitest'
 // A test that wants a specific home still sets it in its own hook, which runs
 // after this one.
 let home: string | undefined
+let previous: string | undefined
 
 beforeEach(() => {
+  previous = process.env.POLYGLOTS_HOME
   home = mkdtempSync(join(tmpdir(), 'polyglots-test-'))
   process.env.POLYGLOTS_HOME = home
 })
 
 afterEach(() => {
-  if (home) rmSync(home, { recursive: true, force: true })
+  // Never fail a passing test over cleanup: a spawned child may still hold the
+  // directory, and the temp dir is the OS's problem after the run either way.
+  if (home) {
+    try {
+      rmSync(home, { recursive: true, force: true, maxRetries: 3 })
+    } catch {
+      // ignored
+    }
+  }
   home = undefined
+  if (previous === undefined) delete process.env.POLYGLOTS_HOME
+  else process.env.POLYGLOTS_HOME = previous
 })

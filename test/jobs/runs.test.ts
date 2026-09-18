@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type Database from 'better-sqlite3'
 import { openJobsDb } from '../../src/jobs/db.js'
-import { finishRun, getRun, recordEntries, setRunState, startRun } from '../../src/jobs/runs.js'
+import { abandonRun, finishRun, getRun, recordEntries, setRunState, startRun } from '../../src/jobs/runs.js'
 
 let db: Database.Database
 let dir: string
@@ -118,5 +118,27 @@ describe('setRunState', () => {
     setRunState(db, id, 'stopping')
     expect(getRun(db, id)!.state).toBe('stopping')
     expect(getRun(db, id)!.flagged).toBeUndefined()
+  })
+})
+
+describe('abandonRun', () => {
+  it('marks a run stopped, with no totals to report', () => {
+    const id = startRun(db, input, () => 1000)
+    abandonRun(db, id, () => 5000)
+    const row = getRun(db, id)!
+    expect(row.state).toBe('stopped')
+    expect(row.finishedAt).toBe(5000)
+    // Statistics are only honest for a run that looked at every entry.
+    expect(row.entries).toBeUndefined()
+    expect(row.flagged).toBeUndefined()
+    expect(row.approvable).toBeUndefined()
+  })
+
+  it('drops the scratch entry rows, which nothing will ever read once abandoned', () => {
+    const id = startRun(db, input)
+    recordEntries(db, id, ['a', 'b'])
+    abandonRun(db, id)
+    const n = db.prepare<[number], { n: number }>('SELECT COUNT(*) AS n FROM entry WHERE run_id = ?').get(id)!.n
+    expect(n).toBe(0)
   })
 })

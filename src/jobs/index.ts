@@ -10,6 +10,7 @@ export {
   type VerdictKey,
 } from './verdicts.js'
 export {
+  abandonRun,
   finishRun,
   getRun,
   recordEntries,

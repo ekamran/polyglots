@@ -193,4 +193,52 @@ describe('review backed by the job store', () => {
     const text = await readFile(join(dir, 'plugin-tr-repaired.po'), 'utf8')
     expect(text).toMatch(/says the opposite/)
   })
+
+  // Every test above lets its run finish, where `decided` is rebuilt wholesale
+  // from the full verdict list regardless of what onCached did. That can pass
+  // whether or not onCached exists, so it proves nothing about the mechanism
+  // added to stop exactly this: a run interrupted part way through a resume
+  // writing a file that has lost what an earlier run already flagged. Only
+  // interrupting the resume itself, before it reaches its own first batch's
+  // persist, can tell the two apart.
+  it('keeps what an earlier run decided in the file, even when the resume itself is interrupted', async () => {
+    const flagsBoth: Adjudicator = async (batch) =>
+      batch.map((c) => ({ id: c.id, problem: true, categories: ['meaning'], reason: 'says the opposite' }))
+
+    let batches = 0
+    await expect(
+      reviewFile({
+        file: join(dir, 'plugin-tr.po'),
+        locale: 'tr',
+        db,
+        jobsDb,
+        adjudicate: flagsBoth,
+        mcpConfigPath: '',
+        batchSize: 1,
+        onProgress: (e) => {
+          if (e.type === 'batch-done' && ++batches === 1) throw new Error('interrupted')
+        },
+      }),
+    ).rejects.toThrow('interrupted')
+
+    // "Save" was processed and flagged before the interruption; "Cancel" was
+    // not, so this run has one cached verdict and one outstanding candidate.
+    await expect(
+      reviewFile({
+        file: join(dir, 'plugin-tr.po'),
+        locale: 'tr',
+        db,
+        jobsDb,
+        adjudicate: flagsBoth,
+        mcpConfigPath: '',
+        batchSize: 1,
+        onProgress: (e) => {
+          if (e.type === 'batch-done') throw new Error('interrupted again')
+        },
+      }),
+    ).rejects.toThrow('interrupted again')
+
+    const entries = (await loadPo(join(dir, 'plugin-tr-repaired.po'))).auditEntries().map((e) => e.msgid)
+    expect(entries).toContain('Save')
+  })
 })

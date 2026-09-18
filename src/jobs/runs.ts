@@ -4,8 +4,10 @@ import type { Clock } from './verdicts.js'
 
 // The first three mirror RunState in run-control.ts exactly, so the pause key
 // needs no new vocabulary. `done` is the terminal state RunState has no need to
-// name, because a finished run has no control left to exercise.
-export type RunRowState = 'running' | 'paused' | 'stopping' | 'done'
+// name, because a finished run has no control left to exercise. `stopped` is
+// also terminal, unlike `stopping`, which is a control state a run passes
+// through on its way to either `stopped` or `done`.
+export type RunRowState = 'running' | 'paused' | 'stopping' | 'done' | 'stopped'
 
 export interface StartRunInput {
   file: string
@@ -102,6 +104,18 @@ export function finishRun(
       JSON.stringify(totals.byCategory),
       runId,
     )
+    db.prepare('DELETE FROM entry WHERE run_id = ?').run(runId)
+  })
+  write()
+}
+
+// A run that ended without finishing. Terminal, unlike `stopping`, which is a
+// control state a run passes through. It freezes no totals — a run that did
+// not look at every entry has no honest throughput or quality numbers to
+// report — but it does drop the scratch rows, which nothing will ever read.
+export function abandonRun(db: Database.Database, runId: number, now: Clock = () => Date.now()): void {
+  const write = db.transaction((): void => {
+    db.prepare(`UPDATE run SET state = 'stopped', finished_at = ? WHERE id = ?`).run(now(), runId)
     db.prepare('DELETE FROM entry WHERE run_id = ?').run(runId)
   })
   write()
