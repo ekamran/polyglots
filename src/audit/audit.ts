@@ -182,9 +182,13 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
   // says. The prompt also carries the references, the comments and the rule
   // findings, and the findings depend on every other entry in the same file,
   // so a key covering only the text would serve a verdict formed under one
-  // file's evidence for another file's. `repaired` is excluded because the
-  // prompt withholds it, and the rule names are sorted inside auditSrcHash so
-  // the order they fired in cannot turn a hit into a miss.
+  // file's evidence for another file's. The hints go in as the prompt renders
+  // them, message and all, because a message can be file-derived too:
+  // `inconsistent` counts how many ways this file translates the same source,
+  // so editing one entry changes another entry's prompt without touching its
+  // text or the names of the rules that fired. `repaired` is excluded because
+  // the prompt withholds it, and auditSrcHash sorts, so the order they fired in
+  // cannot turn a hit into a miss.
   const cacheKey = (candidate: AuditCandidate): VerdictKey => ({
     srcHash: auditSrcHash(
       {
@@ -196,7 +200,7 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
       {
         references: candidate.references,
         comments: candidate.comments,
-        rules: candidate.hints.filter((f) => f.rule !== 'repaired').map((f) => f.rule),
+        hints: candidate.hints.filter((f) => f.rule !== 'repaired').map((f) => `${f.rule}: ${f.message}`),
         nplurals: opts.nplurals,
       },
     ),

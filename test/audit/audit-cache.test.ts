@@ -240,6 +240,42 @@ describe('a verdict formed in one file is not served for another', () => {
     expect(adjudicate).toHaveBeenCalled()
   })
 
+  // One layer down from the cross-file case, and reachable inside a single file.
+  // `inconsistent`'s message is derived from the whole file: it says how many
+  // different ways the file translates the same source. Editing one entry
+  // changes another entry's message while that entry's own msgid, msgstr,
+  // references and firing rules are all untouched, so a key covering only the
+  // rule names would serve a verdict formed under a message that no longer
+  // applies -- and quietly break the per-entry invalidation this project
+  // promises.
+  it('re-asks about an entry whose hint changed because a different entry was edited', async () => {
+    const shares = (msgctxt: string, msgstr: string): AuditEntry => ({
+      key: `${msgctxt}\u0004Save`,
+      msgid: 'Save',
+      msgctxt,
+      msgstr: [msgstr],
+      comments: [],
+      references: [`admin/${msgctxt}.php:1`],
+      fuzzy: false,
+    })
+
+    const store = memoryCache()
+    // Two distinct translations of "Save", so every entry is told the file
+    // translates it two different ways.
+    const before = [shares('a', 'Kaydet'), shares('b', 'Sakla'), shares('c', 'Sakla')]
+    const first = await auditEntries({ ...base, glossary: [], entries: before, store, adjudicate: clean })
+    expect(first.every((v) => v.findings.length === 0 || v.problem)).toBe(true)
+
+    // Only entry c is edited. Now the file translates "Save" three ways, so a
+    // and b are asked a different question than they were the first time.
+    const after = [shares('a', 'Kaydet'), shares('b', 'Sakla'), shares('c', 'Depola')]
+    const adjudicate = vi.fn(clean)
+    await auditEntries({ ...base, glossary: [], entries: after, store, adjudicate })
+
+    const asked = adjudicate.mock.calls.flatMap(([batch]) => batch.map((c) => c.msgctxt))
+    expect(asked).toEqual(['a', 'b', 'c'])
+  })
+
   it('still answers the same file from the cache, which is what resume is', async () => {
     // The point of the narrowing is that reuse becomes same-file, not that it
     // stops. A file re-reviewed unchanged produces identical key inputs.

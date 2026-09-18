@@ -40,19 +40,34 @@ export interface AuditContext {
   references: string[]
   // gettext's own disambiguation mechanism, handed to the model verbatim.
   comments: string[]
-  // The rule names of the hints the prompt lists as automatedChecks, excluding
-  // `repaired`, which the prompt deliberately withholds. These are
-  // file-dependent: the rule context learns brand words and prior translations
-  // from every other entry in the same file, so the same string can fire a rule
-  // in one submission and not in another.
-  rules: string[]
+  // The hints the prompt lists as automatedChecks, as the prompt renders them:
+  // "<rule>: <message>", excluding `repaired`, which the prompt deliberately
+  // withholds.
+  //
+  // The message and not just the rule name, because a message can be derived
+  // from the whole file: `inconsistent` says how many different ways the same
+  // source is translated in it. Editing one entry changes another entry's
+  // message while that entry's own text, references and firing rules are all
+  // untouched, and keying on names alone would serve its now-stale verdict.
+  // That is the per-entry invalidation this project promises, so it is not
+  // optional.
+  //
+  // File-dependent in the first place for the same reason the rest of this is:
+  // the rule context learns brand words and prior translations from every other
+  // entry in the same file, so the same string can fire a rule in one
+  // submission and not in another.
+  hints: string[]
   nplurals: number
 }
 
 // The key a review verdict is stored under. It covers the whole question the
 // model was asked, not just the entry: a verdict formed under one file's
-// evidence must never be served for another file's. Sorting the rule names is
+// evidence must never be served for another file's. Sorting the hints is
 // load-bearing, because the order rules ran in must not turn a hit into a miss.
+//
+// This errs towards a miss, the way an unreadable row does. The cache is an
+// optimisation and re-asking is always a correct answer; serving a verdict
+// formed under evidence that has since moved is not.
 //
 // The practical consequence is that reuse is same-file, since references differ
 // between files. That is intended; see "Why verdicts are not reused across
@@ -64,7 +79,7 @@ export function auditSrcHash(entry: SourceText, context: AuditContext): string {
     srcHash(entry),
     context.references.join(FIELD),
     context.comments.join(FIELD),
-    [...context.rules].sort().join(FIELD),
+    [...context.hints].sort().join(FIELD),
     String(context.nplurals),
   )
 }

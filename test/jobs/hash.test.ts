@@ -72,7 +72,7 @@ describe('srcHash', () => {
 const context = (over: Partial<Parameters<typeof auditSrcHash>[1]> = {}) => ({
   references: ['admin/menu.php:12'],
   comments: [],
-  rules: [],
+  hints: [],
   nplurals: 2,
   ...over,
 })
@@ -97,14 +97,27 @@ describe('auditSrcHash', () => {
   it('changes when a rule fires that did not fire before', () => {
     // The rule findings are file-dependent: the rule context learns brands and
     // prior translations from every other entry in the same file.
-    expect(auditSrcHash(entry(), context())).not.toBe(auditSrcHash(entry(), context({ rules: ['title-case'] })))
+    expect(auditSrcHash(entry(), context())).not.toBe(
+      auditSrcHash(entry(), context({ hints: ['title-case: capitalizes Widgetly mid-string'] })),
+    )
   })
 
-  it('does not change when the same rules fire in another order', () => {
+  it('changes when a hint says something else, not just when a new rule fires', () => {
+    // `inconsistent` counts how many ways the file translates the same source,
+    // so its message moves when another entry is edited while this entry's own
+    // text and firing rules stay put. The prompt changed, so the key must.
+    expect(
+      auditSrcHash(entry(), context({ hints: ['inconsistent: the same source is translated 2 different ways'] })),
+    ).not.toBe(
+      auditSrcHash(entry(), context({ hints: ['inconsistent: the same source is translated 3 different ways'] })),
+    )
+  })
+
+  it('does not change when the same hints arrive in another order', () => {
     // Hint order is an implementation detail of the rule list. A spurious miss
     // here would re-ask the model for nothing.
-    expect(auditSrcHash(entry(), context({ rules: ['glossary', 'title-case'] }))).toBe(
-      auditSrcHash(entry(), context({ rules: ['title-case', 'glossary'] })),
+    expect(auditSrcHash(entry(), context({ hints: ['glossary: x', 'title-case: y'] }))).toBe(
+      auditSrcHash(entry(), context({ hints: ['title-case: y', 'glossary: x'] })),
     )
   })
 
