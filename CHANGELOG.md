@@ -10,6 +10,48 @@ Run `polyglots --version` to see which build you have; the TUI shows it beside i
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-19
+
+Say what the reviewing has added up to.
+
+### Added
+
+- `polyglots stats` writes a self-contained HTML page from the run history: how many
+  submissions and entries were reviewed, by week and by project, what gets flagged,
+  and the median turnaround. Available from the menu as well.
+  - The page carries no script and references nothing off the machine, so it opens
+    from an email attachment on a computer that has never heard of this tool. The
+    charts are hand-built SVG for the same reason.
+  - Light, dark and follow-the-system, and English or Turkish, switched in the page
+    itself. Both languages ship inside it and CSS shows one, so the switches need no
+    script. Numbers are grouped the way each language groups them.
+  - Only finished reviews count. One that stopped part way froze no totals, and the
+    page says how many did that rather than quietly shrinking the denominator.
+  - It states that a flag measures what the tool flagged, not the quality of anyone's
+    work. These numbers may be read by the people who volunteered the translations.
+
+### Fixed
+
+- A cached verdict now records which model produced it. Two Claude models answer the
+  same question differently and both were stored as `claude`, so one could be served
+  the other's judgement.
+- An entry whose whitespace was repaired mechanically no longer shares a cache key
+  with the same entry submitted already clean. The hash is taken after the repair, and
+  the prompt tells the model which of the two it is looking at.
+- A `by_category` tally holding something that is not a number now reads as absent
+  rather than as a partial tally, so a chart is never drawn from a count with an entry
+  silently dropped.
+
+### Changed
+
+- `pruneStaleConfigs` checks its table name against an allow-list at runtime, not only
+  through its type.
+- The `X-Polyglots-Review` header no longer carries a fingerprint. Nothing reads the
+  header back, and computing it meant reading the whole submission a second time on
+  every run to fill a field nobody consumes.
+- A run row can say `running`, `done` or `stopped`, and nothing else. It previously
+  also allowed `paused` and `stopping`, which nothing ever wrote.
+
 ## [0.5.0] - 2026-09-18
 
 Run state moved out of the `.po` file and into a database, so the counts, the output
