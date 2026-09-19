@@ -1,3 +1,4 @@
+import { BRACE_PLACEHOLDER, PRINTF_PLACEHOLDER } from '../../draft/placeholders.js'
 import type { Locale } from '../../types.js'
 
 // Turkish casing is not the invariant mapping: I lowercases to ı, İ to i. Every
@@ -31,8 +32,8 @@ function strip(value: string): string {
     .replace(/<[^>]*>/g, ' ')
     // A placeholder next to a month name is almost always the date number, so it
     // stands in as one rather than vanishing.
-    .replace(/%(?:\d+\$)?(?:[-+ 0#]|'[\s\S])*\d*(?:\.\d+)?[bcdeEfFgGosuxX]/g, ' 0 ')
-    .replace(/\{[A-Za-z_][\w.-]*\}|###[A-Za-z0-9_]+###/g, ' 0 ')
+    .replace(new RegExp(PRINTF_PLACEHOLDER, 'g'), ' 0 ')
+    .replace(new RegExp(BRACE_PLACEHOLDER, 'g'), ' 0 ')
 }
 
 function clean(word: string): string {
