@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 import type { Locale } from '../types.js'
-import type { Clock } from './json.js'
+import { parseTally, type Clock } from './json.js'
 
 // The first three mirror RunState in run-control.ts exactly, so the pause key
 // needs no new vocabulary. `done` is the terminal state RunState has no need to
@@ -137,18 +137,6 @@ interface Row {
   by_category: string | null
 }
 
-function tally(json: string | null): Record<string, number> | undefined {
-  if (json === null) return undefined
-  try {
-    const value: unknown = JSON.parse(json)
-    return typeof value === 'object' && value !== null && !Array.isArray(value)
-      ? (value as Record<string, number>)
-      : undefined
-  } catch {
-    return undefined
-  }
-}
-
 function optional(value: number | null): number | undefined {
   return value === null ? undefined : value
 }
@@ -156,7 +144,7 @@ function optional(value: number | null): number | undefined {
 export function getRun(db: Database.Database, runId: number): RunRow | undefined {
   const row = db.prepare<[number], Row>('SELECT * FROM run WHERE id = ?').get(runId)
   if (!row) return undefined
-  const byCategory = tally(row.by_category)
+  const byCategory = parseTally(row.by_category)
   return {
     id: row.id,
     file: row.file,

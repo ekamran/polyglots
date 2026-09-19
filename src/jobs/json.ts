@@ -20,3 +20,21 @@ export function parseStringArray(json: string): string[] | undefined {
     return undefined
   }
 }
+
+// A frozen per-run tally, read back for statistics. Same rule as above: a value
+// that is not a finite number makes the whole tally unreadable rather than
+// partly readable, because a chart built from a tally with one entry silently
+// dropped is worse than a chart that admits it has nothing to draw.
+export function parseTally(json: string | null): Record<string, number> | undefined {
+  if (json === null) return undefined
+  try {
+    const value: unknown = JSON.parse(json)
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
+    const entries = Object.entries(value)
+    return entries.every(([, n]) => typeof n === 'number' && Number.isFinite(n))
+      ? (Object.fromEntries(entries) as Record<string, number>)
+      : undefined
+  } catch {
+    return undefined
+  }
+}
