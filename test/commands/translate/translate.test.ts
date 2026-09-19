@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { openDb, upsertTm } from '../../../src/storage/index.js'
 import { DraftQuotaError, DraftRateLimitError } from '../../../src/draft/index.js'
-import { ReviewError } from '../../../src/review/claude-review.js'
+import { ReviewError } from '../../../src/review/draft-review.js'
 import { translateFile, type TranslateOptions } from '../../../src/commands/translate.js'
 import {
   CTX,
@@ -411,9 +411,9 @@ describe('translateFile: resources', () => {
     db.close()
   })
 
-  it('forwards model and claudeBin to the review step', async () => {
+  it('forwards model and bin to the review step', async () => {
     const review = fakeReview()
-    await translateFile(base({ engine: fakeEngine(), review, model: 'claude-x', claudeBin: '/bin/fake' }))
-    expect(review.calls[0]!.opts).toMatchObject({ model: 'claude-x', claudeBin: '/bin/fake' })
+    await translateFile(base({ engine: fakeEngine(), review, model: 'claude-x', bin: '/bin/fake' }))
+    expect(review.calls[0]!.opts).toMatchObject({ model: 'claude-x', bin: '/bin/fake' })
   })
 })

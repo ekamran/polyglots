@@ -3,7 +3,7 @@ import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { ReviewError, buildClaudeArgs, childEnv, mapResults, reviewBatch } from '../../src/review/claude-review.js'
+import { ReviewError, buildReviewArgs, childEnv, mapResults, reviewBatch } from '../../src/review/draft-review.js'
 import { reviewBatchJsonSchema } from '../../src/review/schema.js'
 import type { ReviewInput } from '../../src/types.js'
 
@@ -28,7 +28,7 @@ let dir: string
 let mcpConfigPath: string
 const savedEnv = { ...process.env }
 
-const base = () => ({ locale: 'tr', nplurals: 2, mcpConfigPath, claudeBin: fakeClaude })
+const base = () => ({ locale: 'tr', nplurals: 2, mcpConfigPath, bin: fakeClaude })
 
 async function setup(): Promise<void> {
   dir = await mkdtemp(join(tmpdir(), 'polyglots-review-'))
@@ -106,7 +106,7 @@ describe('reviewBatch', () => {
   })
 
   it('never lets a positional follow a variadic flag (--allowedTools / --mcp-config swallow trailing values)', () => {
-    const argv = buildClaudeArgs({ ...base(), model: 'sonnet' })
+    const argv = buildReviewArgs({ ...base(), model: 'sonnet' })
     const variadic = ['--allowedTools', '--mcp-config']
     for (let i = 0; i < argv.length; i++) {
       if (!variadic.includes(argv[i]!)) continue
@@ -223,7 +223,7 @@ describe('reviewBatch', () => {
 
   it('throws ReviewError when the binary cannot be spawned', async () => {
     await setup()
-    await expect(reviewBatch(inputs, { ...base(), claudeBin: join(dir, 'no-such-claude') })).rejects.toBeInstanceOf(
+    await expect(reviewBatch(inputs, { ...base(), bin: join(dir, 'no-such-claude') })).rejects.toBeInstanceOf(
       ReviewError,
     )
   })

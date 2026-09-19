@@ -98,7 +98,7 @@ describe('E. the MCP server the review subprocess launches reads the same DB the
       mode: 'pending',
       draftEngine: 'deepl',
       engine: fakeEngine(),
-      claudeBin: fakeClaude,
+      bin: fakeClaude,
       batchSize: 25,
     })
     expect(summary).toMatchObject({ translated: 7, skipped: 0 })

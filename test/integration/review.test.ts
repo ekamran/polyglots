@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import type Database from 'better-sqlite3'
-import { adjudicateWithClaude } from '../../src/audit/audit.js'
+import { adjudicateWithAgent } from '../../src/audit/audit.js'
 import { openDb, replaceGlossary } from '../../src/storage/index.js'
 import { writeMcpConfig } from '../../src/mcp/config.js'
 import { loadPo } from '../../src/po/po-file.js'
@@ -69,7 +69,7 @@ describe('review end to end', () => {
       file,
       locale: 'tr',
       db,
-      claudeBin: FAKE_CLAUDE,
+      bin: FAKE_CLAUDE,
       mcpConfigPath: await writeMcpConfig({ dir: home }),
       ...overrides,
     })
@@ -91,7 +91,7 @@ describe('review end to end', () => {
   // by has to permit what the prompt asks for, or the common case is rejected
   // and a whole batch of good entries comes back unreviewed.
   it('takes a clean verdict, with no categories, through the real schema', async () => {
-    const results = await adjudicateWithClaude(
+    const results = await adjudicateWithAgent(
       [
         {
           id: 1,
@@ -103,7 +103,7 @@ describe('review end to end', () => {
           hints: [],
         },
       ],
-      { locale: 'tr', nplurals: 2, claudeBin: FAKE_CLAUDE, mcpConfigPath: await writeMcpConfig({ dir: home }) },
+      { locale: 'tr', nplurals: 2, bin: FAKE_CLAUDE, mcpConfigPath: await writeMcpConfig({ dir: home }) },
     )
     expect(results).toEqual([{ id: 1, problem: false, categories: [], reason: 'fake: looks fine' }])
   })
@@ -172,7 +172,7 @@ describe('review end to end', () => {
   })
 
   it('flags everything as unreviewed when the model cannot be reached', async () => {
-    const summary = await run({ claudeBin: join(home, 'no-such-binary') })
+    const summary = await run({ bin: join(home, 'no-such-binary') })
     expect(summary.unreviewed).toBeGreaterThan(0)
     expect(summary.approvable).toBe(0)
   })

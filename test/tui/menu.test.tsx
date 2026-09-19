@@ -4,6 +4,8 @@ import { join } from 'node:path'
 import React from 'react'
 import { cleanup } from 'ink-testing-library'
 import { App } from '../../src/tui/App.js'
+import { DEFAULT_CONFIG } from '../../src/config.js'
+import type { PolyglotsConfig } from '../../src/types.js'
 import { MENU_ITEMS, type MenuAction } from '../../src/tui/screens/Menu.js'
 import { ESC_DELAY, fakeCommands, keys, makeHome, tick, waitForText, render, type Home } from './helpers.js'
 
@@ -135,5 +137,58 @@ describe('Menu', () => {
     stdin.write('q')
     await tick()
     expect(exited).toBe(true)
+  })
+})
+
+describe('switching the review provider', () => {
+  it('shows the provider the config names', async () => {
+    const commands = fakeCommands({
+      loadConfig: () => ({ ...DEFAULT_CONFIG, reviewProvider: 'antigravity' }),
+    })
+    const { lastFrame } = render(<App commands={commands} cwd={cwd} />)
+    await tick()
+    expect(lastFrame() ?? '').toContain('Reviewing with antigravity')
+  })
+
+  it('cycles with p and saves the choice', async () => {
+    const saved: Partial<PolyglotsConfig>[] = []
+    const commands = fakeCommands({
+      loadConfig: () => ({ ...DEFAULT_CONFIG, reviewProvider: 'claude' }),
+      saveConfig: (patch: Partial<PolyglotsConfig>) => {
+        saved.push(patch)
+        return { ...DEFAULT_CONFIG, ...patch }
+      },
+    })
+    const { lastFrame, stdin } = render(<App commands={commands} cwd={cwd} />)
+    await tick()
+    expect(lastFrame() ?? '').toContain('Reviewing with claude')
+
+    stdin.write('p')
+    await tick()
+    expect(saved).toEqual([{ reviewProvider: 'antigravity' }])
+    expect(lastFrame() ?? '').toContain('Reviewing with antigravity')
+
+    // Wraps, so one key reaches every provider however many there are.
+    stdin.write('p')
+    await tick()
+    expect(lastFrame() ?? '').toContain('Reviewing with claude')
+  })
+
+  // A run reads the saved config, so moving the display on a failed save would
+  // name an agent no review is going to use.
+  it('keeps showing the saved provider when the write fails, and says why', async () => {
+    const commands = fakeCommands({
+      loadConfig: () => ({ ...DEFAULT_CONFIG, reviewProvider: 'claude' }),
+      saveConfig: () => {
+        throw new Error('EACCES: permission denied')
+      },
+    })
+    const { lastFrame, stdin } = render(<App commands={commands} cwd={cwd} />)
+    await tick()
+    stdin.write('p')
+    await tick()
+    const frame = lastFrame() ?? ''
+    expect(frame).toContain('Reviewing with claude')
+    expect(frame).toMatch(/EACCES/)
   })
 })

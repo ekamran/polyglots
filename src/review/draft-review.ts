@@ -1,21 +1,21 @@
 import type { Locale, ReviewInput, ReviewResult } from '../types.js'
 import {
-  ClaudeError,
+  AgentError,
   MCP_TOOLS,
-  buildClaudeArgs as buildArgs,
+  buildAgentArgs as buildArgs,
   childEnv,
-  extractStructuredOutput,
-  spawnClaude,
-  type ClaudeRunOptions,
-} from '../claude/run.js'
+  readAgentOutput,
+  spawnAgent,
+  type AgentRunOptions,
+} from '../agent/run.js'
 import { buildReviewPrompt } from './prompt.js'
 import { reviewBatchJsonSchema, reviewBatchSchema } from './schema.js'
 
 export const REVIEW_ALLOWED_TOOLS = MCP_TOOLS
 
-export { childEnv, extractStructuredOutput }
+export { childEnv }
 
-export interface ReviewOptions extends ClaudeRunOptions {
+export interface ReviewOptions extends AgentRunOptions {
   locale: Locale
   nplurals: number
 }
@@ -32,7 +32,7 @@ export class ReviewError extends Error {
   }
 }
 
-export function buildClaudeArgs(opts: ReviewOptions): string[] {
+export function buildReviewArgs(opts: ReviewOptions): string[] {
   return buildArgs(reviewBatchJsonSchema, opts)
 }
 
@@ -41,21 +41,21 @@ export function buildClaudeArgs(opts: ReviewOptions): string[] {
 export function mapResults(inputs: ReviewInput[], payload: unknown, nplurals: number): ReviewResult[] {
   const parsed = reviewBatchSchema.safeParse(payload)
   if (!parsed.success) {
-    throw new ReviewError(`claude output failed schema validation: ${parsed.error.message.slice(0, 500)}`)
+    throw new ReviewError(`agent output failed schema validation: ${parsed.error.message.slice(0, 500)}`)
   }
 
   const byId = new Map<number, (typeof parsed.data.results)[number]>()
   for (const result of parsed.data.results) {
     if (result.id > inputs.length || result.id < 1) {
-      throw new ReviewError(`claude output has unknown id ${result.id} for a batch of ${inputs.length}`)
+      throw new ReviewError(`agent output has unknown id ${result.id} for a batch of ${inputs.length}`)
     }
-    if (byId.has(result.id)) throw new ReviewError(`claude output has a duplicate id ${result.id}`)
+    if (byId.has(result.id)) throw new ReviewError(`agent output has a duplicate id ${result.id}`)
     byId.set(result.id, result)
   }
 
   const missingKeys = inputs.filter((_, i) => !byId.has(i + 1)).map((input) => input.key)
   if (missingKeys.length > 0) {
-    throw new ReviewError(`claude output is missing ${missingKeys.map((k) => JSON.stringify(k)).join(', ')}`, {
+    throw new ReviewError(`agent output is missing ${missingKeys.map((k) => JSON.stringify(k)).join(', ')}`, {
       missingKeys,
     })
   }
@@ -66,7 +66,7 @@ export function mapResults(inputs: ReviewInput[], payload: unknown, nplurals: nu
     const result: ReviewResult = { key: input.key, text: raw.text, fuzzy: raw.fuzzy, reason: raw.reason }
     if (result.text.length !== expected) {
       throw new ReviewError(
-        `claude output for key ${JSON.stringify(input.key)} has ${result.text.length} text forms, expected ${expected}`,
+        `agent output for key ${JSON.stringify(input.key)} has ${result.text.length} text forms, expected ${expected}`,
       )
     }
     return result
@@ -77,10 +77,10 @@ export async function reviewBatch(inputs: ReviewInput[], opts: ReviewOptions): P
   if (inputs.length === 0) return []
   const prompt = buildReviewPrompt(inputs, opts.locale, opts.nplurals)
   try {
-    const stdout = await spawnClaude(buildClaudeArgs(opts), prompt, opts)
-    return mapResults(inputs, extractStructuredOutput(stdout), opts.nplurals)
+    const output = await spawnAgent(buildReviewArgs(opts), prompt, opts)
+    return mapResults(inputs, readAgentOutput(output, opts), opts.nplurals)
   } catch (err) {
-    if (err instanceof ClaudeError) throw new ReviewError(err.message, { stderr: err.stderr })
+    if (err instanceof AgentError) throw new ReviewError(err.message, { stderr: err.stderr })
     throw err
   }
 }

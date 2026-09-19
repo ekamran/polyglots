@@ -4,7 +4,7 @@ import { importTmx } from '../commands/tm-import.js'
 import { reviewFile } from '../commands/review.js'
 import { writeStats } from '../commands/stats.js'
 import { translateFile } from '../commands/translate.js'
-import { DEFAULT_CONFIG, loadConfig, loadSecrets, saveSecret } from '../config.js'
+import { DEFAULT_CONFIG, loadConfig, saveConfig, loadSecrets, saveSecret } from '../config.js'
 import type { Locale, PolyglotsConfig, ReviewEvent, ReviewSummary } from '../types.js'
 
 export type ReviewFile = typeof reviewFile
@@ -17,6 +17,7 @@ export interface TuiCommands {
   reviewFile: typeof reviewFile
   writeStats: typeof writeStats
   loadConfig: typeof loadConfig
+  saveConfig: typeof saveConfig
   loadSecrets: typeof loadSecrets
   saveSecret: typeof saveSecret
 }
@@ -28,6 +29,7 @@ export const defaultCommands: TuiCommands = {
   reviewFile,
   writeStats,
   loadConfig,
+  saveConfig,
   loadSecrets,
   saveSecret,
 }

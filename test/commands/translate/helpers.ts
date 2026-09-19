@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { po } from 'gettext-parser'
 import type { GetTextTranslation, GetTextTranslations } from 'gettext-parser'
 import type { DraftEngine, DraftResult, ReviewInput, ReviewResult, TranslationUnit } from '../../../src/types.js'
-import type { ReviewOptions } from '../../../src/review/claude-review.js'
+import type { ReviewOptions } from '../../../src/review/draft-review.js'
 import type { TranslateEvent } from '../../../src/commands/translate.js'
 
 export const samplePo = fileURLToPath(new URL('../../fixtures/po/sample.po', import.meta.url))

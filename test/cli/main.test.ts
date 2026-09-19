@@ -348,6 +348,24 @@ describe('config add-name', () => {
     expect(h.stdout.text).not.toContain('[object Object]')
   })
 
+  it('switches the review provider from the CLI', async () => {
+    const h = harness()
+    expect(await h.run(['config', 'set', 'reviewProvider', 'antigravity'])).toBe(0)
+    expect(h.stdout.text).toContain('reviewProvider = antigravity')
+
+    const read = harness()
+    await read.run(['config', 'get', 'reviewProvider'])
+    expect(read.stdout.text.trim()).toBe('antigravity')
+  })
+
+  // The value reaches a cache key and a stats row, so a typo that silently
+  // became a third provider would fragment both.
+  it('refuses a provider it does not have', async () => {
+    const h = harness()
+    expect(await h.run(['config', 'set', 'reviewProvider', 'gemini'])).toBe(2)
+    expect(h.stderr.text).toMatch(/claude, antigravity/)
+  })
+
   it('points config set at add-name instead of taking a raw value', async () => {
     const h = harness()
     const code = await h.run(['config', 'set', 'properNouns', 'İzmir'])

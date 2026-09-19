@@ -10,6 +10,43 @@ Run `polyglots --version` to see which build you have; the TUI shows it beside i
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-19
+
+A second agent to review with.
+
+### Added
+
+- `reviewProvider` chooses which agent CLI judges translations: `claude`, or
+  `antigravity` through its `agy` command. It is a setting rather than a per-run
+  flag, because it is a standing preference about which subscription to spend.
+  Press `p` on the main screen to switch, or
+  `polyglots config set reviewProvider antigravity`.
+  - antigravity needs its own setup first: the MCP server registered with it,
+    and the three lookups permitted in its settings. `docs/antigravity.md` has
+    the commands and says why polyglots does not write that configuration
+    itself. Without it every tool call is denied and the run fails with
+    antigravity's own stderr quoted back.
+  - Measured on one 25-entry batch of real strings: 19.6s through Claude
+    against 80.9s through antigravity, which over a 400-batch submission is two
+    hours against nine. It also reads the source more freely, once deciding an
+    English string was a typo and offering a translation of what it thought was
+    meant. Useful for a bulk pass, not for a submission about to be approved.
+- The agent runner keeps stderr and folds it into the error it raises. Both
+  providers have a failure that exits zero and explains itself only there: a
+  denied tool, or a quota message that arrives without a non-zero status.
+
+### Changed
+
+- `engineId` names the provider as well as the model, so two agents' verdicts
+  coexist instead of one being served as the other's. A row written before
+  there was a choice says `claude` and still reads back as the same identity,
+  so nothing cached is orphaned.
+- The Claude runner moved to `src/agent/`, with the provider differences
+  (arguments, and the shape of the envelope each one returns) behind one
+  interface. Both put their validated object in `structured_output`, so only
+  the failure paths differ. `claude-review.ts` became `draft-review.ts` and its
+  errors no longer name Claude, since either agent can raise them.
+
 ## [0.7.6] - 2026-09-19
 
 ### Fixed

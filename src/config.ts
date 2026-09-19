@@ -9,6 +9,7 @@ import type { PolyglotsConfig, Secrets } from './types.js'
 export const DEFAULT_CONFIG: PolyglotsConfig = {
   defaultLocale: 'tr',
   defaultDraftEngine: 'deepl',
+  reviewProvider: 'claude',
   ollama: { baseUrl: DEFAULT_QWEN_BASE_URL, model: DEFAULT_QWEN_MODEL },
   batchSize: 25,
   consistencyTtlDays: 30,
@@ -18,6 +19,10 @@ export const DEFAULT_CONFIG: PolyglotsConfig = {
 const configSchema = z.object({
   defaultLocale: z.string().min(1),
   defaultDraftEngine: z.enum(['deepl', 'openai', 'qwen']),
+  // Defaulted rather than required, so a config written before there was a
+  // second provider still parses, and keeps the provider its verdicts were
+  // formed under.
+  reviewProvider: z.enum(['claude', 'antigravity']).default('claude'),
   // Defaulted rather than required, so a config written before the local
   // engine existed still parses.
   ollama: z

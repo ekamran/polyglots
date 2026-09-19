@@ -2,7 +2,8 @@ import { existsSync, globSync, statSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { normalizeLocale } from '../tmx/parse.js'
 import type { CsvDelimiter } from '../commands/glossary-export.js'
-import type { Locale, Secrets } from '../types.js'
+import { isReviewProvider, PROVIDERS } from '../agent/providers.js'
+import type { Locale, ReviewProvider, Secrets } from '../types.js'
 
 export class UsageError extends Error {
   readonly exitCode = 2
@@ -83,6 +84,13 @@ export type DraftEngineChoice = (typeof DRAFT_ENGINES)[number]
 export function parseDraftEngine(raw: string): DraftEngineChoice {
   if (raw === 'deepl' || raw === 'openai' || raw === 'qwen') return raw
   throw new UsageError(`--draft-engine must be one of ${DRAFT_ENGINES.join(', ')}, got "${raw}"`)
+}
+
+// Named for the setting rather than a flag: there is no --review-provider, so
+// the only way in is `polyglots config set reviewProvider`, or the menu.
+export function parseReviewProvider(raw: string): ReviewProvider {
+  if (isReviewProvider(raw)) return raw
+  throw new UsageError(`reviewProvider must be one of ${PROVIDERS.join(', ')}, got "${raw}"`)
 }
 
 export function parseCsvDelimiter(raw: string): CsvDelimiter {

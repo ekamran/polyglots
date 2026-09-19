@@ -51,7 +51,7 @@ async function run(overrides: Partial<TranslateOptions> = {}) {
     mode: 'pending',
     draftEngine: 'deepl',
     engine,
-    claudeBin: fakeClaude,
+    bin: fakeClaude,
     mcpConfigPath,
     batchSize: 4,
     onProgress,

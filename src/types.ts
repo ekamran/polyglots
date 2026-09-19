@@ -140,9 +140,21 @@ export interface ConsistencyEntry {
   count: number
 }
 
+/**
+ * Which agent CLI adjudicates a review.
+ *
+ * A setting rather than a per-run choice: it is a standing preference about
+ * which subscription to spend. Each run still records the one it used, because
+ * verdicts are cached per engine and the two providers do not agree.
+ */
+export type ReviewProvider = 'claude' | 'antigravity'
+
 export interface PolyglotsConfig {
   defaultLocale: Locale
   defaultDraftEngine: DraftEngineChoice
+  // Which agent CLI judges translations. `antigravity` needs the polyglots MCP
+  // server registered with it first; docs/antigravity.md has the setup.
+  reviewProvider: ReviewProvider
   // Where the local runner lives and which model to load. Only read when the
   // chosen engine is `qwen`.
   ollama: { baseUrl: string; model: string }

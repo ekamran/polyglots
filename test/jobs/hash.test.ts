@@ -238,4 +238,19 @@ describe('engineId', () => {
   it('names the model in the identity, so a stored row is readable', () => {
     expect(engineId('opus')).toContain('opus')
   })
+
+  // Every row written before there was a choice of provider says `claude`, and
+  // must still read back as the same identity now that there is one.
+  it('is unchanged when no provider is named', () => {
+    expect(engineId(undefined, 'claude')).toBe(engineId())
+    expect(engineId('opus', 'claude')).toBe(engineId('opus'))
+  })
+
+  // Two providers disagree about the same translation, so one must never be
+  // served the other's verdict.
+  it('separates two providers, with or without a model', () => {
+    expect(engineId(undefined, 'antigravity')).toBe('antigravity')
+    expect(engineId(undefined, 'antigravity')).not.toBe(engineId())
+    expect(engineId('opus', 'antigravity')).not.toBe(engineId('opus'))
+  })
 })

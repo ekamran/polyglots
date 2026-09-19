@@ -21,6 +21,7 @@ import {
   isSecretName,
   parseCsvDelimiter,
   parseDraftEngine,
+  parseReviewProvider,
   parseLocaleArg,
   parsePositiveInt,
   parseSecretName,
@@ -219,7 +220,7 @@ async function runTranslate(cli: Cli, patterns: string[], flags: TranslateFlags)
         batchSize,
         model: flags.model,
         secrets,
-        claudeBin: process.env.POLYGLOTS_CLAUDE_BIN || undefined,
+        bin: process.env.POLYGLOTS_AGENT_BIN || process.env.POLYGLOTS_CLAUDE_BIN || undefined,
         onProgress: report,
       })
     } catch (error) {
@@ -254,6 +255,8 @@ function coerceConfigValue(key: keyof PolyglotsConfig, raw: string): PolyglotsCo
       return Number(raw)
     case 'defaultDraftEngine':
       return parseDraftEngine(raw)
+    case 'reviewProvider':
+      return parseReviewProvider(raw)
     case 'defaultLocale':
       return parseLocaleArg(raw)
     case 'properNouns':
@@ -423,7 +426,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
         batchSize:
           flags.batchSize === undefined ? config.batchSize : parsePositiveInt('--batch-size', flags.batchSize),
         ...(flags.fresh ? { fresh: true } : {}),
-        claudeBin: process.env.POLYGLOTS_CLAUDE_BIN || undefined,
+        bin: process.env.POLYGLOTS_AGENT_BIN || process.env.POLYGLOTS_CLAUDE_BIN || undefined,
         onProgress: report,
       }).finally(() => {
         unsubscribe()

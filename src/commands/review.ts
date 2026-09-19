@@ -2,7 +2,7 @@ import { mkdir, rm } from 'node:fs/promises'
 import { basename, dirname, extname, join } from 'node:path'
 import type Database from 'better-sqlite3'
 import { groupFor, OTHER_GROUP } from '../review/message.js'
-import type { ClaudeRunOptions } from '../claude/run.js'
+import type { AgentRunOptions } from '../agent/run.js'
 import {
   auditEntries,
   DEFAULT_BATCH_SIZE,
@@ -36,7 +36,7 @@ import { loadConfig } from '../config.js'
 import { allGlossary, openDb } from '../storage/index.js'
 import type { AuditEntry, Locale, ReviewEvent, ReviewSummary } from '../types.js'
 
-export interface ReviewOptions extends Partial<ClaudeRunOptions> {
+export interface ReviewOptions extends Partial<AgentRunOptions> {
   file: string
   locale: Locale
   outDir?: string
@@ -128,6 +128,9 @@ function configuredProperNouns(locale: Locale): string[] {
 }
 
 export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
+  // Read once, at the top: a run must not change agent part way because the
+  // setting moved underneath it, and every verdict it caches is keyed by this.
+  const provider = opts.provider ?? loadConfig().reviewProvider
   const glossary = readGlossary(opts.locale, opts.db)
   if (glossary.length === 0) {
     throw new Error(
@@ -202,7 +205,7 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
       // --no-ai reaches no model, so nothing in this run was judged by one.
       // History cannot be backfilled, and a per-engine quality breakdown built
       // on it later would be reading rule findings as Claude's opinions.
-      engine: opts.noAi ? 'rules' : engineId(opts.model),
+      engine: opts.noAi ? 'rules' : engineId(opts.model, provider),
     })
     recordEntries(
       jobs,
@@ -275,7 +278,7 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
       properNouns,
       mcpConfigPath,
       batchSize,
-      engine: engineId(opts.model),
+      engine: engineId(opts.model, provider),
       configHash: config,
       ...(opts.noAi === undefined ? {} : { noAi: opts.noAi }),
       ...(store ? { store } : {}),
@@ -290,7 +293,8 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
         marker.done = Math.min(marker.done, info.lastGood)
       },
       ...(opts.adjudicate ? { adjudicate: opts.adjudicate } : {}),
-      ...(opts.claudeBin ? { claudeBin: opts.claudeBin } : {}),
+      ...(opts.bin ? { bin: opts.bin } : {}),
+      provider,
       ...(opts.model ? { model: opts.model } : {}),
       onRules: (r) => emit({ type: 'rules-done', flagged: r.flagged, suspects: r.suspects }),
       onBatchStart: (b) => emit({ type: 'batch-start', index: b.index, of: b.of, size: b.size, at: Date.now() }),

@@ -1,6 +1,6 @@
 import { chunk } from '../batch.js'
 import type { RunControl } from '../run-control.js'
-import { runClaude, type ClaudeRunOptions } from '../claude/run.js'
+import { runAgent, type AgentRunOptions } from '../agent/run.js'
 import { auditSrcHash } from '../jobs/hash.js'
 import type { CachedVerdict, VerdictKey } from '../jobs/verdicts.js'
 import type { AuditEntry, Finding, GlossaryEntry, Locale } from '../types.js'
@@ -25,7 +25,7 @@ export interface Verdict {
 
 export type Adjudicator = (
   batch: AuditCandidate[],
-  opts: { locale: Locale; nplurals: number } & ClaudeRunOptions,
+  opts: { locale: Locale; nplurals: number } & AgentRunOptions,
 ) => Promise<AuditResult[]>
 
 export interface BatchStart {
@@ -51,7 +51,7 @@ export interface VerdictCache {
   put(key: VerdictKey, verdict: CachedVerdict): void
 }
 
-export interface AuditOptions extends Partial<ClaudeRunOptions> {
+export interface AuditOptions extends Partial<AgentRunOptions> {
   entries: AuditEntry[]
   locale: Locale
   nplurals: number
@@ -101,8 +101,8 @@ export const DEFAULT_BATCH_SIZE = 25
 // a reason that has nothing to do with the translations.
 const MAX_CONSECUTIVE_FAILURES = 3
 
-export const adjudicateWithClaude: Adjudicator = async (batch, opts) => {
-  const payload = await runClaude(buildAuditPrompt(batch, opts.locale, opts.nplurals), auditBatchJsonSchema, opts)
+export const adjudicateWithAgent: Adjudicator = async (batch, opts) => {
+  const payload = await runAgent(buildAuditPrompt(batch, opts.locale, opts.nplurals), auditBatchJsonSchema, opts)
   return mapAuditResults(batch, payload)
 }
 
@@ -176,7 +176,7 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
     suspects: candidates.filter((c) => !c.condemned && c.hints.some((f) => f.rule !== 'repaired')).length,
   })
 
-  const adjudicate = opts.adjudicate ?? adjudicateWithClaude
+  const adjudicate = opts.adjudicate ?? adjudicateWithAgent
 
   // Keyed by the whole question the model was asked, not just by what the entry
   // says. The prompt also carries the references, the comments and the rule
@@ -318,7 +318,7 @@ async function runBatch(
     locale: opts.locale,
     nplurals: opts.nplurals,
     mcpConfigPath: opts.mcpConfigPath ?? '',
-    ...(opts.claudeBin ? { claudeBin: opts.claudeBin } : {}),
+    ...(opts.bin ? { bin: opts.bin } : {}),
     ...(opts.model ? { model: opts.model } : {}),
     ...(opts.timeoutMs ? { timeoutMs: opts.timeoutMs } : {}),
     ...(opts.cwd ? { cwd: opts.cwd } : {}),

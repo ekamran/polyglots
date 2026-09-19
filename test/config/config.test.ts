@@ -48,6 +48,7 @@ describe('loadConfig', () => {
     expect(DEFAULT_CONFIG).toEqual({
       defaultLocale: 'tr',
       defaultDraftEngine: 'deepl',
+      reviewProvider: 'claude',
       ollama: { baseUrl: 'http://localhost:11434', model: 'qwen3.8:27b-mlx' },
       batchSize: 25,
       consistencyTtlDays: 30,

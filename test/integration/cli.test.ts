@@ -74,7 +74,7 @@ describe('F. CLI writes feed the in-process pipeline through POLYGLOTS_HOME', ()
       mode: 'pending',
       draftEngine: 'deepl',
       engine,
-      claudeBin: fakeClaude,
+      bin: fakeClaude,
       mcpConfigPath: await writeMcpConfig(),
       batchSize: 4,
       onProgress,
@@ -100,7 +100,7 @@ describe('F. CLI writes feed the in-process pipeline through POLYGLOTS_HOME', ()
       mode: 'pending',
       draftEngine: 'deepl',
       engine: fakeEngine(),
-      claudeBin: fakeClaude,
+      bin: fakeClaude,
       mcpConfigPath: await writeMcpConfig(),
       onProgress,
     })

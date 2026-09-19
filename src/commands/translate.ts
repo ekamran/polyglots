@@ -24,10 +24,19 @@ import {
 } from '../jobs/index.js'
 import { MCP_ENV, writeMcpConfig } from '../mcp/config.js'
 import { loadPo, type ApplyResult, type PoFile } from '../po/po-file.js'
-import { reviewBatch } from '../review/claude-review.js'
+import { reviewBatch } from '../review/draft-review.js'
 import { findExactTm, openDb } from '../storage/index.js'
 import { normalizeLocale } from '../tmx/parse.js'
-import type { DraftEngine, DraftEngineChoice, Locale, ReviewInput, ReviewResult, Secrets, TranslationUnit } from '../types.js'
+import type {
+  DraftEngine,
+  DraftEngineChoice,
+  Locale,
+  ReviewInput,
+  ReviewResult,
+  ReviewProvider,
+  Secrets,
+  TranslationUnit,
+} from '../types.js'
 
 export type TranslateEvent =
   | { type: 'start'; file: string; total: number; pending: number }
@@ -79,7 +88,10 @@ export interface TranslateOptions {
   engine?: DraftEngine
   review?: typeof reviewBatch
   mcpConfigPath?: string
-  claudeBin?: string
+  bin?: string
+  // Which agent reviews the drafts. Defaults to the configured provider, so the
+  // menu's choice reaches both halves of the tool rather than only review.
+  provider?: ReviewProvider
   onProgress?: (e: TranslateEvent) => void
 }
 
@@ -175,6 +187,7 @@ interface CacheSetup {
   reviewConfig: string
   engineName: string
   model?: string
+  provider?: ReviewProvider
   fresh: boolean
 }
 
@@ -219,7 +232,7 @@ function buildCaches(
     ...draftKey(unit),
     draftHash: draftHash(text),
     configHash: setup.reviewConfig,
-    engine: engineId(setup.model),
+    engine: engineId(setup.model, setup.provider),
   })
 
   return {
@@ -270,7 +283,8 @@ async function reviewDrafts(
           locale,
           nplurals,
           mcpConfigPath,
-          ...(opts.claudeBin ? { claudeBin: opts.claudeBin } : {}),
+          ...(opts.bin ? { bin: opts.bin } : {}),
+          ...(opts.provider ? { provider: opts.provider } : {}),
           ...(opts.model ? { model: opts.model } : {}),
         })
       : []
@@ -348,7 +362,11 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
     // needs no API key and no reachable Ollama. The fallback this replaces was
     // the chosen engine's name, which for the local engine is `qwen` rather
     // than the model it loaded, so every model shared one cache key.
-    const engineName = opts.engine?.name ?? draftEngineId(opts.draftEngine, loadConfig().ollama)
+    const settings = loadConfig()
+    // The configured provider unless the caller named one. Read once: a run
+    // must not change agent part way because the setting moved underneath it.
+    const provider = opts.provider ?? settings.reviewProvider
+    const engineName = opts.engine?.name ?? draftEngineId(opts.draftEngine, settings.ollama)
     const { draftCache, reviewCache } = buildCaches(jobs, {
       nplurals: po.nplurals,
       locale,
@@ -356,6 +374,7 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
       reviewConfig: config,
       engineName,
       ...(opts.model ? { model: opts.model } : {}),
+      ...(provider ? { provider } : {}),
       fresh: opts.fresh === true,
     })
 

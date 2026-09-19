@@ -173,6 +173,19 @@ export function draftHash(text: string[]): string {
  * comparing what they say — quietly unmeasurable, because the second engine
  * would read the first one's rows.
  */
-export function engineId(model?: string): string {
-  return model ? `claude:${model}` : 'claude'
+/**
+ * Which agent formed a verdict, as a cache key and a stats row.
+ *
+ * `provider` defaults to claude so every row written before there was a choice
+ * still reads back: the id was `claude` then and is `claude` now. Two providers
+ * do not agree about the same translation, so a verdict one reached must never
+ * be served as the other's, and the same goes for two models behind one
+ * provider.
+ *
+ * Takes a string rather than the provider union on purpose. This module keys
+ * caches and knows nothing about which CLIs exist; making it import that would
+ * tie the hashing to the process of spawning.
+ */
+export function engineId(model?: string, provider = 'claude'): string {
+  return model ? `${provider}:${model}` : provider
 }
