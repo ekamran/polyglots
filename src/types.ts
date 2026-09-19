@@ -102,6 +102,12 @@ export interface ReviewSummary {
   // written out too, and it counts as neither a problem nor a soft finding.
   written: number
   byRule: Record<string, number>
+  // The same findings folded into the handful of groups the requester message
+  // names, counted over the repaired entries and once per entry per group.
+  // Deliberately not derivable from `byRule`: that counts a rule firing, so an
+  // entry both a rule and the model caught appears in it twice, and summing it
+  // per group can exceed the number of entries actually fixed.
+  byGroup: Record<string, number>
   problemsFile?: string
 }
 

@@ -170,6 +170,37 @@ describe('reviewFile', () => {
     expect(summary.byRule).toMatchObject({ placeholder: 1 })
   })
 
+  // byGroup answers a different question from byRule: how many entries the
+  // requester message can claim, not how often a rule fired. It counts only
+  // repaired entries, and folds a rule and its model equivalent into one group,
+  // so an entry both caught contributes once.
+  it('folds repaired findings into the groups the requester message names', async () => {
+    const adjudicate = vi.fn(async (batch: { id: number; msgid: string }[]) =>
+      batch.map((c) => ({
+        id: c.id,
+        problem: c.msgid === 'Save all changes',
+        categories: c.msgid === 'Save all changes' ? (['glossary'] as never[]) : ([] as never[]),
+        reason: 'wrong term',
+        fix: c.msgid === 'Save all changes' ? 'Tüm değişiklikleri kaydet' : undefined,
+      })),
+    )
+    const summary = await run({ adjudicate })
+
+    // Every group total is a subset of the entries actually fixed, which is what
+    // lets the message state both numbers in one sentence without contradiction.
+    for (const n of Object.values(summary.byGroup)) {
+      expect(n).toBeLessThanOrEqual(summary.repaired)
+    }
+  })
+
+  it('leaves byGroup empty when nothing was repaired', async () => {
+    await writeFile(file, PO.replace('msgstr "yorumlar"', 'msgstr "%s yorum"'), 'utf8')
+    const summary = await run()
+
+    expect(summary.repaired).toBe(0)
+    expect(summary.byGroup).toEqual({})
+  })
+
   it('writes nothing at all when the submission is clean', async () => {
     await writeFile(file, PO.replace('msgstr "yorumlar"', 'msgstr "%s yorum"'), 'utf8')
     const summary = await run()

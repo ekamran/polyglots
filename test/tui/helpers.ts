@@ -169,6 +169,7 @@ export function reviewSummaryOf(file: string, patch: Partial<ReviewSummary> = {}
     written: 3,
     pending: 0,
     byRule: { 'title-case': 2, glossary: 1 },
+    byGroup: { 'title-case': 1 },
     problemsFile: `${file.replace(/\.po$/, '')}-problems.po`,
     ...patch,
   }

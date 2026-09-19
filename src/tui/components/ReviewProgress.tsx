@@ -1,5 +1,8 @@
-import { Box, Text } from 'ink'
+import { Box, Text, useInput } from 'ink'
+import { useState } from 'react'
 import type { ReviewEvent, ReviewSummary } from '../../types.js'
+import { buildReport } from '../../review/message.js'
+import { copyToClipboard } from '../clipboard.js'
 import { renderBar } from './Progress.js'
 import { estimateRemainingMs, formatDuration, formatFinishTime } from '../../cli/progress.js'
 import { useElapsed } from '../hooks/useElapsed.js'
@@ -136,6 +139,17 @@ function ruleBreakdown(byRule: Record<string, number>): string[] {
 export function ReviewProgress({ events }: { events: ReviewEvent[] }) {
   const state = reduceReviewProgress(events)
   const elapsed = useElapsed(state.inFlight, state.batchIndex)
+  const [copied, setCopied] = useState<'yes' | 'no' | undefined>(undefined)
+  const report = state.summary === undefined ? undefined : buildReport(state.summary)
+
+  // Only once there is something to copy. During a run the keys belong to pause,
+  // resume and stop, and a c that silently did nothing would still have to be
+  // explained to whoever pressed it.
+  useInput((input) => {
+    if (input !== 'c' || report === undefined) return
+    setCopied(copyToClipboard(report) ? 'yes' : 'no')
+  })
+
   if (!state.started) return <Text dimColor>Starting…</Text>
 
   const { summary } = state
@@ -205,6 +219,16 @@ export function ReviewProgress({ events }: { events: ReviewEvent[] }) {
             </Text>
           )}
           {breakdown.length > 0 && <Text>{breakdown.join(' · ')}</Text>}
+          {report && (
+            <Box flexDirection="column" marginTop={1}>
+              <Text dimColor>Message for the requester · c to copy</Text>
+              <Text>{report}</Text>
+              {copied === 'yes' && <Text color="green">Copied to the clipboard.</Text>}
+              {copied === 'no' && (
+                <Text color="yellow">Could not reach the clipboard; copy the line above by hand.</Text>
+              )}
+            </Box>
+          )}
           {summary.problemsFile ? (
             <Text>Wrote {summary.problemsFile}. Open it in PoEdit to review.</Text>
           ) : (

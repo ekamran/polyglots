@@ -28,6 +28,7 @@ import {
 } from './cli/args.js'
 import { createProgressReporter, createReviewProgressReporter } from './cli/progress.js'
 import { loadPo } from './po/po-file.js'
+import { buildReport } from './review/message.js'
 import type { RunTuiOptions } from './tui/index.js'
 import type { Locale, PolyglotsConfig } from './types.js'
 import { VERSION } from './version.js'
@@ -451,6 +452,16 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
       // a problem nor a needsReview entry, so flagged - repaired can go negative.
       if (summary.repaired > 0) {
         cli.out(`${summary.repaired} repaired, ${summary.written - summary.repaired} left for you.`)
+      }
+      // The line to post back to whoever submitted the translation. Printed
+      // rather than copied: a CLI run may be in a pipe or a script, where
+      // reaching for the clipboard would be a side effect nobody asked for.
+      const requesterMessage = buildReport(summary)
+      if (requesterMessage) {
+        cli.out('')
+        cli.out('Message for the requester:')
+        cli.out(requesterMessage)
+        cli.out('')
       }
       if (summary.problemsFile) cli.out(`Wrote ${summary.problemsFile}`)
       // Only a run that reached the end can say that. A stopped one has entries

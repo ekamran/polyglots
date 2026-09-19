@@ -376,6 +376,7 @@ describe('review', () => {
       written: 14,
       pending: 0,
       byRule: { placeholder: 3, 'title-case': 11 },
+      byGroup: { 'title-case': 8, other: 3 },
       problemsFile: '/tmp/plugin-tr-problems.po',
       ...overrides,
     }
@@ -559,6 +560,30 @@ describe('review', () => {
 
     expect(h.stdout.text).toContain('10 repaired, 0 left for you')
     expect(h.stdout.text).not.toMatch(/-\d+ left for you/)
+  })
+
+  it('prints the message to post back to the requester', async () => {
+    const h = harness()
+    const review = fakeReview(
+      summary({ repaired: 37, byGroup: { glossary: 24, meaning: 11, 'title-case': 6, other: 5 } }),
+    )
+    await h.run(['review', file], { reviewFile: review.fn })
+
+    expect(h.stdout.text).toContain('Message for the requester:')
+    expect(h.stdout.text).toContain(
+      'I fixed 37 entries, which you can see <a href="">here</a>. They included ~25 glossary inconsistencies, ' +
+        '~10 meaning and fluency problems and ~5 title-case issues, plus a few smaller ones.',
+    )
+  })
+
+  // Nothing repaired is nothing to report, and printing a headline with no
+  // sentence under it would read as output that went missing.
+  it('prints no requester message when nothing was repaired', async () => {
+    const h = harness()
+    const review = fakeReview(summary({ repaired: 0, byGroup: {} }))
+    await h.run(['review', file], { reviewFile: review.fn })
+
+    expect(h.stdout.text).not.toContain('Message for the requester')
   })
 
   it('says nothing about repairs when there were none', async () => {

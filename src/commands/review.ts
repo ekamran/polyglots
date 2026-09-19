@@ -1,6 +1,7 @@
 import { mkdir, rm } from 'node:fs/promises'
 import { basename, dirname, extname, join } from 'node:path'
 import type Database from 'better-sqlite3'
+import { groupFor, OTHER_GROUP } from '../review/message.js'
 import type { ClaudeRunOptions } from '../claude/run.js'
 import {
   auditEntries,
@@ -82,6 +83,28 @@ function tally(verdicts: Verdict[]): Record<string, number> {
     for (const rule of new Set(verdict.findings.map((f) => f.rule))) {
       counts[rule] = (counts[rule] ?? 0) + 1
     }
+  }
+  return counts
+}
+
+// Counted over the entries that were actually repaired, so every group is a
+// subset of the number the requester message leads with. Tallying flagged
+// entries instead would let a group exceed the count of fixes stated in the same
+// sentence, which is the kind of arithmetic a reader checks.
+//
+// One increment per entry per distinct group: an entry the glossary rule and the
+// model both caught is one glossary fix, not two. `tally` above deliberately
+// counts it twice, because there the question is how often a rule fired.
+function groupTally(verdicts: Verdict[]): Record<string, number> {
+  const counts: Record<string, number> = {}
+  for (const verdict of verdicts) {
+    if (verdict.text === undefined) continue
+    const groups = new Set(verdict.findings.map((f) => groupFor(f.rule)))
+    // A repaired entry with no findings is a mechanical fix nothing named. It
+    // still happened, so it lands in `other` rather than leaving the groups
+    // unable to account for every entry the message claims.
+    if (groups.size === 0) groups.add(OTHER_GROUP)
+    for (const group of groups) counts[group] = (counts[group] ?? 0) + 1
   }
   return counts
 }
@@ -327,6 +350,7 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
       repaired: marker.repaired,
       written,
       byRule: marker.byRule,
+      byGroup: groupTally(verdicts),
     }
 
     if (written > 0) summary.problemsFile = target

@@ -7,6 +7,15 @@ import type { ReviewEvent } from '../../src/types.js'
 import { App } from '../../src/tui/App.js'
 import { ReviewProgress, reduceReviewProgress } from '../../src/tui/components/ReviewProgress.js'
 import { batchSizeChoices } from '../../src/tui/screens/Review.js'
+import { copyToClipboard } from '../../src/tui/clipboard.js'
+
+// The real one shells out to pbcopy. Nothing in a test run should be writing to
+// the developer's clipboard, and a sandbox that blocks spawning would turn an
+// assertion about the message into an assertion about the machine.
+vi.mock('../../src/tui/clipboard.js', () => ({
+  copyToClipboard: vi.fn(() => true),
+  clipboardCommands: vi.fn(() => []),
+}))
 import type { ReviewFile } from '../../src/tui/commands.js'
 import {
   ESC_DELAY,
@@ -548,5 +557,58 @@ describe('Review screen', () => {
     stdin.write(keys.esc)
     await tick(ESC_DELAY)
     await waitForText(lastFrame, 'Configure API keys')
+  })
+})
+
+describe('ReviewProgress requester message', () => {
+  const doneWith = (patch: Parameters<typeof reviewSummaryOf>[1]): ReviewEvent[] => [
+    { type: 'start', file: FILE, total: 120, reviewable: 120 },
+    { type: 'done', summary: reviewSummaryOf(FILE, patch) },
+  ]
+
+  it('offers a sentence the reviewer can post back', () => {
+    const { lastFrame } = render(
+      <ReviewProgress
+        events={doneWith({ repaired: 37, byGroup: { glossary: 24, meaning: 11, 'title-case': 6, other: 5 } })}
+      />,
+    )
+    // Ink wraps the sentence to the terminal width, so it is compared unwrapped.
+    const frame = (lastFrame() ?? '').replace(/\s+/g, ' ')
+    expect(frame).toContain('I fixed 37 entries')
+    expect(frame).toContain('~25 glossary inconsistencies, ~10 meaning and fluency problems')
+    expect(frame).toContain('~5 title-case issues, plus a few smaller ones.')
+    expect(frame).toContain('c to copy')
+  })
+
+  // Nothing repaired means there is nothing to tell anyone, and an empty message
+  // on screen would only invite posting it.
+  it('offers nothing when nothing was repaired', () => {
+    const { lastFrame } = render(<ReviewProgress events={doneWith({ repaired: 0, byGroup: {} })} />)
+    expect(lastFrame() ?? '').not.toContain('c to copy')
+  })
+
+  it('confirms a copy that worked', async () => {
+    const { lastFrame, stdin } = render(
+      <ReviewProgress events={doneWith({ repaired: 4, byGroup: { glossary: 4 } })} />,
+    )
+    await tick()
+    stdin.write('c')
+    await tick()
+    expect(lastFrame() ?? '').toMatch(/copied to the clipboard/i)
+  })
+
+  // The sentence stays on screen when the clipboard is unreachable, so a failed
+  // copy costs a keystroke rather than the run's output.
+  it('says so when the clipboard cannot be reached, keeping the sentence visible', async () => {
+    vi.mocked(copyToClipboard).mockReturnValueOnce(false)
+    const { lastFrame, stdin } = render(
+      <ReviewProgress events={doneWith({ repaired: 4, byGroup: { glossary: 4 } })} />,
+    )
+    await tick()
+    stdin.write('c')
+    await tick()
+    const frame = (lastFrame() ?? '').replace(/\s+/g, ' ')
+    expect(frame).toMatch(/could not reach the clipboard/i)
+    expect(frame).toContain('I fixed 4 entries')
   })
 })
