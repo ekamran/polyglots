@@ -304,6 +304,49 @@ describe('apostrophe rule', () => {
   it('accepts a brand with no suffix at all', () => {
     expect(rules(entry('Update WordPress', 'WordPress güncelle'))).not.toContain('apostrophe')
   })
+
+  /**
+   * Measured on a real 1,278-entry submission, this rule produced 65 findings
+   * and almost none of them were about a proper noun. A single capital
+   * mid-sentence anywhere in the file taught the word as a brand, and the rule
+   * then matched any translation word merely starting with it: `and` made
+   * `anda` an offender, `list` made `Liste` one, `sun` made `sunt` one.
+   */
+  it('does not learn a word the same file also writes in lower case', () => {
+    const all = [
+      // One source capitalises it mid-sentence, as UI copy often does.
+      entry('Choose a List to import', 'İçe aktarmak için bir liste seçin'),
+      entry('Delete the list', 'Listeyi sil'),
+    ]
+    expect(rules(all[1]!, all)).not.toContain('apostrophe')
+  })
+
+  // A suffixed proper noun in the translation should answer to one in the
+  // source. Without that, every brand the file ever mentioned was matched
+  // against every translation in it.
+  it('only considers a brand this entry own source mentions', () => {
+    const all = [
+      entry('Share on Facebook', 'Facebook üzerinde paylaş'),
+      entry('Nothing to do with it', 'Facebookta bir şey yok'),
+    ]
+    expect(rules(all[0]!, all)).not.toContain('apostrophe')
+    // The second names no brand in its source, so the rule has nothing to say.
+    expect(rules(all[1]!, all)).not.toContain('apostrophe')
+  })
+
+  it('still flags a real brand from this entry own source', () => {
+    expect(rules(entry('Download from GitHub', 'GitHubdan indirin'))).toContain('apostrophe')
+  })
+
+  // A curated brand is authoritative: a source that happens to write it in
+  // lower case somewhere must not disarm the check.
+  it('keeps a curated brand even when the corpus lower-cases it', () => {
+    const all = [
+      entry('the wordpress way', 'wordpress yolu'),
+      entry('Update WordPress now', 'WordPressi şimdi güncelle'),
+    ]
+    expect(rules(all[1]!, all)).toContain('apostrophe')
+  })
 })
 
 describe('inconsistent rule', () => {

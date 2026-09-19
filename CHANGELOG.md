@@ -10,6 +10,31 @@ Run `polyglots --version` to see which build you have; the TUI shows it beside i
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-09-19
+
+### Fixed
+
+- The apostrophe rule flagged ordinary words that merely began with an English
+  one. On a real 1,278-entry submission it produced 56 findings and almost none
+  concerned a proper noun: `and` made `anda` an offender, `list` made `Liste`
+  one, `sun` made `sunt` one. It now produces 2 on the same file, and every
+  other rule's output is unchanged.
+  - A word is no longer taken for a proper noun on the strength of one capital
+    mid-sentence. UI copy capitalises ordinary nouns freely, and that one
+    signal had taught `footer`, `header`, `block`, `create`, `new` and `to`.
+    The same word written in lower case anywhere in the file now settles it.
+  - The rule only considers proper nouns the entry's own source mentions. It
+    reads a translated word as "brand plus suffix" on a prefix match, so every
+    brand the file had ever mentioned used to be tried against every
+    translation in it.
+  - The curated brand list is authoritative and is not subject to either check,
+    so a source that writes `wordpress` in lower case somewhere cannot disarm
+    the rule for the entries that spell it properly.
+  - The permissive list of possible proper nouns is kept for the title-case
+    rule, which needs the opposite thing: it excuses a capital in a
+    translation, and narrowing it made title-case flag `John Smith`, a street
+    address and `Lorem Ipsum`. The two rules now read two sets.
+
 ## [0.9.1] - 2026-09-19
 
 ### Fixed
