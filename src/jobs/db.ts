@@ -19,6 +19,10 @@ CREATE TABLE IF NOT EXISTS run (
   batch_size  INTEGER NOT NULL,
   engine      TEXT NOT NULL,
   state       TEXT NOT NULL,
+  -- The process that owns this run. A hard kill leaves a row still claiming to
+  -- be running, and without a pid there is no way to tell that from a run that
+  -- is genuinely in flight.
+  pid         INTEGER,
   started_at  INTEGER NOT NULL,
   finished_at INTEGER,
   entries     INTEGER,
@@ -75,11 +79,21 @@ CREATE TABLE IF NOT EXISTS draft_verdict (
 CREATE INDEX IF NOT EXISTS run_started ON run (started_at);
 `
 
+// CREATE TABLE IF NOT EXISTS does nothing to a table that already exists, so a
+// database written before a column was added needs the column adding by hand.
+// Additive only: no data moves and nothing is dropped.
+function addMissingColumns(db: Database.Database): void {
+  const has = (table: string, column: string): boolean =>
+    (db.pragma(`table_info(${table})`) as Array<{ name: string }>).some((c) => c.name === column)
+  if (!has('run', 'pid')) db.exec('ALTER TABLE run ADD COLUMN pid INTEGER')
+}
+
 export function openJobsDb(path: string = jobsDbFile()): Database.Database {
   mkdirSync(dirname(path), { recursive: true })
   const db = new Database(path)
   db.pragma('journal_mode = WAL')
   db.pragma('foreign_keys = ON')
   db.exec(MIGRATIONS)
+  addMissingColumns(db)
   return db
 }

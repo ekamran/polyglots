@@ -1,6 +1,6 @@
 {
   "name": "polyglots",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Translate WordPress .po files into Turkish with machine drafts and AI review",
   "type": "module",
   "bin": {
@@ -14,7 +14,8 @@
     "typecheck": "tsc -p tsconfig.test.json",
     "test": "vitest run",
     "dev": "tsx src/cli.ts",
-    "prepare": "tsc"
+    "prepare": "node scripts/no-live-run.mjs && tsc",
+    "prebuild": "node scripts/no-live-run.mjs"
   },
   "license": "MIT",
   "dependencies": {

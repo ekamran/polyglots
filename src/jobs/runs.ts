@@ -55,8 +55,8 @@ export interface RunRow extends StartRunInput {
 export function startRun(db: Database.Database, input: StartRunInput, now: Clock = () => Date.now()): number {
   const result = db
     .prepare(
-      `INSERT INTO run (file, project, command, locale, nplurals, batch_size, engine, state, started_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'running', ?)`,
+      `INSERT INTO run (file, project, command, locale, nplurals, batch_size, engine, state, pid, started_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)`,
     )
     .run(
       input.file,
@@ -66,6 +66,7 @@ export function startRun(db: Database.Database, input: StartRunInput, now: Clock
       input.nplurals,
       input.batchSize,
       input.engine,
+      process.pid,
       now(),
     )
   return Number(result.lastInsertRowid)
@@ -173,4 +174,44 @@ export function getRun(db: Database.Database, runId: number): RunRow | undefined
     ...(optional(row.approvable) === undefined ? {} : { approvable: row.approvable! }),
     ...(byCategory === undefined ? {} : { byCategory }),
   }
+}
+
+export interface LiveRun {
+  id: number
+  command: string
+  file: string
+  pid: number
+  startedAt: number
+}
+
+// Whether the owning process still exists. `kill(pid, 0)` sends no signal; it
+// only asks. EPERM means the process is there but owned by someone else, which
+// still counts as alive.
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'EPERM'
+  }
+}
+
+/**
+ * Runs that are genuinely in flight right now.
+ *
+ * A row saying `running` is not enough on its own: a hard kill leaves one
+ * behind forever, and treating that as live would block whatever this is
+ * guarding for good. The pid is what tells the two apart. A row with no pid
+ * predates the column and is treated as not live, because there is nothing to
+ * check it against.
+ */
+export function liveRuns(db: Database.Database): LiveRun[] {
+  const rows = db
+    .prepare<[], { id: number; command: string; file: string; pid: number | null; started_at: number }>(
+      `SELECT id, command, file, pid, started_at FROM run WHERE state = 'running'`,
+    )
+    .all()
+  return rows
+    .filter((r): r is typeof r & { pid: number } => r.pid !== null && alive(r.pid))
+    .map((r) => ({ id: r.id, command: r.command, file: r.file, pid: r.pid, startedAt: r.started_at }))
 }

@@ -25,9 +25,11 @@ export {
 export {
   abandonRun,
   finishRun,
+  liveRuns,
   getRun,
   recordEntries,
   startRun,
+  type LiveRun,
   type RunRow,
   type RunRowState,
   type RunTotals,

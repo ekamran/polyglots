@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type Database from 'better-sqlite3'
 import { openJobsDb } from '../../src/jobs/db.js'
-import { abandonRun, finishRun, getRun, recordEntries, startRun } from '../../src/jobs/runs.js'
+import { abandonRun, finishRun, getRun, liveRuns, recordEntries, startRun } from '../../src/jobs/runs.js'
 
 let db: Database.Database
 let dir: string
@@ -177,5 +177,45 @@ describe('abandonRun', () => {
     abandonRun(db, id)
     const n = db.prepare<[number], { n: number }>('SELECT COUNT(*) AS n FROM entry WHERE run_id = ?').get(id)!.n
     expect(n).toBe(0)
+  })
+})
+
+describe('liveRuns', () => {
+  it('finds a run this process started', () => {
+    startRun(db, input)
+    expect(liveRuns(db).map((r) => r.command)).toEqual(['review'])
+  })
+
+  it('ignores a finished run', () => {
+    const id = startRun(db, input)
+    finishRun(db, id, { entries: 1, flagged: 0, repaired: 0, unreviewed: 0, approvable: 1, byCategory: {} })
+    expect(liveRuns(db)).toEqual([])
+  })
+
+  it('ignores an abandoned run', () => {
+    abandonRun(db, startRun(db, input))
+    expect(liveRuns(db)).toEqual([])
+  })
+
+  it('ignores a row left running by a process that is gone', () => {
+    // A hard kill leaves state='running' forever. Without the pid check that
+    // row would block every later build, which is worse than the hazard the
+    // check exists to prevent.
+    const id = startRun(db, input)
+    db.prepare('UPDATE run SET pid = ? WHERE id = ?').run(999_999, id)
+    expect(liveRuns(db)).toEqual([])
+  })
+
+  it('reports enough to name what is running', () => {
+    startRun(db, input)
+    const [run] = liveRuns(db)
+    expect(run).toMatchObject({ command: 'review', file: '/tmp/plugin-tr.po' })
+    expect(run!.pid).toBe(process.pid)
+  })
+
+  it('treats a row with no pid as not live, since it predates the column', () => {
+    const id = startRun(db, input)
+    db.prepare('UPDATE run SET pid = NULL WHERE id = ?').run(id)
+    expect(liveRuns(db)).toEqual([])
   })
 })

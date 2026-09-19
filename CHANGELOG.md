@@ -10,6 +10,25 @@ Run `polyglots --version` to see which build you have; the TUI shows it beside i
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-09-19
+
+### Added
+
+- `npm run build` refuses while a review or translate is in flight, and says which
+  one. A running job spawns an MCP server from `dist/` for every batch, so
+  rebuilding underneath it can hand a half-written file to the next spawn. Set
+  `POLYGLOTS_ALLOW_BUILD=1` to override.
+- A run records the process that owns it. Without that, a row left saying
+  `running` by a hard kill is indistinguishable from a job that is genuinely
+  working, and the guard above would refuse to build ever again.
+
+### Changed
+
+- The check fails open. A missing database, a native module that is not built
+  yet, or a schema older than the new column all allow the build: a guard that
+  can block a legitimate build through its own malfunction is worse than the
+  hazard it guards against, and `prepare` runs during `npm install`.
+
 ## [0.7.0] - 2026-09-19
 
 A draft engine that costs nothing.
