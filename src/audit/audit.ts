@@ -202,6 +202,7 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
         comments: candidate.comments,
         hints: candidate.hints.filter((f) => f.rule !== 'repaired').map((f) => `${f.rule}: ${f.message}`),
         nplurals: opts.nplurals,
+        repaired: candidate.repaired !== undefined,
       },
     ),
     configHash: opts.configHash ?? '',

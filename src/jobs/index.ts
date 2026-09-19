@@ -12,6 +12,7 @@ export {
   type ConfigHashInput,
   type DraftContext,
   type SourceText,
+  engineId,
 } from './hash.js'
 export {
   getAuditVerdict,

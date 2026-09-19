@@ -58,6 +58,11 @@ export interface AuditContext {
   // submission and not in another.
   hints: string[]
   nplurals: number
+  // Whether a mechanical repair was applied before the model was asked. The
+  // prompt says so, and the hash is taken after the repair, so without this an
+  // entry whose whitespace was fixed and the same entry submitted already
+  // clean would share a key while having been asked different questions.
+  repaired: boolean
 }
 
 // The key a review verdict is stored under. It covers the whole question the
@@ -81,6 +86,11 @@ export function auditSrcHash(entry: SourceText, context: AuditContext): string {
     context.comments.join(FIELD),
     [...context.hints].sort().join(FIELD),
     String(context.nplurals),
+    // The prompt tells the model when the text it is judging was already
+    // repaired mechanically. Without this, an entry whose whitespace was fixed
+    // and the same entry submitted already clean hash the same, because the
+    // hash is taken after the repair and the `repaired` hint is excluded.
+    context.repaired ? 'repaired' : '',
   )
 }
 
@@ -152,4 +162,17 @@ export function draftConfigHash(locale: Locale): string {
 
 export function draftHash(text: string[]): string {
   return hash(text.join(FIELD))
+}
+
+/**
+ * Which model produced a verdict, as the cache key records it.
+ *
+ * Two Claude models answer the same question differently, so a verdict formed
+ * by one must not be served as the other's. Recording them both as `claude`
+ * would make the escalation project's whole premise — running two engines and
+ * comparing what they say — quietly unmeasurable, because the second engine
+ * would read the first one's rows.
+ */
+export function engineId(model?: string): string {
+  return model ? `claude:${model}` : 'claude'
 }

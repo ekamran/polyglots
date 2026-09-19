@@ -110,6 +110,29 @@ describe('review backed by the job store', () => {
     expect(second).toEqual(first)
   })
 
+  it('does not serve one model\'s verdict as another model\'s', async () => {
+    // The escalation project compares what two engines say about the same
+    // entry. If both record as "claude", the second reads the first one's rows
+    // and the comparison measures nothing.
+    await reviewFile({ file: join(dir, 'plugin-tr.po'), locale: 'tr', db, jobsDb, adjudicate: clean, mcpConfigPath: '', model: 'opus' })
+    const second = vi.fn(clean)
+    await reviewFile({ file: join(dir, 'plugin-tr.po'), locale: 'tr', db, jobsDb, adjudicate: second, mcpConfigPath: '', model: 'sonnet' })
+    expect(second).toHaveBeenCalled()
+  })
+
+  it('still reuses a verdict when the same model runs again', async () => {
+    await reviewFile({ file: join(dir, 'plugin-tr.po'), locale: 'tr', db, jobsDb, adjudicate: clean, mcpConfigPath: '', model: 'opus' })
+    const second = vi.fn(clean)
+    await reviewFile({ file: join(dir, 'plugin-tr.po'), locale: 'tr', db, jobsDb, adjudicate: second, mcpConfigPath: '', model: 'opus' })
+    expect(second).not.toHaveBeenCalled()
+  })
+
+  it('records the model in run history, so a later comparison can group by it', async () => {
+    await reviewFile({ file: join(dir, 'plugin-tr.po'), locale: 'tr', db, jobsDb, adjudicate: clean, mcpConfigPath: '', model: 'opus' })
+    const row = jobsDb.prepare<[], { engine: string }>('SELECT engine FROM run ORDER BY id DESC LIMIT 1').get()!
+    expect(row.engine).toContain('opus')
+  })
+
   it('starts fresh when --fresh is given, even with a full cache', async () => {
     await run(clean)
     const adjudicate = vi.fn(clean)

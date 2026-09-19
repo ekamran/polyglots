@@ -15,6 +15,7 @@ import {
   putDraft,
   putDraftVerdict,
   draftSrcHash,
+  engineId,
   recordEntries,
   startRun,
   translateConfigHash,
@@ -129,7 +130,7 @@ async function draft(
   engine: DraftEngine,
   locale: Locale,
   nplurals: number,
-  cache?: { get: (u: TranslationUnit) => string[] | undefined; put: (u: TranslationUnit, text: string[]) => void },
+  cache?: DraftCache,
 ): Promise<Drafts> {
   const drafts: Drafts = new Map()
   const missing: TranslationUnit[] = []
@@ -139,9 +140,12 @@ async function draft(
     else missing.push(unit)
   }
   if (missing.length > 0) {
+    // Indexed rather than scanned: the engine returns one result per unit, so a
+    // linear find inside the loop is quadratic in the batch size.
+    const byKey = new Map(missing.map((u) => [u.key, u]))
     for (const d of await engine.translate(missing, locale, nplurals)) {
       drafts.set(d.key, d.drafts)
-      const unit = missing.find((u) => u.key === d.key)
+      const unit = byKey.get(d.key)
       if (unit) cache?.put(unit, d.drafts)
     }
   }
@@ -150,9 +154,84 @@ async function draft(
   return drafts
 }
 
+interface DraftCache {
+  get: (unit: TranslationUnit) => string[] | undefined
+  put: (unit: TranslationUnit, text: string[]) => void
+}
+
 interface ReviewCache {
   get: (unit: TranslationUnit, drafts: string[]) => DraftReview | undefined
   put: (unit: TranslationUnit, drafts: string[], review: DraftReview) => void
+}
+
+interface CacheSetup {
+  nplurals: number
+  locale: Locale
+  // The draft engine's own prompt, and the review prompt, hash differently and
+  // key different tables. Passing both rather than one avoids the mistake of
+  // pruning or keying one cache by the other's configuration.
+  draftConfig: string
+  reviewConfig: string
+  engineName: string
+  model?: string
+  fresh: boolean
+}
+
+/**
+ * The two caches translate reads and writes, built together because they share
+ * a key derivation and differ in exactly two places.
+ */
+function buildCaches(
+  jobs: Database.Database,
+  setup: CacheSetup,
+): { draftCache: DraftCache; reviewCache: ReviewCache } {
+  // What the draft prompt shows the engine, and nothing it does not: the
+  // comments are handed over as disambiguation hints and the plural count
+  // decides how many drafts are asked for, so a draft formed under one of them
+  // must not be served under another. References are absent because the draft
+  // prompt does not carry them.
+  const unitHash = (unit: TranslationUnit): string =>
+    draftSrcHash(
+      {
+        msgid: unit.msgid,
+        ...(unit.msgctxt !== undefined ? { msgctxt: unit.msgctxt } : {}),
+        ...(unit.msgidPlural !== undefined ? { msgidPlural: unit.msgidPlural } : {}),
+        // Keyed by the source alone: an entry is drafted because it has no
+        // translation yet, so including msgstr would key every row on the empty
+        // string it is about to stop being.
+        msgstr: [],
+      },
+      { comments: unit.comments, nplurals: setup.nplurals },
+    )
+
+  const draftKey = (unit: TranslationUnit) => ({
+    srcHash: unitHash(unit),
+    configHash: setup.draftConfig,
+    locale: setup.locale,
+    engine: setup.engineName,
+  })
+
+  // The draft review is keyed by the review prompt, not the draft prompt, so
+  // its own configHash replaces the draft's, and by the model that judged it:
+  // two models answer differently and must not read each other's rows.
+  const verdictKey = (unit: TranslationUnit, text: string[]) => ({
+    ...draftKey(unit),
+    draftHash: draftHash(text),
+    configHash: setup.reviewConfig,
+    engine: engineId(setup.model),
+  })
+
+  return {
+    draftCache: {
+      // Bypasses the read and keeps the write, exactly as review's --fresh does.
+      get: (unit) => (setup.fresh ? undefined : getDraft(jobs, draftKey(unit))),
+      put: (unit, text) => putDraft(jobs, draftKey(unit), text),
+    },
+    reviewCache: {
+      get: (unit, text) => (setup.fresh ? undefined : getDraftVerdict(jobs, verdictKey(unit, text))),
+      put: (unit, text, value) => putDraftVerdict(jobs, verdictKey(unit, text), value),
+    },
+  }
 }
 
 async function reviewDrafts(
@@ -257,49 +336,16 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
     pruneStaleConfigs(jobs, 'draft_verdict', locale, config)
     pruneStaleConfigs(jobs, 'draft', locale, draftConfig)
 
-    // What the draft prompt shows the engine, and nothing it does not: the
-    // comments are handed over as disambiguation hints and the plural count
-    // decides how many drafts are asked for, so a draft formed under one of
-    // them must not be served under another. References are absent because the
-    // draft prompt does not carry them.
-    const unitHash = (unit: TranslationUnit): string =>
-      draftSrcHash(
-        {
-          msgid: unit.msgid,
-          ...(unit.msgctxt !== undefined ? { msgctxt: unit.msgctxt } : {}),
-          ...(unit.msgidPlural !== undefined ? { msgidPlural: unit.msgidPlural } : {}),
-          // Keyed by the source alone: an entry is drafted because it has no
-          // translation yet, so including msgstr would key every row on the
-          // empty string it is about to stop being.
-          msgstr: [],
-        },
-        { comments: unit.comments, nplurals: po.nplurals },
-      )
-
     const engineName = opts.engine?.name ?? opts.draftEngine
-    const draftKey = (unit: TranslationUnit) => ({
-      srcHash: unitHash(unit),
-      configHash: draftConfig,
+    const { draftCache, reviewCache } = buildCaches(jobs, {
+      nplurals: po.nplurals,
       locale,
-      engine: engineName,
+      draftConfig,
+      reviewConfig: config,
+      engineName,
+      ...(opts.model ? { model: opts.model } : {}),
+      fresh: opts.fresh === true,
     })
-    const draftCache = {
-      // Bypasses the read and keeps the write, exactly as review's --fresh does.
-      get: (unit: TranslationUnit) => (opts.fresh ? undefined : getDraft(jobs, draftKey(unit))),
-      put: (unit: TranslationUnit, text: string[]) => putDraft(jobs, draftKey(unit), text),
-    }
-    // The draft review is keyed by the review prompt, not the draft prompt, so
-    // its own configHash replaces the draft's.
-    const verdictKey = (unit: TranslationUnit, text: string[]) => ({
-      ...draftKey(unit),
-      draftHash: draftHash(text),
-      configHash: config,
-      engine: 'claude',
-    })
-    const reviewCache: ReviewCache = {
-      get: (unit, text) => (opts.fresh ? undefined : getDraftVerdict(jobs, verdictKey(unit, text))),
-      put: (unit, text, value) => putDraftVerdict(jobs, verdictKey(unit, text), value),
-    }
 
     runId = startRun(jobs, {
       file: opts.file,

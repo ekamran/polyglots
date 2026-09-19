@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { fingerprintReview } from '../../src/audit/resume.js'
 import {
   auditSrcHash,
+  engineId,
   configHash,
   draftConfigHash,
   draftHash,
@@ -75,10 +76,20 @@ const context = (over: Partial<Parameters<typeof auditSrcHash>[1]> = {}) => ({
   comments: [],
   hints: [],
   nplurals: 2,
+  repaired: false,
   ...over,
 })
 
 describe('auditSrcHash', () => {
+  it('separates an entry that was mechanically repaired from one submitted clean', () => {
+    // The hash is taken after the repair and the `repaired` hint is excluded,
+    // so without this the two would key the same while the prompt told the
+    // model different things about them.
+    expect(auditSrcHash(entry(), context({ repaired: true }))).not.toBe(
+      auditSrcHash(entry(), context({ repaired: false })),
+    )
+  })
+
   it('is stable for the same entry in the same context', () => {
     expect(auditSrcHash(entry(), context())).toBe(auditSrcHash(entry(), context()))
   })
@@ -207,5 +218,24 @@ describe('draftHash', () => {
 
   it('covers every plural form', () => {
     expect(draftHash(['a', 'b'])).not.toBe(draftHash(['a', 'c']))
+  })
+})
+
+describe('engineId', () => {
+  it('is plain claude when no model was named', () => {
+    expect(engineId()).toBe('claude')
+    expect(engineId(undefined)).toBe('claude')
+  })
+
+  it('separates two models, so one is never served the other\'s verdict', () => {
+    // The escalation project compares what two engines say. Recording both as
+    // "claude" would make the second read the first one's rows and the whole
+    // comparison would measure nothing.
+    expect(engineId('opus')).not.toBe(engineId('sonnet'))
+    expect(engineId('opus')).not.toBe(engineId())
+  })
+
+  it('names the model in the identity, so a stored row is readable', () => {
+    expect(engineId('opus')).toContain('opus')
   })
 })

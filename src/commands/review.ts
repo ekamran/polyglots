@@ -18,6 +18,7 @@ import {
 import {
   abandonRun,
   configHash as computeConfigHash,
+  engineId,
   finishRun,
   getAuditVerdict,
   openJobsDb,
@@ -171,7 +172,7 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
       // --no-ai reaches no model, so nothing in this run was judged by one.
       // History cannot be backfilled, and a per-engine quality breakdown built
       // on it later would be reading rule findings as Claude's opinions.
-      engine: opts.noAi ? 'rules' : 'claude',
+      engine: opts.noAi ? 'rules' : engineId(opts.model),
     })
     recordEntries(
       jobs,
@@ -244,7 +245,7 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
       properNouns,
       mcpConfigPath,
       batchSize,
-      engine: 'claude',
+      engine: engineId(opts.model),
       configHash: config,
       ...(opts.noAi === undefined ? {} : { noAi: opts.noAi }),
       ...(store ? { store } : {}),

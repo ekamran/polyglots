@@ -50,7 +50,12 @@ const engine = (): DraftEngine => ({
 const review = async (inputs: ReviewInput[]): Promise<ReviewResult[]> =>
   inputs.map((i) => ({ key: i.key, text: i.drafts, fuzzy: false, reason: '' }))
 
-const run = (fake: DraftEngine, reviewDrafts: typeof review, mode: 'pending' | 'all' = 'pending') =>
+const run = (
+  fake: DraftEngine,
+  reviewDrafts: typeof review,
+  mode: 'pending' | 'all' = 'pending',
+  extra: { model?: string } = {},
+) =>
   translateFile({
     file: join(dir, 'plugin-tr.po'),
     locale: 'tr',
@@ -62,6 +67,7 @@ const run = (fake: DraftEngine, reviewDrafts: typeof review, mode: 'pending' | '
     db,
     jobsDb,
     mcpConfigPath: '',
+    ...extra,
   })
 
 describe('translate backed by the job store', () => {
@@ -174,6 +180,25 @@ describe('translate backed by the job store', () => {
     expect(row.state).toBe('done')
     expect(row.entries).toBe(2)
     expect(row.unreviewed).toBe(1)
+  })
+
+  it('does not serve one model\'s draft review as another model\'s', async () => {
+    // Same reason as the review command: two models answer differently, and
+    // the comparison the engine project is for needs them kept apart.
+    await run(engine(), review, 'pending', { model: 'opus' })
+    // mode 'all' re-submits the entries the first run translated; with
+    // 'pending' there would be nothing left to review and this would pass
+    // without exercising the key at all.
+    const second = vi.fn(review)
+    await run(engine(), second, 'all', { model: 'sonnet' })
+    expect(second).toHaveBeenCalled()
+  })
+
+  it('still reuses a draft review when the same model runs again', async () => {
+    await run(engine(), review, 'pending', { model: 'opus' })
+    const second = vi.fn(review)
+    await run(engine(), second, 'all', { model: 'opus' })
+    expect(second).not.toHaveBeenCalled()
   })
 
   it('records the run in history', async () => {
