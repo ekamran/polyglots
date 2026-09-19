@@ -10,6 +10,30 @@ Run `polyglots --version` to see which build you have; the TUI shows it beside i
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-19
+
+A draft engine that costs nothing.
+
+### Added
+
+- `--draft-engine qwen` drafts against a local Ollama, so a long translate has no
+  quota and no bill. Configure it under `ollama` in `config.json`: `baseUrl` and
+  `model`, defaulting to a stock install and `qwen3.8:27b-mlx`.
+  - Measured on 3,656 short pattern strings: about 1.4s an entry at a batch of 15,
+    1.5s at 30, and 4.6s at 60. The engine warns above 30, because a batch size
+    chosen for the metered engines quietly triples a local run.
+  - It identifies itself as `ollama:<model>`, so switching models invalidates its
+    cached drafts instead of serving one model's work as another's.
+
+### Fixed
+
+- Draft engines now identify items by number rather than by gettext key. A key can
+  begin with a newline and end in spaces, and a model asked to echo one back
+  normalises it; the reply then looks well-formed while naming no entry. This was
+  losing whole batches against a local model. The review side has worked this way
+  for some time. Every cached draft is invalidated by the change, which is correct:
+  they were produced under a different instruction.
+
 ## [0.6.0] - 2026-09-19
 
 Say what the reviewing has added up to.

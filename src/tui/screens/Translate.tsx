@@ -4,6 +4,7 @@ import { Box, Text, useInput } from 'ink'
 import TextInput from 'ink-text-input'
 import type { TranslateEvent, TranslateSummary } from '../../commands/translate.js'
 import { normalizeLocale } from '../../tmx/parse.js'
+import type { DraftEngineChoice } from '../../types.js'
 import { useCommands, useConfig } from '../commands.js'
 import { FilePicker } from '../components/FilePicker.js'
 import { BACK_HINT, DONE_HINT, Hint } from '../components/Hint.js'
@@ -18,11 +19,11 @@ export interface TranslateProps {
 
 type Phase = 'pick' | 'options' | 'confirm' | 'running'
 type Mode = 'pending' | 'all'
-type Engine = 'deepl' | 'openai'
+type Engine = DraftEngineChoice
 
 const PO_EXTENSIONS = ['.po']
 const MODES: Mode[] = ['pending', 'all']
-const ENGINES: Engine[] = ['deepl', 'openai']
+const ENGINES: Engine[] = ['deepl', 'openai', 'qwen']
 const FIELD_MODE = 0
 const FIELD_ENGINE = 1
 const FIELD_LOCALE = 2

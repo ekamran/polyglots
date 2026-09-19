@@ -14,8 +14,18 @@ export interface DraftResult {
   drafts: string[]
 }
 
+// What the user picks. Distinct from the engine's identity below: a choice is
+// a stable name in config and on the command line, while an identity has to say
+// which model produced a draft, because the draft cache keys on it.
+export type DraftEngineChoice = 'deepl' | 'openai' | 'qwen'
+
+// How an engine identifies the drafts it produced. A local runner names the
+// model it loaded: two models behind one name would serve one model's drafts
+// as the other's, which is the defect the review side had with --model.
+export type DraftEngineName = 'deepl' | 'openai' | `ollama:${string}`
+
 export interface DraftEngine {
-  readonly name: 'deepl' | 'openai'
+  readonly name: DraftEngineName
   translate(units: TranslationUnit[], locale: Locale, nplurals: number): Promise<DraftResult[]>
 }
 
@@ -126,7 +136,10 @@ export interface ConsistencyEntry {
 
 export interface PolyglotsConfig {
   defaultLocale: Locale
-  defaultDraftEngine: 'deepl' | 'openai'
+  defaultDraftEngine: DraftEngineChoice
+  // Where the local runner lives and which model to load. Only read when the
+  // chosen engine is `qwen`.
+  ollama: { baseUrl: string; model: string }
   batchSize: number
   consistencyTtlDays: number
   // Per-locale names the built-in lists cannot cover (places, people,

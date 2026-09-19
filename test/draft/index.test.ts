@@ -56,6 +56,19 @@ describe('getDraftEngine', () => {
     expect(warnings[0]).toMatch(/deepl: .*%s/)
   })
 
+  it('builds the local engine without any secret', () => {
+    // A runner on this machine has no key to check, and demanding one would
+    // make the engine unreachable.
+    const engine = getDraftEngine('qwen', {}, { ollama: { model: 'test-model' } })
+    expect(engine.name).toBe('ollama:test-model')
+  })
+
+  it('names the configured model, so two models never share a cache row', () => {
+    expect(getDraftEngine('qwen', {}, { ollama: { model: 'a' } }).name).not.toBe(
+      getDraftEngine('qwen', {}, { ollama: { model: 'b' } }).name,
+    )
+  })
+
   it('forwards onWarning so lost placeholders reach the caller (openai)', async () => {
     const warnings: string[] = []
     const engine = getDraftEngine(
@@ -67,7 +80,7 @@ describe('getDraftEngine', () => {
           chat: {
             completions: {
               create: async () => ({
-                choices: [{ message: { content: JSON.stringify({ items: [{ key: 'Hi %s', drafts: ['Merhaba'] }] }) }, finish_reason: 'stop' }],
+                choices: [{ message: { content: JSON.stringify({ items: [{ id: 1, drafts: ['Merhaba'] }] }) }, finish_reason: 'stop' }],
               }),
             },
           },

@@ -36,7 +36,10 @@ const unit = (msgid: string, extra: Partial<TranslationUnit> = {}): TranslationU
   ...extra,
 })
 
-const json = (items: Array<{ key: string; drafts: string[] }>) => JSON.stringify({ items })
+// The wire format is 1-based ids, not gettext keys: a key can begin with a
+// newline and end in spaces, and a model asked to echo one back normalises it.
+// Results are still keyed, because that is what the .po needs to apply them.
+const json = (items: Array<{ id: number; drafts: string[] }>) => JSON.stringify({ items })
 
 describe('createOpenAIEngine', () => {
   it('is named openai and accepts the real OpenAI client type', () => {
@@ -48,8 +51,8 @@ describe('createOpenAIEngine', () => {
   it('sends the whole batch in one JSON-mode chat completion and maps drafts by key', async () => {
     const { client, calls } = fakeClient([
       json([
-        { key: 'verb\u0004Save', drafts: ['Kaydet'] },
-        { key: 'Cancel', drafts: ['İptal'] },
+        { id: 2, drafts: ['Kaydet'] },
+        { id: 1, drafts: ['İptal'] },
       ]),
     ])
     const engine = createOpenAIEngine({ apiKey: 'k', client })
@@ -69,8 +72,8 @@ describe('createOpenAIEngine', () => {
     expect(userMsg.role).toBe('user')
     expect(JSON.parse(userMsg.content)).toEqual({
       items: [
-        { key: 'Cancel', msgid: 'Cancel' },
-        { key: 'verb\u0004Save', msgid: 'Save', msgctxt: 'verb', comments: ['translators: button label'] },
+        { id: 1, msgid: 'Cancel' },
+        { id: 2, msgid: 'Save', msgctxt: 'verb', comments: ['translators: button label'] },
       ],
     })
     expect(results).toEqual([
@@ -80,14 +83,14 @@ describe('createOpenAIEngine', () => {
   })
 
   it('honours a custom model', async () => {
-    const { client, calls } = fakeClient([json([{ key: 'a', drafts: ['b'] }])])
+    const { client, calls } = fakeClient([json([{ id: 1, drafts: ['b'] }])])
     const engine = createOpenAIEngine({ apiKey: 'k', client, model: 'gpt-4.1' })
     await engine.translate([unit('a')], 'tr', 2)
     expect(calls[0]!.model).toBe('gpt-4.1')
   })
 
   it('asks for nplurals drafts on plural units and accepts them', async () => {
-    const { client, calls } = fakeClient([json([{ key: '%d item', drafts: ['%d öğe', '%d öğe'] }, { key: 'Done', drafts: ['Bitti'] }])])
+    const { client, calls } = fakeClient([json([{ id: 1, drafts: ['%d öğe', '%d öğe'] }, { id: 2, drafts: ['Bitti'] }])])
     const engine = createOpenAIEngine({ apiKey: 'k', client })
 
     const results = await engine.translate([unit('%d item', { msgidPlural: '%d items' }), unit('Done')], 'tr', 2)
@@ -102,7 +105,7 @@ describe('createOpenAIEngine', () => {
   })
 
   it('states the nplurals value the locale actually has', async () => {
-    const { client, calls } = fakeClient([json([{ key: 'One', drafts: ['a', 'b', 'c'] }])])
+    const { client, calls } = fakeClient([json([{ id: 1, drafts: ['a', 'b', 'c'] }])])
     const engine = createOpenAIEngine({ apiKey: 'k', client })
     await engine.translate([unit('One', { msgidPlural: 'Many' })], 'ru', 3)
     expect(calls[0]!.messages[0]!.content).toMatch(/has 3 plural form/)
@@ -111,7 +114,7 @@ describe('createOpenAIEngine', () => {
   })
 
   it('names the target language for any locale, not only Turkish', async () => {
-    const { client, calls } = fakeClient([json([{ key: 'a', drafts: ['b'] }]), json([{ key: 'a', drafts: ['b'] }]), json([{ key: 'a', drafts: ['b'] }])])
+    const { client, calls } = fakeClient([json([{ id: 1, drafts: ['b'] }]), json([{ id: 1, drafts: ['b'] }]), json([{ id: 1, drafts: ['b'] }])])
     const engine = createOpenAIEngine({ apiKey: 'k', client })
     await engine.translate([unit('a')], 'tr', 2)
     await engine.translate([unit('a')], 'de_DE', 2)
@@ -136,7 +139,7 @@ describe('createOpenAIEngine', () => {
   })
 
   it('retries once on malformed JSON, then succeeds', async () => {
-    const { client, calls } = fakeClient(['not json at all', json([{ key: 'Hi', drafts: ['Selam'] }])])
+    const { client, calls } = fakeClient(['not json at all', json([{ id: 1, drafts: ['Selam'] }])])
     const engine = createOpenAIEngine({ apiKey: 'k', client })
 
     const results = await engine.translate([unit('Hi')], 'tr', 2)
@@ -149,16 +152,17 @@ describe('createOpenAIEngine', () => {
   })
 
   it('retries once on schema-invalid JSON, then throws', async () => {
-    const { client, calls } = fakeClient([JSON.stringify({ items: [{ key: 'Hi' }] }), JSON.stringify({ nope: true })])
+    const { client, calls } = fakeClient([JSON.stringify({ items: [{ id: 1 }] }), JSON.stringify({ nope: true })])
     const engine = createOpenAIEngine({ apiKey: 'k', client })
     await expect(engine.translate([unit('Hi')], 'tr', 2)).rejects.toThrow(/malformed|invalid/i)
     expect(calls).toHaveLength(2)
   })
 
-  it('treats a missing key or wrong draft count as malformed', async () => {
+  it('treats an unknown id or wrong draft count as malformed', async () => {
     const { client, calls } = fakeClient([
-      json([{ key: 'Other', drafts: ['x'] }]),
-      json([{ key: '%d item', drafts: ['only one'] }]),
+      // An id nothing was asked under, then the right id with too few drafts.
+      json([{ id: 99, drafts: ['x'] }]),
+      json([{ id: 1, drafts: ['only one'] }]),
     ])
     const engine = createOpenAIEngine({ apiKey: 'k', client })
     await expect(engine.translate([unit('%d item', { msgidPlural: '%d items' })], 'tr', 2)).rejects.toThrow(/malformed|invalid/i)
@@ -166,7 +170,7 @@ describe('createOpenAIEngine', () => {
   })
 
   it('treats empty content as malformed and never replays an empty assistant turn', async () => {
-    const { client, calls } = fakeClient([null, json([{ key: 'Hi', drafts: ['Selam'] }])])
+    const { client, calls } = fakeClient([null, json([{ id: 1, drafts: ['Selam'] }])])
     const engine = createOpenAIEngine({ apiKey: 'k', client })
     expect(await engine.translate([unit('Hi')], 'tr', 2)).toEqual([{ key: 'Hi', drafts: ['Selam'] }])
     expect(calls).toHaveLength(2)
@@ -176,7 +180,7 @@ describe('createOpenAIEngine', () => {
   })
 
   it('replays the previous non-empty output verbatim on retry', async () => {
-    const { client, calls } = fakeClient(['not json at all', json([{ key: 'Hi', drafts: ['Selam'] }])])
+    const { client, calls } = fakeClient(['not json at all', json([{ id: 1, drafts: ['Selam'] }])])
     const engine = createOpenAIEngine({ apiKey: 'k', client })
     await engine.translate([unit('Hi')], 'tr', 2)
     expect(calls[1]!.messages.find((m) => m.role === 'assistant')?.content).toBe('not json at all')
@@ -184,7 +188,7 @@ describe('createOpenAIEngine', () => {
 
   it('keeps a draft that lost a placeholder and warns without throwing', async () => {
     const warnings: string[] = []
-    const { client } = fakeClient([json([{ key: 'Hello %s', drafts: ['Merhaba'] }])])
+    const { client } = fakeClient([json([{ id: 1, drafts: ['Merhaba'] }])])
     const engine = createOpenAIEngine({ apiKey: 'k', client, onWarning: (m) => warnings.push(m) })
     const results = await engine.translate([unit('Hello %s')], 'tr', 2)
     expect(results[0]!.drafts).toEqual(['Merhaba'])

@@ -48,6 +48,7 @@ describe('loadConfig', () => {
     expect(DEFAULT_CONFIG).toEqual({
       defaultLocale: 'tr',
       defaultDraftEngine: 'deepl',
+      ollama: { baseUrl: 'http://localhost:11434', model: 'qwen3.8:27b-mlx' },
       batchSize: 25,
       consistencyTtlDays: 30,
       properNouns: {},
@@ -287,5 +288,39 @@ describe('maskSecret', () => {
   it('shows first 4 and last 2 chars of longer values', () => {
     expect(maskSecret('123456789012')).toBe('1234…12')
     expect(maskSecret('sk-abcdefghijklmnop')).toBe('sk-a…op')
+  })
+})
+
+describe('loadConfig and the local engine', () => {
+  it('fills in ollama defaults for a config written before it existed', async () => {
+    // A user upgrading has a config.json with no `ollama` key. Refusing to
+    // parse it would break every command over a field they never set.
+    await writeConfigRaw(
+      JSON.stringify({ defaultLocale: 'tr', defaultDraftEngine: 'deepl', batchSize: 25, consistencyTtlDays: 30, properNouns: {} }),
+    )
+    const config = loadConfig()
+    expect(config.ollama.model).toBe('qwen3.8:27b-mlx')
+    expect(config.ollama.baseUrl).toBe('http://localhost:11434')
+  })
+
+  it('keeps an ollama block the user did set', async () => {
+    await writeConfigRaw(
+      JSON.stringify({
+        defaultLocale: 'tr',
+        defaultDraftEngine: 'qwen',
+        ollama: { baseUrl: 'http://box:11434', model: 'other-model' },
+        batchSize: 25,
+        consistencyTtlDays: 30,
+        properNouns: {},
+      }),
+    )
+    const config = loadConfig()
+    expect(config.defaultDraftEngine).toBe('qwen')
+    expect(config.ollama).toEqual({ baseUrl: 'http://box:11434', model: 'other-model' })
+  })
+
+  it('accepts qwen as the default engine', async () => {
+    await writeConfigRaw(JSON.stringify({ defaultDraftEngine: 'qwen' }))
+    expect(loadConfig().defaultDraftEngine).toBe('qwen')
   })
 })

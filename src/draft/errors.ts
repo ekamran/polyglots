@@ -1,6 +1,5 @@
-import type { DraftEngine } from '../types.js'
-
-export type DraftEngineName = DraftEngine['name']
+export type { DraftEngineName } from '../types.js'
+import type { DraftEngineName } from '../types.js'
 
 export class DraftQuotaError extends Error {
   override readonly name = 'DraftQuotaError'

@@ -26,7 +26,7 @@ import { loadPo, type ApplyResult, type PoFile } from '../po/po-file.js'
 import { reviewBatch } from '../review/claude-review.js'
 import { findExactTm, openDb } from '../storage/index.js'
 import { normalizeLocale } from '../tmx/parse.js'
-import type { DraftEngine, Locale, ReviewInput, ReviewResult, Secrets, TranslationUnit } from '../types.js'
+import type { DraftEngine, DraftEngineChoice, Locale, ReviewInput, ReviewResult, Secrets, TranslationUnit } from '../types.js'
 
 export type TranslateEvent =
   | { type: 'start'; file: string; total: number; pending: number }
@@ -60,7 +60,7 @@ export interface TranslateOptions {
   file: string
   locale: Locale
   mode: 'pending' | 'all'
-  draftEngine: 'deepl' | 'openai'
+  draftEngine: DraftEngineChoice
   // Ignore the cached draft and its review, and ask again. `--mode all` exists
   // to re-translate entries that already have a translation, and without this
   // it replayed a cached draft forever: a user re-running after a bad batch, or
@@ -380,6 +380,10 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
         opts.engine ??
         getDraftEngine(opts.draftEngine, opts.secrets ?? loadSecrets(), {
           onWarning: (message) => emit({ type: 'warning', message }),
+          // Where the local runner lives and which model it should load. Read
+          // here rather than defaulted inside the factory so a user who set it
+          // in config.json gets what they asked for.
+          ollama: loadConfig().ollama,
         })
       const review = opts.review ?? reviewBatch
       const mcpConfigPath = opts.mcpConfigPath ?? (await writeMcpConfig({ env: { [MCP_ENV.locale]: locale } }))

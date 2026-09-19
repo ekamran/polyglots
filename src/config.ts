@@ -3,11 +3,13 @@ import { dirname } from 'node:path'
 import { parse as parseDotenv } from 'dotenv'
 import { z } from 'zod'
 import { configFile, secretsFile } from './paths.js'
+import { DEFAULT_QWEN_BASE_URL, DEFAULT_QWEN_MODEL } from './draft/qwen.js'
 import type { PolyglotsConfig, Secrets } from './types.js'
 
 export const DEFAULT_CONFIG: PolyglotsConfig = {
   defaultLocale: 'tr',
   defaultDraftEngine: 'deepl',
+  ollama: { baseUrl: DEFAULT_QWEN_BASE_URL, model: DEFAULT_QWEN_MODEL },
   batchSize: 25,
   consistencyTtlDays: 30,
   properNouns: {},
@@ -15,7 +17,12 @@ export const DEFAULT_CONFIG: PolyglotsConfig = {
 
 const configSchema = z.object({
   defaultLocale: z.string().min(1),
-  defaultDraftEngine: z.enum(['deepl', 'openai']),
+  defaultDraftEngine: z.enum(['deepl', 'openai', 'qwen']),
+  // Defaulted rather than required, so a config written before the local
+  // engine existed still parses.
+  ollama: z
+    .object({ baseUrl: z.string().min(1), model: z.string().min(1) })
+    .default({ baseUrl: DEFAULT_QWEN_BASE_URL, model: DEFAULT_QWEN_MODEL }),
   batchSize: z.number().int().positive(),
   consistencyTtlDays: z.number().int().nonnegative(),
   properNouns: z.record(z.string(), z.array(z.string())),

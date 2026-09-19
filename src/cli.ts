@@ -13,6 +13,7 @@ import { createRunControl, type RunState } from './run-control.js'
 import { importTmx } from './commands/tm-import.js'
 import { translateFile, type TranslateSummary } from './commands/translate.js'
 import { DEFAULT_STATS_FILE, writeStats } from './commands/stats.js'
+import { configFile } from './paths.js'
 import { DEFAULT_CONFIG, loadConfig, loadSecrets, maskSecret, saveConfig, saveSecret } from './config.js'
 import {
   UsageError,
@@ -186,7 +187,10 @@ async function runTranslate(cli: Cli, patterns: string[], flags: TranslateFlags)
 
   const secrets = loadSecrets()
   const secretName = secretForEngine(draftEngine)
-  if (!secrets[secretName]?.trim()) {
+  // A local engine has no key to check. Whether its runner is up is only
+  // knowable by asking it, so that failure surfaces on the first batch with a
+  // message naming the model.
+  if (secretName && !secrets[secretName]?.trim()) {
     throw new Error(`Draft engine "${draftEngine}" needs ${secretName}. Set it with: polyglots config set-key ${secretName}`)
   }
 
@@ -253,10 +257,18 @@ function coerceConfigValue(key: keyof PolyglotsConfig, raw: string): PolyglotsCo
       return parseLocaleArg(raw)
     case 'properNouns':
       throw new UsageError('properNouns is a per-locale list; add entries with: polyglots config add-name <name>')
+    case 'ollama':
+      throw new UsageError(
+        `ollama has a baseUrl and a model; edit them in ${configFile()}`,
+      )
   }
 }
 
 function formatConfigValue(key: keyof PolyglotsConfig, value: PolyglotsConfig[keyof PolyglotsConfig]): string {
+  if (key === 'ollama') {
+    const { baseUrl, model } = value as PolyglotsConfig['ollama']
+    return `${model} at ${baseUrl}`
+  }
   if (key !== 'properNouns') return String(value)
   const byLocale = value as Record<string, string[]>
   const locales = Object.keys(byLocale).sort()

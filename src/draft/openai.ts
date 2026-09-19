@@ -34,7 +34,7 @@ export interface OpenAIEngineOptions {
 export const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini'
 
 const ResponseSchema = z.object({
-  items: z.array(z.object({ key: z.string(), drafts: z.array(z.string()).min(1) })),
+  items: z.array(z.object({ id: z.number().int().min(1), drafts: z.array(z.string()).min(1) })),
 })
 
 class MalformedOutputError extends Error {
@@ -42,8 +42,9 @@ class MalformedOutputError extends Error {
 }
 
 function userPrompt(units: TranslationUnit[]): string {
-  const items = units.map((u) => ({
-    key: u.key,
+  // 1-based ids, not keys: see the note in draftSystemPrompt.
+  const items = units.map((u, i) => ({
+    id: i + 1,
     msgid: u.msgid,
     ...(u.msgctxt !== undefined ? { msgctxt: u.msgctxt } : {}),
     ...(u.msgidPlural !== undefined ? { msgidPlural: u.msgidPlural } : {}),
@@ -65,9 +66,9 @@ function parseResponse(content: string | null, units: TranslationUnit[], nplural
   const parsed = ResponseSchema.safeParse(raw)
   if (!parsed.success) throw new MalformedOutputError(`invalid shape: ${parsed.error.message}`)
 
-  const byKey = new Map(parsed.data.items.map((item) => [item.key, item.drafts]))
-  return units.map((u) => {
-    const drafts = byKey.get(u.key)
+  const byId = new Map(parsed.data.items.map((item) => [item.id, item.drafts]))
+  return units.map((u, i) => {
+    const drafts = byId.get(i + 1)
     if (!drafts) throw new MalformedOutputError(`missing item for key ${JSON.stringify(u.key)}`)
     const expected = u.msgidPlural === undefined ? 1 : nplurals
     if (drafts.length !== expected) {

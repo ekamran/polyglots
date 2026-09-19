@@ -76,12 +76,12 @@ export function parseSecretName(raw: string): keyof Secrets {
   throw new UsageError(`Unknown key "${raw}"; expected one of ${SECRET_NAMES.join(', ')}`)
 }
 
-export const DRAFT_ENGINES = ['deepl', 'openai'] as const
+export const DRAFT_ENGINES = ['deepl', 'openai', 'qwen'] as const
 
-export type DraftEngineName = (typeof DRAFT_ENGINES)[number]
+export type DraftEngineChoice = (typeof DRAFT_ENGINES)[number]
 
-export function parseDraftEngine(raw: string): DraftEngineName {
-  if (raw === 'deepl' || raw === 'openai') return raw
+export function parseDraftEngine(raw: string): DraftEngineChoice {
+  if (raw === 'deepl' || raw === 'openai' || raw === 'qwen') return raw
   throw new UsageError(`--draft-engine must be one of ${DRAFT_ENGINES.join(', ')}, got "${raw}"`)
 }
 
@@ -90,11 +90,14 @@ export function parseCsvDelimiter(raw: string): CsvDelimiter {
   throw new UsageError(`--delimiter must be ";" or ",", got "${raw}"`)
 }
 
-const ENGINE_SECRET: Record<DraftEngineName, keyof Secrets> = {
+// `qwen` is deliberately absent: a local runner needs no secret, and mapping it
+// to one would make the precheck demand a key that can never exist.
+const ENGINE_SECRET: Record<DraftEngineChoice, keyof Secrets | undefined> = {
   deepl: 'DEEPL_API_KEY',
   openai: 'OPENAI_API_KEY',
+  qwen: undefined,
 }
 
-export function secretForEngine(engine: DraftEngineName): keyof Secrets {
+export function secretForEngine(engine: DraftEngineChoice): keyof Secrets | undefined {
   return ENGINE_SECRET[engine]
 }
