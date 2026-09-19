@@ -10,6 +10,26 @@ Run `polyglots --version` to see which build you have; the TUI shows it beside i
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-09-19
+
+### Fixed
+
+- Corrected the antigravity timings in `docs/antigravity.md` and in the 0.8.0
+  entry below. Both reported it at four times Claude's cost and extrapolated to
+  nine hours against two on a large submission, which would have been a reason
+  to avoid it. Measured on whole runs at batch size 25 the two are close, and
+  antigravity was the faster of them: 27.4 seconds per batch against 32.5 and
+  36.3.
+  - The original figure came from one 25-entry batch run cold, which pays for
+    the MCP server starting, its tool schemas being read and the prompt cache
+    being filled. That run's own envelope reported 260,550 cached tokens read.
+    Across the ten batches of a real submission the start-up amortises away, so
+    a single batch measures the worst case and reads like the rate.
+  - What the two do differ in is where they look, and that part stands:
+    near-identical agreement on glossary terms, with antigravity finding about
+    three times as many title-case problems and Claude about twice as many
+    about meaning and fluency.
+
 ## [0.9.3] - 2026-09-19
 
 ### Added
@@ -122,11 +142,12 @@ A second agent to review with.
     the commands and says why polyglots does not write that configuration
     itself. Without it every tool call is denied and the run fails with
     antigravity's own stderr quoted back.
-  - Measured on one 25-entry batch of real strings: 19.6s through Claude
-    against 80.9s through antigravity, which over a 400-batch submission is two
-    hours against nine. It also reads the source more freely, once deciding an
-    English string was a typo and offering a translation of what it thought was
-    meant. Useful for a bulk pass, not for a submission about to be approved.
+  - Measured on whole runs at batch size 25, the two are close: 32.5 and 36.3
+    seconds per batch through Claude, 27.4 through antigravity. (This entry
+    first reported four times the cost, from one cold batch; see 0.9.4.) They
+    differ in where they look rather than how long they take. antigravity also
+    reads the source more freely, once deciding an English string was a typo
+    and offering a translation of what it thought was meant.
 - The agent runner keeps stderr and folds it into the error it raises. Both
   providers have a failure that exits zero and explains itself only there: a
   denied tool, or a quota message that arrives without a non-zero status.
