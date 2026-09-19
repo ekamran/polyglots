@@ -210,3 +210,48 @@ describe('translate backed by the job store', () => {
     expect(row.state).toBe('done')
   })
 })
+
+// The bug this covers: engineName was read off `opts.engine`, which every other
+// test in this file injects and no real caller passes. The production fallback
+// was the chosen engine's name, identical to the engine id for the metered
+// engines and wrong for the local one, so it passed everywhere it was tested.
+//
+// Nothing is injected here. The catalogue is fully translated, so `pending`
+// yields no units and the engine is never constructed, which is what lets this
+// run without a reachable Ollama.
+describe('the engine a run records', () => {
+  const TRANSLATED = `msgid ""
+msgstr ""
+"Language: tr\\n"
+"MIME-Version: 1.0\\n"
+"Content-Type: text/plain; charset=UTF-8\\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\\n"
+
+msgid "Save"
+msgstr "Kaydet"
+`
+
+  const runWithoutInjectedEngine = async (draftEngine: 'qwen' | 'deepl') => {
+    const file = join(dir, 'done-tr.po')
+    await writeFile(file, TRANSLATED)
+    process.env.POLYGLOTS_HOME = dir
+    try {
+      await translateFile({ file, locale: 'tr', mode: 'pending', draftEngine, db, jobsDb, mcpConfigPath: '' })
+    } finally {
+      delete process.env.POLYGLOTS_HOME
+    }
+    return jobsDb
+      .prepare<[], { engine: string }>(`SELECT engine FROM run ORDER BY id DESC LIMIT 1`)
+      .get()!.engine
+  }
+
+  // Storing every local model as `qwen` meant switching models served one
+  // model's drafts as the other's, and collapsed them into one row in stats.
+  it('names the local model rather than the menu choice', async () => {
+    expect(await runWithoutInjectedEngine('qwen')).toBe('ollama:qwen3.8:27b-mlx')
+  })
+
+  it('leaves a metered engine as its own name', async () => {
+    expect(await runWithoutInjectedEngine('deepl')).toBe('deepl')
+  })
+})

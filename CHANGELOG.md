@@ -10,6 +10,33 @@ Run `polyglots --version` to see which build you have; the TUI shows it beside i
 
 ## [Unreleased]
 
+## [0.7.6] - 2026-09-19
+
+### Fixed
+
+- A local draft is cached under the model that wrote it, not under `qwen`. The
+  engine names itself `ollama:<model>` precisely so two models cannot serve each
+  other's drafts, but the cache key was built before the engine exists and fell
+  back to the chosen engine's name. For `deepl` and `openai` that string is the
+  engine id already, so nothing showed; for the local engine every model shared
+  one key. Switching the model in `config.json` would have served the previous
+  model's drafts, written straight into the `.po`.
+  - `run.engine` was recording the same string, so `stats` collapsed every local
+    model into one row and could not compare them.
+  - The name now comes from `draftEngineId`, derived rather than read off an
+    engine. The engine is built only once there is a batch to translate, so a
+    fully cached run needs no API key and no reachable Ollama, and constructing
+    one just to ask its name would trade that away.
+  - Existing rows keep working. A database written before this carries `qwen`,
+    and those drafts were produced by whatever model was configured at the time,
+    which the row cannot say. Migrating them is a judgement only the person with
+    the database can make: `UPDATE draft SET engine = 'ollama:<model>' WHERE
+    engine = 'qwen'` is right if the model has not changed since, and wrong
+    otherwise.
+  - Every translate test injected a draft engine, so the faulty branch was never
+    the one under test. There is now a test that runs the real path with nothing
+    injected, over a fully translated catalogue so no engine is ever built.
+
 ## [0.7.5] - 2026-09-19
 
 Open it where you were going to open it anyway.

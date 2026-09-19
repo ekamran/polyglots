@@ -2,7 +2,7 @@ import type Database from 'better-sqlite3'
 import { chunk } from '../batch.js'
 import type { RunControl } from '../run-control.js'
 import { loadConfig, loadSecrets } from '../config.js'
-import { DraftQuotaError, DraftRateLimitError, getDraftEngine } from '../draft/index.js'
+import { draftEngineId, DraftQuotaError, DraftRateLimitError, getDraftEngine } from '../draft/index.js'
 import {
   endRun,
   draftConfigHash,
@@ -343,7 +343,12 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
     pruneStaleConfigs(jobs, 'draft_verdict', locale, config)
     pruneStaleConfigs(jobs, 'draft', locale, draftConfig)
 
-    const engineName = opts.engine?.name ?? opts.draftEngine
+    // Derived rather than read off the engine, which does not exist yet: it is
+    // built only once there is a batch to translate, so a fully cached run
+    // needs no API key and no reachable Ollama. The fallback this replaces was
+    // the chosen engine's name, which for the local engine is `qwen` rather
+    // than the model it loaded, so every model shared one cache key.
+    const engineName = opts.engine?.name ?? draftEngineId(opts.draftEngine, loadConfig().ollama)
     const { draftCache, reviewCache } = buildCaches(jobs, {
       nplurals: po.nplurals,
       locale,

@@ -29,6 +29,26 @@ const ENV_VAR: Record<'deepl' | 'openai', keyof Secrets> = {
   openai: 'OPENAI_API_KEY',
 }
 
+/**
+ * What an engine built from these inputs will call itself.
+ *
+ * Derivable without building one, because the draft cache key and the run row
+ * are both written before the engine exists: construction is deferred until
+ * there is a batch to translate, so that a fully cached run needs no API key
+ * and no reachable Ollama. Reading the name off a constructed engine would
+ * trade that away.
+ *
+ * Kept beside `getDraftEngine` so the two cannot drift. They did: the caller
+ * used to fall back to the chosen engine's name when it had no engine to ask,
+ * which for the metered engines is the same string and for the local one is
+ * not. Every local model was stored as `qwen`, so switching models served one
+ * model's drafts as the other's, which is exactly what naming the model was
+ * meant to prevent.
+ */
+export function draftEngineId(name: DraftEngineChoice, ollama?: { model?: string }): DraftEngineName {
+  return name === 'qwen' ? `ollama:${ollama?.model ?? DEFAULT_QWEN_MODEL}` : name
+}
+
 export function getDraftEngine(name: DraftEngineChoice, secrets: Secrets, options: GetDraftEngineOptions = {}): DraftEngine {
   if (name === 'qwen') {
     return createQwenEngine({
