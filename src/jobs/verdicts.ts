@@ -118,12 +118,20 @@ export type CachedTable = 'audit_verdict' | 'draft' | 'draft_verdict'
 // The locale predicate is load-bearing too: the glossary is per locale, so
 // config_hash differs per locale, and without it reviewing a `de` submission
 // would delete every `tr` verdict and reviewing a `tr` one would delete them
-// straight back. `table` is a closed union, never interpolated user input.
+// straight back.
+//
+// `table` is the one identifier interpolated into SQL here, so it is checked
+// against the allow-list below at runtime as well as by the type. The type
+// alone is a promise the compiler keeps and a JavaScript caller does not, and
+// the cost of being wrong is a DELETE.
+const PRUNABLE: ReadonlySet<string> = new Set<CachedTable>(['audit_verdict', 'draft', 'draft_verdict'])
+
 export function pruneStaleConfigs(
   db: Database.Database,
   table: CachedTable,
   locale: Locale,
   configHash: string,
 ): number {
+  if (!PRUNABLE.has(table)) throw new Error(`refusing to prune unknown table ${JSON.stringify(table)}`)
   return db.prepare(`DELETE FROM ${table} WHERE locale = ? AND config_hash <> ?`).run(locale, configHash).changes
 }

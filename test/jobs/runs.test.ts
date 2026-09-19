@@ -112,6 +112,52 @@ describe('finishRun', () => {
   })
 })
 
+describe('getRun reading a row back', () => {
+  const totals = {
+    entries: 294,
+    flagged: 0,
+    repaired: 0,
+    unreviewed: 0,
+    approvable: 294,
+    byCategory: { 'title-case': 3 },
+  }
+
+  it('reads a legitimate zero as zero, not as an absent snapshot', () => {
+    // A review that finished and flagged nothing is the best possible result.
+    // Reported as "no snapshot" it would look like a run that never completed.
+    const id = startRun(db, input)
+    finishRun(db, id, totals)
+    const row = getRun(db, id)!
+    expect(row.flagged).toBe(0)
+    expect(row.repaired).toBe(0)
+    expect(row.unreviewed).toBe(0)
+  })
+
+  it('reads an unparseable by_category as absent rather than throwing', () => {
+    const id = startRun(db, input)
+    finishRun(db, id, totals)
+    db.prepare('UPDATE run SET by_category = ? WHERE id = ?').run('{not json', id)
+    expect(() => getRun(db, id)).not.toThrow()
+    expect(getRun(db, id)!.byCategory).toBeUndefined()
+  })
+
+  it('reads a by_category holding a non-number as absent, not as a partial tally', () => {
+    // A chart built from a tally with one entry silently dropped is worse than
+    // one that admits it has nothing to draw.
+    const id = startRun(db, input)
+    finishRun(db, id, totals)
+    db.prepare('UPDATE run SET by_category = ? WHERE id = ?').run('{"title-case":"lots"}', id)
+    expect(getRun(db, id)!.byCategory).toBeUndefined()
+  })
+
+  it('reads a by_category holding an array as absent', () => {
+    const id = startRun(db, input)
+    finishRun(db, id, totals)
+    db.prepare('UPDATE run SET by_category = ? WHERE id = ?').run('[1,2,3]', id)
+    expect(getRun(db, id)!.byCategory).toBeUndefined()
+  })
+})
+
 describe('abandonRun', () => {
   it('marks a run stopped, with no totals to report', () => {
     const id = startRun(db, input, () => 1000)

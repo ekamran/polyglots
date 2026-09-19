@@ -271,6 +271,18 @@ describe('createReviewProgressReporter', () => {
     return { isTTY: false, write: (c: string) => ((text += c), true), get text() { return text } }
   }
 
+  it('says when a marker from an earlier version is being ignored', () => {
+    // The surface was wired but never exercised: a user resuming what they
+    // believe is a half-finished review deserves to be told it is starting over.
+    const out = sink()
+    const report = createReviewProgressReporter(out)
+    report({ type: 'start', file: 'a.po', total: 10, reviewable: 10 })
+    report({ type: 'marker-ignored', file: 'a-repaired.po' })
+    report.finish()
+    expect(out.text).toContain('a-repaired.po')
+    expect(out.text).toMatch(/earlier version/i)
+  })
+
   it('reports the start line and a bar per batch on a non-tty', () => {
     const out = sink()
     const report = createReviewProgressReporter(out)

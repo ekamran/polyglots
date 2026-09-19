@@ -7,7 +7,16 @@ import { parseTally, type Clock } from './json.js'
 // name, because a finished run has no control left to exercise. `stopped` is
 // also terminal, unlike `stopping`, which is a control state a run passes
 // through on its way to either `stopped` or `done`.
-export type RunRowState = 'running' | 'paused' | 'stopping' | 'done' | 'stopped'
+// What a run row can actually say. `running` is set at the start, `done` by
+// finishRun with its frozen totals, `stopped` by abandonRun with none.
+//
+// This deliberately does NOT mirror `RunState` in run-control.ts. That one is
+// in-memory control state for the pause key, and nothing writes `paused` or
+// `stopping` to this table — a row saying so would be a state the code cannot
+// produce, which is worse than a missing one because it invites a reader to
+// handle a case that never arrives. If a later feature genuinely persists a
+// paused run, adding the member back is one word.
+export type RunRowState = 'running' | 'done' | 'stopped'
 
 export interface StartRunInput {
   file: string

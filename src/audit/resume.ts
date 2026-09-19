@@ -28,7 +28,6 @@ export interface Fingerprint {
 }
 
 export interface ReviewMarker {
-  fingerprint: Fingerprint
   // Batches finished, and how many there were. Everything before `done` is
   // already decided and persisted; the batch that was interrupted is not.
   done: number

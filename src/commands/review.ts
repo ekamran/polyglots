@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm } from 'node:fs/promises'
+import { mkdir, rm } from 'node:fs/promises'
 import { basename, dirname, extname, join } from 'node:path'
 import type Database from 'better-sqlite3'
 import type { ClaudeRunOptions } from '../claude/run.js'
@@ -11,7 +11,6 @@ import {
 } from '../audit/audit.js'
 import {
   encodeMarker,
-  fingerprintReview,
   MARKER_HEADER,
   writtenByEarlierVersion,
   type ReviewMarker,
@@ -111,7 +110,6 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
     )
   }
 
-  const source = await readFile(opts.file, 'utf8')
   const po = await loadPo(opts.file)
   const all = po.auditEntries()
   const reviewable = all.filter(submitted)
@@ -121,14 +119,6 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
   const properNouns = opts.properNouns ?? configuredProperNouns(opts.locale)
   const batchSize = opts.batchSize ?? DEFAULT_BATCH_SIZE
 
-  const fingerprint = fingerprintReview({
-    source,
-    locale: opts.locale,
-    batchSize,
-    noAi: opts.noAi === true,
-    glossary,
-    properNouns,
-  })
 
   // An unfinished review used to be recovered from a marker in the output
   // file's header, with the flagged entries read back out of the file itself.
@@ -200,7 +190,6 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
       opts.mcpConfigPath ?? (opts.noAi ? '' : await writeMcpConfig({ env: { [MCP_ENV.locale]: opts.locale } }))
 
     const marker: ReviewMarker = {
-      fingerprint,
       done: 0,
       of: 0,
       problems: 0,

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { fingerprintReview } from '../../src/audit/resume.js'
 import {
   auditSrcHash,
   configHash,
@@ -174,9 +175,17 @@ describe('configHash', () => {
     expect(configHash(config([], []))).not.toBe(configHash(config([], ['WooCommerce'])))
   })
 
-  it('does not depend on the entries being reviewed', () => {
-    // Only the entry's own src_hash may vary per entry; config_hash is per run.
+  it('ignores the source and batch size fingerprintReview also computes', () => {
+    // configHash reuses fingerprintReview and takes only its glossary and rules
+    // components. Nothing enforces that those stay independent of the source
+    // and batch size it also hashes, so this pins it: if fingerprintReview ever
+    // folds batchSize into `rules`, a resumed run would start missing its cache
+    // for a reason nobody would think to look for.
     const g = [term('Settings', 'Ayarlar')]
+    const viaShortSource = fingerprintReview({ source: 'a', locale: 'tr', batchSize: 1, noAi: false, glossary: g, properNouns: [] })
+    const viaLongSource = fingerprintReview({ source: 'b'.repeat(5000), locale: 'tr', batchSize: 999, noAi: true, glossary: g, properNouns: [] })
+    expect(viaShortSource.glossary).toBe(viaLongSource.glossary)
+    expect(viaShortSource.rules).toBe(viaLongSource.rules)
     expect(configHash(config(g))).toBe(configHash(config(g)))
   })
 })

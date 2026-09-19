@@ -21,7 +21,6 @@ const INPUT = {
 }
 
 const MARKER: ReviewMarker = {
-  fingerprint: fingerprintReview(INPUT),
   done: 42,
   of: 114,
   problems: 57,

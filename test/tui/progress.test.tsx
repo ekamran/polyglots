@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import React from 'react'
 import type { TranslateEvent } from '../../src/commands/translate.js'
 import { Progress, reduceProgress } from '../../src/tui/components/Progress.js'
+import { ReviewProgress, reduceReviewProgress } from '../../src/tui/components/ReviewProgress.js'
 import { render, tick } from './helpers.js'
 
 const FILE = '/tmp/work/plugin-tr.po'
@@ -150,5 +151,33 @@ describe('Progress', () => {
     const { lastFrame } = render(<Progress events={[]} />)
     await tick()
     expect(lastFrame()).toMatch(/Loading|Starting/)
+  })
+})
+
+describe('ReviewProgress and an ignored marker', () => {
+  it('renders the notice when the event arrives', () => {
+    const state = reduceReviewProgress([
+      { type: 'start', file: '/tmp/a.po', total: 10, reviewable: 10 },
+      { type: 'marker-ignored', file: '/tmp/a-repaired.po' },
+    ])
+    expect(state.markerIgnored).toBe('/tmp/a-repaired.po')
+  })
+
+  it('shows nothing when no marker was ignored', () => {
+    const state = reduceReviewProgress([{ type: 'start', file: '/tmp/a.po', total: 10, reviewable: 10 }])
+    expect(state.markerIgnored).toBeUndefined()
+  })
+
+  it('paints the notice, rather than only holding it in state', async () => {
+    const { lastFrame } = render(
+      <ReviewProgress
+        events={[
+          { type: 'start', file: '/tmp/a.po', total: 10, reviewable: 10 },
+          { type: 'marker-ignored', file: '/tmp/a-repaired.po' },
+        ]}
+      />,
+    )
+    await tick()
+    expect(lastFrame()).toMatch(/earlier version/i)
   })
 })

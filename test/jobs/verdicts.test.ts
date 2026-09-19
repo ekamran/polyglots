@@ -166,6 +166,20 @@ describe('pruneStaleConfigs', () => {
     ])
   })
 
+  it('refuses a table it does not know, rather than interpolating it into a DELETE', () => {
+    // The closed union is a promise the compiler keeps; a JavaScript caller
+    // makes no such promise, and the cost of being wrong here is a DELETE.
+    expect(() => pruneStaleConfigs(db, 'run' as never, 'tr', 'x')).toThrow(/unknown table/i)
+    expect(() => pruneStaleConfigs(db, "audit_verdict; DROP TABLE run" as never, 'tr', 'x')).toThrow(/unknown table/i)
+  })
+
+  it('leaves the run table alone, since it is history rather than cache', () => {
+    db.prepare(`INSERT INTO run (file, command, locale, nplurals, batch_size, engine, state, started_at)
+                VALUES ('/x.po','review','tr',2,25,'claude','done',1)`).run()
+    pruneStaleConfigs(db, 'audit_verdict', 'tr', 'whatever')
+    expect(db.prepare<[], { n: number }>('SELECT COUNT(*) AS n FROM run').get()!.n).toBe(1)
+  })
+
   it('reports nothing pruned when the configuration has not moved', () => {
     putAuditVerdict(db, key(), { problem: true, categories: [], reason: 'x' })
     expect(pruneStaleConfigs(db, 'audit_verdict', 'tr', 'bbbbbbbbbbbbbbbb')).toBe(0)
