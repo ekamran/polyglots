@@ -6,6 +6,7 @@ import type { TranslateEvent, TranslateSummary } from '../../commands/translate.
 import { normalizeLocale } from '../../tmx/parse.js'
 import type { DraftEngineChoice } from '../../types.js'
 import { useCommands, useConfig } from '../commands.js'
+import { poEntryCount } from '../../po/count.js'
 import { FilePicker } from '../components/FilePicker.js'
 import { BACK_HINT, DONE_HINT, Hint } from '../components/Hint.js'
 import { Progress } from '../components/Progress.js'
@@ -137,6 +138,7 @@ export function Translate({ cwd, onBack }: TranslateProps) {
           <FilePicker
             dir={cwd}
             extensions={PO_EXTENSIONS}
+            annotate={poEntryCount}
             onPick={(path) => {
               setFile(path)
               setPhase('options')

@@ -5,6 +5,7 @@ import TextInput from 'ink-text-input'
 import { normalizeLocale } from '../../tmx/parse.js'
 import type { ReviewEvent, ReviewSummary } from '../../types.js'
 import { useCommands, useConfig } from '../commands.js'
+import { poEntryCount } from '../../po/count.js'
 import { FilePicker } from '../components/FilePicker.js'
 import { BACK_HINT, DONE_HINT, Hint } from '../components/Hint.js'
 import { ReviewProgress } from '../components/ReviewProgress.js'
@@ -139,6 +140,7 @@ export function Review({ cwd, onBack }: ReviewProps) {
           <FilePicker
             dir={cwd}
             extensions={PO_EXTENSIONS}
+            annotate={poEntryCount}
             onPick={(path) => {
               setFile(path)
               setPhase('options')
