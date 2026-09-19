@@ -66,8 +66,6 @@ Say it in a sentence the requester can read.
 
 ## [0.7.2] - 2026-09-19
 
-Know which file you are about to review.
-
 ### Added
 
 - Each catalogue in the file picker shows how many entries it holds, in a column.
@@ -86,6 +84,46 @@ Know which file you are about to review.
 - The selected row in the picker takes the same blue as the pointer. It was
   yellow, as were all the unselected catalogues around it, leaving weight as the
   only thing distinguishing the cursor from its neighbours.
+- A run now records how it ended, not only that it did. `done` meant finished;
+  `stopped` meant the operator pressed q, or it threw, or a hard kill left a row
+  behind, and anything counting "did not finish" counted all three as faults.
+  Stopping part way to look at the output and resuming later is ordinary use, so
+  the stats page was reporting a working habit as a warning. A nullable `ended`
+  column says which: `stopped`, `failed` or `abandoned`. `abandonRun` becomes
+  `endRun` and requires the reason rather than defaulting to one, because the
+  caller is the only thing that knows.
+  - `state` still answers only whether a run is terminal, so no existing reader
+    changes. A row written before the column is not counted as a fault: it
+    cannot say how it ended, and the commonest way a run stopped was the
+    operator stopping it, so treating the unknown as a failure would invent
+    crashes that mostly did not happen.
+
+### Fixed
+
+- A literal percent sign is no longer read as a placeholder. The printf flag set
+  included the space flag, so `100% satisfaction` parsed as `%s`, `30% off` as
+  `%o` and `101% Growth` as `%G`. English puts the sign after the number and
+  Turkish puts it before, `%100`, so the phantom was reported lost on every one
+  of these, and on the audit side as an error the model had no way to clear.
+  Six phantoms gone across the local corpus, 110 real placeholders kept.
+  - The space flag is legal printf and asks for a blank where a plus sign would
+    go. Nothing in a WordPress UI string wants it. Percent-encoded URLs still
+    match, `%2F` reading as a width-2 float, and that is left alone: both sides
+    of a translation carry the same URL so the counts cancel, and a draft that
+    mangles one deserves the warning.
+  - The pattern existed twice, verbatim, in the draft and audit trees, and the
+    two had drifted. Now exported from one place.
+- A run row left at `running` by a hard kill is cleared at the start of the next
+  `translate` or `review`. `kill -9`, a crash or a closed terminal has no ordinary
+  stop path, so the row stayed forever and kept its scratch rows with it, and
+  `stats` counted it under "did not finish" for good. Applied to the live
+  database on release: one row from a pre-0.7.1 kill, carrying 3,585 orphan
+  entry rows.
+  - The live set comes from `liveRuns` rather than a second pid check, so the two
+    cannot disagree. It errs towards leaving rows behind: a pid the operating
+    system has recycled reads as alive and is skipped, because a wrong number in
+    `stats` costs less than stopping a live run. The sweep does not run in
+    `stats`, which documents itself as writing nothing.
 
 ## [0.7.1] - 2026-09-19
 
