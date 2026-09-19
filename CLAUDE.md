@@ -120,3 +120,7 @@ bullet summaries of the diff. Look at recent history before writing one.
 Version bumps use
 `npm version patch --no-git-tag-version`, and `CHANGELOG.md` follows Keep a
 Changelog, in the same prose voice as the code comments.
+
+Verifying, bumping, writing the changelog, building and committing is one
+routine, and `/release` is it. The order and the traps are in
+`.claude/commands/release.md`; read it rather than reconstructing the steps.

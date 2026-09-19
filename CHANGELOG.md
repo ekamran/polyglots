@@ -10,6 +10,26 @@ Run `polyglots --version` to see which build you have; the TUI shows it beside i
 
 ## [Unreleased]
 
+## [0.9.5] - 2026-09-19
+
+### Added
+
+- `/release` for Claude Code sessions in this repository: verify, bump, write
+  the changelog, build and commit, in that order. It lives in
+  `.claude/commands/release.md` and is committed with the code, because what it
+  encodes is specific to this repository and a convention remembered by one
+  session is gone by the next.
+  - Verification comes before the bump, so a failing tree stops the release
+    before it has a version number that would then have to be withdrawn.
+  - A build refused because a run is in flight is treated as correct rather
+    than as an obstacle. The release is committed, `dist/` is reported as
+    stale, and the override stays the user's to reach for.
+  - It carries two ways a report went wrong while this was being written:
+    `polyglots --version` reads `package.json` at run time, so after a refused
+    build it names the new version while running the old code; and comparing
+    `dist/` with `src/` by time of day made a current build look stale,
+    because a file untouched for nine days sorted first.
+
 ## [0.9.4] - 2026-09-19
 
 ### Fixed
