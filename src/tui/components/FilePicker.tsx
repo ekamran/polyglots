@@ -48,9 +48,19 @@ export interface FilePickerProps {
    * every keystroke, so a new identity each render would defeat it.
    */
   annotate?: (path: string) => string | undefined
+  /**
+   * Choose a folder rather than a file.
+   *
+   * Matching files are not listed, because in this mode they are not choices
+   * and the list is shorter without them, and a row at the top picks the folder
+   * being browsed. That row leads so that opening the picker and pressing enter
+   * chooses where you already are, which is usually the answer.
+   */
+  chooseDir?: boolean
 }
 
-export type EntryKind = 'dir' | 'file'
+// `choose` is the row that picks the folder being browsed, in chooseDir mode.
+export type EntryKind = 'dir' | 'file' | 'choose'
 
 interface Entry {
   path: string
@@ -66,7 +76,7 @@ interface Entry {
 // pointer, so the two cues agree instead of competing.
 export function itemColor(kind: EntryKind | undefined, isSelected: boolean): string | undefined {
   if (isSelected) return 'blue'
-  return kind === 'file' ? 'yellow' : undefined
+  return kind === 'file' || kind === 'choose' ? 'yellow' : undefined
 }
 
 interface Listing {
@@ -105,8 +115,17 @@ function labelled(entry: Entry, pad: number, detail: string | undefined): string
   return detail === undefined ? entry.name : `${entry.name.padEnd(pad)}  ${detail}`
 }
 
-function list(cwd: string, extensions: string[], sort: SortMode, annotate: FilePickerProps['annotate']): Listing {
+function list(
+  cwd: string,
+  extensions: string[],
+  sort: SortMode,
+  annotate: FilePickerProps['annotate'],
+  chooseDir = false,
+): Listing {
   const items: Listing['items'] = []
+  if (chooseDir) {
+    items.push({ key: '.', label: '[ use this folder ]', value: { path: cwd, kind: 'choose', name: '.', mtimeMs: 0 } })
+  }
   const parent = dirname(cwd)
   // Pinned above everything: it is navigation, not a candidate, so no sort order
   // should ever move it.
@@ -122,7 +141,7 @@ function list(cwd: string, extensions: string[], sort: SortMode, annotate: FileP
       if (dirent.name.startsWith('.')) continue
       const path = join(cwd, dirent.name)
       const kind: EntryKind = isDirectory(path, dirent) ? 'dir' : 'file'
-      if (kind === 'file' && !extensions.includes(extname(dirent.name).toLowerCase())) continue
+      if (kind === 'file' && (chooseDir || !extensions.includes(extname(dirent.name).toLowerCase()))) continue
       // An entry whose stat fails still belongs in the list; only its date is
       // unknown, and dropping the row would hide a file the user can see.
       let mtimeMs = 0
@@ -156,11 +175,14 @@ function list(cwd: string, extensions: string[], sort: SortMode, annotate: FileP
   return { items, error }
 }
 
-export function FilePicker({ dir, extensions, onPick, limit = 15, annotate }: FilePickerProps) {
+export function FilePicker({ dir, extensions, onPick, limit = 15, annotate, chooseDir }: FilePickerProps) {
   const [cwd, setCwd] = useState(dir)
   const [sort, setSort] = useState<SortMode>(DEFAULT_SORT)
-  const listing = useMemo(() => list(cwd, extensions, sort, annotate), [cwd, extensions, sort, annotate])
-  const hasFiles = listing.items.some((i) => i.value.kind === 'file')
+  const listing = useMemo(
+    () => list(cwd, extensions, sort, annotate, chooseDir),
+    [cwd, extensions, sort, annotate, chooseDir],
+  )
+  const hasFiles = chooseDir || listing.items.some((i) => i.value.kind === 'file')
 
   // SelectInput binds the arrows, j, k and return; s is free. It resets its
   // cursor to the top whenever the item values change, which is what a re-sort

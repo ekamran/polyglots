@@ -10,6 +10,28 @@ Run `polyglots --version` to see which build you have; the TUI shows it beside i
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-09-19
+
+### Added
+
+- The statistics screen can choose where the page goes. Tab opens a folder
+  picker, and the name field keeps working for anyone who would rather type it:
+  a name with a path in it wins over the chosen folder, so knowing exactly
+  where you want the file does not mean walking there.
+  - Tab rather than a letter, because the name field has focus and
+    ink-text-input types any printable key into it. It is also how the review
+    screen already moves between its own controls.
+- `o` on the statistics screen opens the page it just wrote, the same way the
+  review and translate screens open their output.
+
+### Changed
+
+- The file picker can choose a folder as well as a file. In that mode it lists
+  folders only, since a file is not a choice there and leaving them in only
+  makes the list longer, and a row at the top picks the folder being browsed.
+  That row leads, so opening the picker and pressing enter chooses where you
+  already are.
+
 ## [0.9.2] - 2026-09-19
 
 ### Fixed

@@ -243,3 +243,61 @@ describe('FilePicker sorting', () => {
     expect(picked).toEqual([join(dir, 'alpha.po')])
   })
 })
+
+describe('FilePicker choosing a folder', () => {
+  it('lists folders only, with a row that picks the one being browsed', async () => {
+    const { lastFrame } = render(
+      <FilePicker dir={root} extensions={['.po']} chooseDir onPick={() => undefined} />,
+    )
+    await tick()
+    const frame = lastFrame() ?? ''
+    expect(frame).toContain('[ use this folder ]')
+    expect(frame).toContain('languages/')
+    // A file is not a choice here, and leaving it in only lengthens the list.
+    expect(frame).not.toContain('plugin-tr.po')
+  })
+
+  // Opening the picker and pressing enter should choose where you already are,
+  // which is the answer often enough to be worth the top row.
+  it('picks the current folder on the first enter', async () => {
+    const picked: string[] = []
+    const { stdin } = render(
+      <FilePicker dir={root} extensions={['.po']} chooseDir onPick={(p) => picked.push(p)} />,
+    )
+    await tick()
+    stdin.write(keys.enter)
+    await tick()
+    expect(picked).toEqual([root])
+  })
+
+  it('walks into a subfolder and picks that instead', async () => {
+    const picked: string[] = []
+    const { lastFrame, stdin } = render(
+      <FilePicker dir={root} extensions={['.po']} chooseDir onPick={(p) => picked.push(p)} />,
+    )
+    await tick()
+    // Rows are: [ use this folder ], .., languages/, src/
+    for (let i = 0; i < 2; i++) {
+      stdin.write(keys.down)
+      await tick()
+    }
+    stdin.write(keys.enter)
+    await waitForText(lastFrame, join(root, 'languages'))
+    stdin.write(keys.enter)
+    await tick()
+    expect(picked).toEqual([join(root, 'languages')])
+  })
+
+  it('says nothing about missing files when files are not the point', async () => {
+    const empty = await mkdtemp(join(tmpdir(), 'polyglots-nodirs-'))
+    try {
+      const { lastFrame } = render(
+        <FilePicker dir={empty} extensions={['.po']} chooseDir onPick={() => undefined} />,
+      )
+      await tick()
+      expect(lastFrame() ?? '').not.toContain('no .po files here')
+    } finally {
+      await rm(empty, { recursive: true, force: true })
+    }
+  })
+})

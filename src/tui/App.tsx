@@ -71,7 +71,7 @@ export function App({ commands = defaultCommands, cwd = process.cwd(), activity,
         {screen === 'review' && <Review cwd={cwd} onBack={back} />}
         {screen === 'split' && <Split cwd={cwd} onBack={back} />}
         {screen === 'import-tm' && <ImportTm cwd={cwd} onBack={back} />}
-        {screen === 'stats' && <Stats onBack={back} />}
+        {screen === 'stats' && <Stats cwd={cwd} onBack={back} />}
         {screen === 'sync-glossary' && <SyncGlossary onBack={back} />}
         {screen === 'configure-keys' && <ConfigureKeys onBack={back} />}
       </CommandsProvider>
