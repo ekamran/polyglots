@@ -227,3 +227,37 @@ describe('Progress opening the translated file', () => {
     expect(vi.mocked(openInDefaultApp)).not.toHaveBeenCalled()
   })
 })
+
+describe('ReviewProgress rule counts', () => {
+  const rulesRun = (flagged: number, suspects: number) => [
+    { type: 'start' as const, file: FILE, total: 9826, reviewable: 9826 },
+    { type: 'rules-done' as const, flagged, suspects },
+  ]
+
+  /**
+   * The four rules that fire most on Turkish submissions are all `suspect`
+   * severity, so a file can carry thousands of rule findings and no errors at
+   * all. Reporting only the error count, under a label reading "flagged by
+   * rules", showed 0 on a file where the rules had flagged 5,529 of 9,826
+   * entries: 4,784 title-case, 944 apostrophe, 311 untranslated, 4 punctuation.
+   */
+  it('reports entries the rules only suspect, not just the ones they condemn', () => {
+    const { lastFrame } = render(<ReviewProgress events={rulesRun(0, 5529)} />)
+    const frame = (lastFrame() ?? '').replace(/\s+/g, ' ')
+    expect(frame).toContain('5529')
+  })
+
+  it('tells the two apart rather than summing them', () => {
+    const { lastFrame } = render(<ReviewProgress events={rulesRun(12, 20)} />)
+    const frame = (lastFrame() ?? '').replace(/\s+/g, ' ')
+    expect(frame).toContain('12')
+    expect(frame).toContain('20')
+    expect(frame).not.toContain('32')
+  })
+
+  it('keeps both counts when the rules found nothing', () => {
+    const { lastFrame } = render(<ReviewProgress events={rulesRun(0, 0)} />)
+    expect(reduceReviewProgress(rulesRun(0, 0)).suspects).toBe(0)
+    expect(lastFrame() ?? '').toContain('reviewable')
+  })
+})

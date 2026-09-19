@@ -10,6 +10,25 @@ Run `polyglots --version` to see which build you have; the TUI shows it beside i
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-09-19
+
+### Fixed
+
+- The review screen said `0 flagged by rules` on submissions where the rules
+  had flagged thousands. It was reporting only entries the rules proved wrong,
+  which are error severity, and saying nothing about the ones they doubt.
+  `title-case`, `apostrophe`, `untranslated` and `punctuation` are all suspect
+  severity, and on a Turkish submission they are most of what fires: one
+  9,826-entry file had 5,529 rule findings and not a single error, so the line
+  read zero. It now reads `rules: 0 wrong, 5529 suspect`, which are two
+  different questions and are kept apart rather than summed.
+- A rules-only run (`--no-ai`) reported no suspects at all, whatever the rules
+  found. The count was read from the entries waiting on a model, and that run
+  leaves none waiting: it decides every entry on the spot. It is now read from
+  both places an entry can end up, which is where the flagged count was already
+  read from. A `--no-ai` pass over 1,278 real entries reported 0 suspects
+  before and reports 591 now.
+
 ## [0.9.0] - 2026-09-19
 
 Cut a big catalogue into parts you can finish.

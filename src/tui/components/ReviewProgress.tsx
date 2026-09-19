@@ -177,8 +177,16 @@ export function ReviewProgress({ events }: { events: ReviewEvent[] }) {
           : ` · ~${formatDuration(state.remainingMs)} left, done by ${formatFinishTime(state.remainingMs)}`}{' '}
         · problems {state.problems}
       </Text>
+      {/* Both counts, because they mean different things and one of them is
+          usually zero. `wrong` is what the rules proved: an error-severity
+          finding, whose verdict is settled before any model sees it. `suspect`
+          is what they want a second opinion on. The four rules that fire most
+          on a Turkish submission are all suspect severity, so showing only the
+          first reported "0 flagged by rules" on a file where the rules had
+          flagged 5,529 of 9,826 entries. */}
       <Text dimColor>
-        {state.file} · {state.total} entries, {state.reviewable} reviewable, {state.ruleFlagged} flagged by rules
+        {state.file} · {state.total} entries, {state.reviewable} reviewable · rules: {state.ruleFlagged} wrong,{' '}
+        {state.suspects} suspect
       </Text>
 
       {state.markerIgnored && (

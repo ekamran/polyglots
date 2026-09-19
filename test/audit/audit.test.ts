@@ -184,6 +184,26 @@ describe('auditEntries', () => {
     expect(seen).toEqual([{ flagged: 1, suspects: 1 }])
   })
 
+  /**
+   * With --no-ai nothing becomes a candidate: every entry is decided on the
+   * spot, so a suspect count read from the candidate list is structurally zero
+   * however many entries the rules doubted. The rules-only run is exactly the
+   * one whose whole output is those doubts, and the screen reported none.
+   */
+  it('counts entries the rules doubt on a rules-only run', async () => {
+    const seen: { flagged: number; suspects: number }[] = []
+    const verdicts = await auditEntries({
+      entries: [clean, hardError, suspect],
+      ...base(),
+      noAi: true,
+      onRules: (r) => seen.push(r),
+    })
+
+    const needing = verdicts.filter((v) => v.needsReview).length
+    expect(needing).toBeGreaterThan(0)
+    expect(seen).toEqual([{ flagged: 1, suspects: needing }])
+  })
+
   // A whitespace repair is settled, not an open question, so it must not swell
   // the count of entries the user is told the model still has to weigh.
   it('does not count a mechanical repair among the suspects it reports', async () => {

@@ -169,11 +169,18 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
     })
   }
 
+  // Both counts read from both places an entry can end up. A run with a model
+  // leaves everything undecided in `candidates`; --no-ai decides every entry on
+  // the spot and leaves `candidates` empty. Reading suspects from the candidate
+  // list alone reported none on a rules-only run, which is the one run whose
+  // entire output is what the rules were unsure about.
   opts.onRules?.({
     flagged: candidates.filter((c) => c.condemned).length + [...verdicts.values()].filter((v) => v.problem).length,
     // A mechanical repair is decided, so an entry whose only hint is that one is
     // nobody's open question and does not belong in the count.
-    suspects: candidates.filter((c) => !c.condemned && c.hints.some((f) => f.rule !== 'repaired')).length,
+    suspects:
+      candidates.filter((c) => !c.condemned && c.hints.some((f) => f.rule !== 'repaired')).length +
+      [...verdicts.values()].filter((v) => v.needsReview).length,
   })
 
   const adjudicate = opts.adjudicate ?? adjudicateWithAgent
