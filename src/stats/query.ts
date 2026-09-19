@@ -253,7 +253,7 @@ function enginesOf(g: Grouped): EngineRow[] {
  * Only finished reviews contribute. A run that stopped part way froze no
  * totals, on purpose: a review that did not look at every entry has no honest
  * throughput or problem rate to report. Translate runs are reported separately
- * by translateStats — summing the two would add a count of "looks wrong" to a
+ * by translateStats; summing the two would add a count of "looks wrong" to a
  * count of "wants a human eye" and produce a number answering no question.
  */
 export function reviewStats(db: Database.Database, window: StatsWindow = {}): ReviewStats {

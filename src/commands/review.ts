@@ -163,8 +163,8 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
   reapAbandonedRuns(jobs)
 
   // Everything below opens a run in `jobs` and does real work against it, so
-  // from here on a throw — a caller's onProgress blowing up, a batch that
-  // could not even produce an unreviewed verdict — must not leak the handle
+  // from here on a throw (a caller's onProgress blowing up, a batch that
+  // could not even produce an unreviewed verdict) must not leak the handle
   // this call opened, nor leave history claiming the run is still going.
   let runId: number | undefined
   let summary: ReviewSummary

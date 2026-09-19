@@ -4,8 +4,8 @@ import { draftSystemPrompt } from './prompt.js'
 import { warnMissingPlaceholders, type WarningSink } from './placeholders.js'
 
 // A draft engine that runs against a local Ollama, so a long translate costs
-// nothing and has no quota. It is shaped like the OpenAI engine — same prompt,
-// same {items} reply, same placeholder warnings — and differs in two ways that
+// nothing and has no quota. It is shaped like the OpenAI engine (same prompt,
+// same {items} reply, same placeholder warnings) and differs in two ways that
 // are both consequences of the model running on this machine.
 
 export interface QwenChatMessage {

@@ -342,8 +342,8 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
   reapAbandonedRuns(jobs)
 
   // Everything below opens a run in `jobs` and does real work against it, so
-  // from here on a throw — a caller's onProgress blowing up, a batch that
-  // could not even produce a draft — must not leak the handle this call
+  // from here on a throw (a caller's onProgress blowing up, a batch that
+  // could not even produce a draft) must not leak the handle this call
   // opened, nor leave history claiming the run is still going.
   let runId: number | undefined
   try {

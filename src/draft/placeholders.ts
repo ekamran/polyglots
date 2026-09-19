@@ -8,7 +8,7 @@ import type { DraftEngineName } from './errors.js'
 // percent sign followed by a space is everywhere in English UI copy: "100%
 // satisfaction" parsed as %s, "30% off" as %o, "101% Growth" as %G. Turkish
 // writes the sign before the number, %100, so the phantom placeholder went
-// missing on every such translation — a warning on the draft side and, because
+// missing on every such translation: a warning on the draft side and, because
 // the audit rules share this pattern, an error-severity verdict the model could
 // not clear on the review side.
 //

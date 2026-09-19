@@ -5,9 +5,9 @@
 // rewriting dist/ underneath it can hand a half-written file to the next spawn.
 // This happened: a build landed two minutes into a seven-thousand-entry run.
 //
-// Fails OPEN. Anything that stops this check from answering — no database, a
+// Fails OPEN. Anything that stops this check from answering (no database, a
 // native module that has not been built yet, a schema older than the pid
-// column — allows the build. A guard that can block a legitimate build on its
+// column) allows the build. A guard that can block a legitimate build on its
 // own malfunction is worse than the hazard it guards against, and `prepare`
 // runs during `npm install`, when better-sqlite3 may not be usable yet.
 
@@ -75,7 +75,7 @@ for (const r of running) {
 console.error(
   `\nA running job spawns an MCP server from dist/ for every batch, so rebuilding
 now can break it. Wait for it to finish, or stop it with q and re-run it
-afterwards — it will pick up from its cache.
+afterwards; it will pick up from its cache.
 
 To build anyway: ${ESCAPE_HATCH}=1 npm run build\n`,
 )

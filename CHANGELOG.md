@@ -10,6 +10,27 @@ Run `polyglots --version` to see which build you have; the TUI shows it beside i
 
 ## [Unreleased]
 
+## [0.9.6] - 2026-09-19
+
+### Added
+
+- `docs/ideas.md`, for features worth building that are not yet committed to:
+  fetching a project's waiting strings straight from translate.wordpress.org,
+  checking the model's own fixes with the rules, and Turkish rules for suffixes
+  glued to placeholders and plural nouns after numbers. Each records what is
+  settled and what is still open, so the next person to pick one up starts
+  from the decisions rather than the brainstorm.
+- A backlog entry for moving to the next split part from the review results
+  screen, which is the loop `split` was built for and currently costs a trip
+  to the menu per part.
+
+### Changed
+
+- The stats page caveat and the build guard's refusal message are reworded
+  without em dashes, as is every comment and design document in the
+  repository. Scraped test fixtures, test input and the empty-cell marker in
+  the stats tables keep theirs, since those are data rather than prose.
+
 ## [0.9.5] - 2026-09-19
 
 ### Added

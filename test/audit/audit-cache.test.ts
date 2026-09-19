@@ -146,8 +146,8 @@ describe('auditEntries with a verdict cache', () => {
 
 // The whole class of defect this file did not see: every test above reviews the
 // same file twice, so a key that covers only what the entry says passes all of
-// them. The prompt carries more than that — the references, the comments and
-// the rule findings — and the findings are file-dependent, because the rule
+// them. The prompt carries more than that (the references, the comments and
+// the rule findings), and the findings are file-dependent, because the rule
 // context learns brand words and prior translations from every other entry in
 // the same file. Two submissions sharing a string are therefore not the same
 // question, and must not share a verdict.
@@ -177,7 +177,7 @@ describe('a verdict formed in one file is not served for another', () => {
 
   // Stands in for a reviewer who confirms the check it was handed. An entry that
   // arrives with no title-case hint is never asked about it, and comes back
-  // clean — which is exactly how a cross-file verdict lost a real finding.
+  // clean, which is exactly how a cross-file verdict lost a real finding.
   const confirmsTitleCase: Adjudicator = async (batch) =>
     batch.map((c) =>
       c.hints.some((h) => h.rule === 'title-case')

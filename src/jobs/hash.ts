@@ -169,8 +169,8 @@ export function draftHash(text: string[]): string {
  *
  * Two Claude models answer the same question differently, so a verdict formed
  * by one must not be served as the other's. Recording them both as `claude`
- * would make the escalation project's whole premise — running two engines and
- * comparing what they say — quietly unmeasurable, because the second engine
+ * would make the escalation project's whole premise, running two engines and
+ * comparing what they say, quietly unmeasurable, because the second engine
  * would read the first one's rows.
  */
 /**

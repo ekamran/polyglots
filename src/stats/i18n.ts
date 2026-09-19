@@ -42,7 +42,7 @@ export const PHRASES = {
   // Said plainly and in both languages, because the people who volunteered
   // these translations may be the ones reading the page.
   caveat: {
-    en: '“Flagged” counts entries polyglots raised for a human to look at — a mix of mechanical faults and judgement calls. It measures what this tool flags, not the quality of anyone’s work, and a flag is not a judgement about the contributor who submitted it.',
+    en: '“Flagged” counts entries polyglots raised for a human to look at: a mix of mechanical faults and judgement calls. It measures what this tool flags, not the quality of anyone’s work, and a flag is not a judgement about the contributor who submitted it.',
     tr: '“İşaretlenen”, polyglots’un bir insanın bakması için öne çıkardığı dizgeleri sayar; bunlar hem mekanik hatalar hem de yorum gerektiren durumlardır. Bu sayı, aracın neyi işaretlediğini ölçer; kimsenin emeğinin kalitesini değil. Bir işaret, gönderiyi yapan katkıcı hakkında bir yargı değildir.',
   },
   incompleteOne: { en: 'review did not finish and contributed nothing to these totals.', tr: 'inceleme tamamlanmadı ve bu toplamlara katkı vermedi.' },

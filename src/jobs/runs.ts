@@ -12,7 +12,7 @@ import { parseTally, type Clock } from './json.js'
 //
 // This deliberately does NOT mirror `RunState` in run-control.ts. That one is
 // in-memory control state for the pause key, and nothing writes `paused` or
-// `stopping` to this table — a row saying so would be a state the code cannot
+// `stopping` to this table: a row saying so would be a state the code cannot
 // produce, which is worse than a missing one because it invites a reader to
 // handle a case that never arrives. If a later feature genuinely persists a
 // paused run, adding the member back is one word.
@@ -135,9 +135,9 @@ export function finishRun(
 }
 
 // A run that ended without finishing. Terminal, unlike `stopping`, which is a
-// control state a run passes through. It freezes no totals — a run that did
+// control state a run passes through. It freezes no totals, since a run that did
 // not look at every entry has no honest throughput or quality numbers to
-// report — but it does drop the scratch rows, which nothing will ever read.
+// report, but it does drop the scratch rows, which nothing will ever read.
 //
 // `ending` is required rather than defaulted because the caller is the only
 // thing that knows, and a default would quietly file every crash as whatever
@@ -263,8 +263,8 @@ export function liveRuns(db: Database.Database): LiveRun[] {
  *
  * `abandonRun` handles an ordinary stop. A `kill -9`, a crash, or a closed
  * terminal has no such path, so the row stays `running` for good, keeping its
- * `entry` scratch rows with it. Nothing breaks — `liveRuns` already declines to
- * treat such a row as in flight, so it blocks no build — but `stats` counts it
+ * `entry` scratch rows with it. Nothing breaks (`liveRuns` already declines to
+ * treat such a row as in flight, so it blocks no build), but `stats` counts it
  * under "did not finish" forever, and the scratch rows are never read again.
  *
  * The live set comes from `liveRuns` rather than from a second pid check, so
