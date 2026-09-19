@@ -4,7 +4,17 @@ import { join } from 'node:path'
 import React from 'react'
 import { cleanup } from 'ink-testing-library'
 import { App } from '../../src/tui/App.js'
+import { MENU_ITEMS, type MenuAction } from '../../src/tui/screens/Menu.js'
 import { ESC_DELAY, fakeCommands, keys, makeHome, tick, waitForText, render, type Home } from './helpers.js'
+
+// How many times to press down to land on an action. Derived rather than
+// counted by hand: a new menu item used to shift every index below it and
+// break these tests for a reason that had nothing to do with what they test.
+function hopsTo(action: MenuAction): number {
+  const at = MENU_ITEMS.findIndex((item) => item.value === action)
+  if (at < 0) throw new Error(`no menu item for ${action}`)
+  return at
+}
 
 let home: Home
 let cwd: string
@@ -21,23 +31,30 @@ afterEach(async () => {
   await home.cleanup()
 })
 
-const MENU_ITEMS = [
+// Written out rather than derived from MENU_ITEMS, because this is the
+// assertion about what the user sees and deriving it would make it agree with
+// the code by construction. The length check below is what stops it drifting.
+const EXPECTED_LABELS = [
   'Translate a .po file',
   'Review a submitted .po',
+  'Review statistics',
   'Import Translation Memory (.tmx)',
   /Sync .*glossary/,
   'Configure API keys',
 ]
 
 describe('Menu', () => {
-  it('lists the five actions with the first one highlighted', async () => {
+  it('lists every action with the first one highlighted', async () => {
     const { lastFrame } = render(<App commands={fakeCommands()} cwd={cwd} />)
     await tick()
     const frame = lastFrame() ?? ''
-    for (const item of MENU_ITEMS) {
+    for (const item of EXPECTED_LABELS) {
       if (typeof item === 'string') expect(frame).toContain(item)
       else expect(frame).toMatch(item)
     }
+    // Adding a menu item without listing it here should fail, not pass quietly:
+    // containment alone never notices something new.
+    expect(EXPECTED_LABELS).toHaveLength(MENU_ITEMS.length)
     expect(frame).toMatch(/❯ Translate a \.po file/)
   })
 
@@ -62,7 +79,7 @@ describe('Menu', () => {
   it('reaches the TM import picker with the arrow keys', async () => {
     const { lastFrame, stdin } = render(<App commands={fakeCommands()} cwd={cwd} />)
     await tick()
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < hopsTo('import-tm'); i++) {
       stdin.write(keys.down)
       await tick()
     }
@@ -74,7 +91,7 @@ describe('Menu', () => {
   it('reaches the glossary sync screen', async () => {
     const { lastFrame, stdin } = render(<App commands={fakeCommands()} cwd={cwd} />)
     await tick()
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < hopsTo('sync-glossary'); i++) {
       stdin.write(keys.down)
       await tick()
     }
@@ -86,7 +103,7 @@ describe('Menu', () => {
   it('reaches the API key screen', async () => {
     const { lastFrame, stdin } = render(<App commands={fakeCommands()} cwd={cwd} />)
     await tick()
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < hopsTo('configure-keys'); i++) {
       stdin.write(keys.down)
       await tick()
     }

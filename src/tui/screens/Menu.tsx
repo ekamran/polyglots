@@ -7,11 +7,12 @@ import { Hint } from '../components/Hint.js'
 // which build is running.
 const { version: VERSION } = createRequire(import.meta.url)('../../../package.json') as { version: string }
 
-export type MenuAction = 'translate' | 'review' | 'import-tm' | 'sync-glossary' | 'configure-keys'
+export type MenuAction = 'translate' | 'review' | 'stats' | 'import-tm' | 'sync-glossary' | 'configure-keys'
 
 export const MENU_ITEMS: { label: string; value: MenuAction }[] = [
   { label: 'Translate a .po file', value: 'translate' },
   { label: 'Review a submitted .po', value: 'review' },
+  { label: 'Review statistics', value: 'stats' },
   { label: 'Import Translation Memory (.tmx)', value: 'import-tm' },
   { label: 'Sync WordPress.org glossary', value: 'sync-glossary' },
   { label: 'Configure API keys', value: 'configure-keys' },

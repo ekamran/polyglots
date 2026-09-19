@@ -12,6 +12,7 @@ import { watchKeys } from './cli/keys.js'
 import { createRunControl, type RunState } from './run-control.js'
 import { importTmx } from './commands/tm-import.js'
 import { translateFile, type TranslateSummary } from './commands/translate.js'
+import { DEFAULT_STATS_FILE, writeStats } from './commands/stats.js'
 import { DEFAULT_CONFIG, loadConfig, loadSecrets, maskSecret, saveConfig, saveSecret } from './config.js'
 import {
   UsageError,
@@ -51,6 +52,7 @@ export interface CliDeps {
   syncGlossary?: typeof syncGlossary
   exportGlossary?: typeof exportGlossary
   reviewFile?: typeof reviewFile
+  writeStats?: typeof writeStats
   runTui?: RunTui
 }
 
@@ -61,6 +63,7 @@ interface Cli {
   syncGlossary: typeof syncGlossary
   exportGlossary: typeof exportGlossary
   reviewFile: typeof reviewFile
+  writeStats: typeof writeStats
   runTui: RunTui
   config: () => PolyglotsConfig
   out(line: string): void
@@ -87,6 +90,7 @@ function createCli(deps: CliDeps): Cli {
     syncGlossary: deps.syncGlossary ?? syncGlossary,
     exportGlossary: deps.exportGlossary ?? exportGlossary,
     reviewFile: deps.reviewFile ?? reviewFile,
+    writeStats: deps.writeStats ?? writeStats,
     runTui: deps.runTui ?? loadTui,
     config: () => (cached ??= loadConfig()),
     out: (line) => streams.stdout.write(`${line}\n`),
@@ -464,6 +468,27 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
       const result = await cli.exportGlossary({ locale, file, delimiter })
       if (result.file) cli.out(`Exported ${result.entries} glossary terms (${locale}) to ${result.file}`)
       else cli.streams.stdout.write(result.csv)
+    })
+
+  program
+    .command('stats')
+    .description('Write review statistics to a self-contained HTML page')
+    .option('--out <file>', `Where to write it (default: ${DEFAULT_STATS_FILE})`)
+    .option('--since <date>', 'Only count reviews started on or after this date, e.g. 2026-09-01')
+    .action(async (flags: { out?: string; since?: string }) => {
+      const result = await cli.writeStats({
+        ...(flags.out ? { out: flags.out } : {}),
+        ...(flags.since ? { since: flags.since } : {}),
+      })
+      if (result.submissions === 0) {
+        cli.out(`No finished reviews recorded yet. Wrote ${result.file} anyway; it will fill in as you review.`)
+        return
+      }
+      cli.out(`${result.submissions} submissions, ${result.entries} entries. Wrote ${result.file}.`)
+      if (result.incomplete > 0) {
+        const were = result.incomplete === 1 ? 'review is' : 'reviews are'
+        cli.out(`${result.incomplete} unfinished ${were} left out of the totals.`)
+      }
     })
 
   const cfg = program.command('config').description('Settings and API keys')

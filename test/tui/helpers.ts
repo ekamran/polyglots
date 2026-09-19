@@ -6,6 +6,7 @@ import type { ReactElement } from 'react'
 import { render as inkRender } from 'ink-testing-library'
 import { vi } from 'vitest'
 import { loadConfig, loadSecrets, saveSecret } from '../../src/config.js'
+import type { StatsOptions } from '../../src/commands/stats.js'
 import type { TmImportOptions } from '../../src/commands/tm-import.js'
 import type { TranslateEvent, TranslateOptions, TranslateSummary } from '../../src/commands/translate.js'
 import type { ReviewFileOptions, TuiCommands } from '../../src/tui/commands.js'
@@ -175,6 +176,12 @@ export function reviewSummaryOf(file: string, patch: Partial<ReviewSummary> = {}
 
 export function fakeCommands(overrides: Partial<TuiCommands> = {}): TuiCommands {
   return {
+    writeStats: vi.fn(async (opts: StatsOptions = {}) => ({
+      file: opts.out ?? 'polyglots-stats.html',
+      submissions: 4,
+      entries: 120,
+      incomplete: 0,
+    })),
     translateFile: vi.fn(async (opts: TranslateOptions) => {
       const summary = summaryOf(opts.file)
       opts.onProgress?.({ type: 'start', file: opts.file, total: summary.total, pending: summary.pending })

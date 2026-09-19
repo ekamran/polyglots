@@ -2,6 +2,7 @@ import { createContext, useContext, useState } from 'react'
 import { syncGlossary } from '../commands/glossary-sync.js'
 import { importTmx } from '../commands/tm-import.js'
 import { reviewFile } from '../commands/review.js'
+import { writeStats } from '../commands/stats.js'
 import { translateFile } from '../commands/translate.js'
 import { DEFAULT_CONFIG, loadConfig, loadSecrets, saveSecret } from '../config.js'
 import type { Locale, PolyglotsConfig, ReviewEvent, ReviewSummary } from '../types.js'
@@ -14,6 +15,7 @@ export interface TuiCommands {
   importTmx: typeof importTmx
   syncGlossary: typeof syncGlossary
   reviewFile: typeof reviewFile
+  writeStats: typeof writeStats
   loadConfig: typeof loadConfig
   loadSecrets: typeof loadSecrets
   saveSecret: typeof saveSecret
@@ -24,6 +26,7 @@ export const defaultCommands: TuiCommands = {
   importTmx,
   syncGlossary,
   reviewFile,
+  writeStats,
   loadConfig,
   loadSecrets,
   saveSecret,
