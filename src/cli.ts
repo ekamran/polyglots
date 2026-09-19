@@ -8,6 +8,7 @@ import { Command, CommanderError } from 'commander'
 import { exportGlossary } from './commands/glossary-export.js'
 import { syncGlossary } from './commands/glossary-sync.js'
 import { reviewFile } from './commands/review.js'
+import { splitPo } from './commands/split.js'
 import { watchKeys } from './cli/keys.js'
 import { createRunControl, type RunState } from './run-control.js'
 import { importTmx } from './commands/tm-import.js'
@@ -55,6 +56,7 @@ export interface CliDeps {
   syncGlossary?: typeof syncGlossary
   exportGlossary?: typeof exportGlossary
   reviewFile?: typeof reviewFile
+  splitPo?: typeof splitPo
   writeStats?: typeof writeStats
   runTui?: RunTui
 }
@@ -66,6 +68,7 @@ interface Cli {
   syncGlossary: typeof syncGlossary
   exportGlossary: typeof exportGlossary
   reviewFile: typeof reviewFile
+  splitPo: typeof splitPo
   writeStats: typeof writeStats
   runTui: RunTui
   config: () => PolyglotsConfig
@@ -93,6 +96,7 @@ function createCli(deps: CliDeps): Cli {
     syncGlossary: deps.syncGlossary ?? syncGlossary,
     exportGlossary: deps.exportGlossary ?? exportGlossary,
     reviewFile: deps.reviewFile ?? reviewFile,
+    splitPo: deps.splitPo ?? splitPo,
     writeStats: deps.writeStats ?? writeStats,
     runTui: deps.runTui ?? loadTui,
     config: () => (cached ??= loadConfig()),
@@ -471,6 +475,31 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
       // nothing has looked at, and saying they look approvable invites exactly
       // the bulk approval this tool exists to make safe.
       else if (summary.pending === 0) cli.out('Nothing flagged; the whole submission looks approvable.')
+    })
+
+  program
+    .command('split <file>')
+    .description('Cut a .po into numbered parts so each can be run and submitted on its own')
+    .requiredOption('--size <n>', 'Entries per part, counted over the whole file')
+    .option('--force', 'Write into a folder that already has files in it')
+    .action(async (raw: string, flags: { size: string; force?: boolean }) => {
+      const [target] = expandFileArgs([raw])
+      const summary = await cli.splitPo({
+        file: target!,
+        size: parsePositiveInt('--size', flags.size),
+        ...(flags.force ? { force: true } : {}),
+      })
+      const last = summary.parts[summary.parts.length - 1]
+      // The last part's size is the one thing the arithmetic does not give
+      // away, and it is what decides whether the tail is worth its own run.
+      const tail = last && last.entries !== summary.size ? `, last ${last.entries}` : ''
+      cli.out(`${summary.entries} entries into ${summary.parts.length} parts of ${summary.size}${tail}.`)
+      cli.out(`Wrote ${summary.dir}`)
+      // Higher-numbered parts from an earlier, finer split look exactly like
+      // work waiting to be submitted. Nothing is deleted, so they are named.
+      if (summary.leftBehind.length > 0) {
+        cli.err(`Left alone, not part of this split: ${summary.leftBehind.join(', ')}`)
+      }
     })
 
   const glossary = program.command('glossary').description('translate.wordpress.org glossary cache')

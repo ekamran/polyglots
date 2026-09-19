@@ -10,6 +10,36 @@ Run `polyglots --version` to see which build you have; the TUI shows it beside i
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-19
+
+Cut a big catalogue into parts you can finish.
+
+### Added
+
+- `polyglots split <file> --size <n>` writes numbered parts into
+  `<name>-split/` beside the source, and the menu has the same thing. Pausing a
+  long run already worked, but a review is only worth anything once it is
+  finished, so everything still landed at the end. Parts can be checked and
+  submitted one at a time while the rest wait.
+  - `--size` counts every entry the file holds, translated or not, and the last
+    part is whatever is left over: 9,326 entries at 1,000 is ten parts, the
+    last of them 326.
+  - Splitting costs no repeated work. Draft and verdict keys are derived from
+    the source text alone, so a part reuses everything already cached for the
+    whole file, and a file re-split differently later reuses it again.
+  - The index is padded to the width the part count needs. Unpadded, a name
+    sort reads 1, 10, 100, 11, which is the order the picker lists them in.
+  - Retired `#~` entries go in the first part alone. gettext-parser holds them
+    apart from the translations and re-emits them on compile, so a part built
+    from a copy of the source carries every one of them, in all of the parts.
+  - The parts carry the source header untouched. A split revises no
+    translation, so stamping it would date every part today and name this tool
+    as the author of work it only copied.
+  - Writing into a folder that already has files in it is refused unless
+    `--force` is passed, and even then nothing is deleted. A part left over
+    from an earlier, finer split looks exactly like work waiting to be
+    submitted, so it is named in the output instead.
+
 ## [0.8.0] - 2026-09-19
 
 A second agent to review with.

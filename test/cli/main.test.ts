@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
@@ -371,6 +371,72 @@ describe('config add-name', () => {
     const code = await h.run(['config', 'set', 'properNouns', 'İzmir'])
     expect(code).toBe(2)
     expect(h.stderr.text).toContain('add-name')
+  })
+})
+
+describe('split', () => {
+  const summary = (over: Record<string, unknown> = {}) => ({
+    file: '/tmp/plugin-tr.po',
+    dir: '/tmp/plugin-tr-split',
+    entries: 9326,
+    size: 1000,
+    parts: Array.from({ length: 10 }, (_, i) => ({ file: `/tmp/plugin-tr-split/plugin-tr-${i + 1}.po`, entries: i === 9 ? 326 : 1000 })),
+    leftBehind: [],
+    ...over,
+  })
+
+  it('reports the shape of the split, including the short last part', async () => {
+    const h = harness()
+    const splitPo = vi.fn(async () => summary())
+    expect(await h.run(['split', file, '--size', '1000'], { splitPo })).toBe(0)
+    expect(h.stdout.text).toContain('9326 entries into 10 parts of 1000, last 326.')
+    expect(h.stdout.text).toContain('/tmp/plugin-tr-split')
+  })
+
+  // Nothing to add when the file divides exactly; saying "last 1000" would read
+  // as though the tail were special.
+  it('says nothing about a tail that is a full part', async () => {
+    const h = harness()
+    const splitPo = vi.fn(async () =>
+      summary({ entries: 2000, parts: [{ file: 'a', entries: 1000 }, { file: 'b', entries: 1000 }] }),
+    )
+    await h.run(['split', file, '--size', '1000'], { splitPo })
+    expect(h.stdout.text).toContain('2000 entries into 2 parts of 1000.')
+    expect(h.stdout.text).not.toMatch(/last/)
+  })
+
+  it('passes the size and force through', async () => {
+    const h = harness()
+    const calls: unknown[] = []
+    const splitPo = vi.fn(async (opts: unknown) => {
+      calls.push(opts)
+      return summary()
+    })
+    await h.run(['split', file, '--size', '250', '--force'], { splitPo })
+    expect(calls).toEqual([{ file, size: 250, force: true }])
+  })
+
+  // A leftover from an earlier, finer split looks exactly like work waiting to
+  // be submitted, so it is named rather than deleted.
+  it('names files it left alone', async () => {
+    const h = harness()
+    const splitPo = vi.fn(async () => summary({ leftBehind: ['plugin-tr-19.po'] }))
+    await h.run(['split', file, '--size', '1000'], { splitPo })
+    expect(h.stderr.text).toContain('plugin-tr-19.po')
+  })
+
+  it('requires a size rather than inventing one', async () => {
+    const h = harness()
+    const splitPo = vi.fn()
+    expect(await h.run(['split', file], { splitPo })).toBe(2)
+    expect(splitPo).not.toHaveBeenCalled()
+  })
+
+  it('refuses a size that is not a positive integer', async () => {
+    const h = harness()
+    const splitPo = vi.fn()
+    expect(await h.run(['split', file, '--size', '0'], { splitPo })).toBe(2)
+    expect(splitPo).not.toHaveBeenCalled()
   })
 })
 

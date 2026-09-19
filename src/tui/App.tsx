@@ -8,6 +8,7 @@ import { ConfigureKeys } from './screens/ConfigureKeys.js'
 import { ImportTm } from './screens/ImportTm.js'
 import { Menu, type MenuAction } from './screens/Menu.js'
 import { Review } from './screens/Review.js'
+import { Split } from './screens/Split.js'
 import { Stats } from './screens/Stats.js'
 import { SyncGlossary } from './screens/SyncGlossary.js'
 import { Translate } from './screens/Translate.js'
@@ -68,6 +69,7 @@ export function App({ commands = defaultCommands, cwd = process.cwd(), activity,
         )}
         {screen === 'translate' && <Translate cwd={cwd} onBack={back} />}
         {screen === 'review' && <Review cwd={cwd} onBack={back} />}
+        {screen === 'split' && <Split cwd={cwd} onBack={back} />}
         {screen === 'import-tm' && <ImportTm cwd={cwd} onBack={back} />}
         {screen === 'stats' && <Stats onBack={back} />}
         {screen === 'sync-glossary' && <SyncGlossary onBack={back} />}

@@ -174,7 +174,7 @@ export class PoFile {
   constructor(
     readonly path: string,
     readonly raw: GetTextTranslations,
-    private readonly order: Map<string, number> = new Map(),
+    readonly order: Map<string, number> = new Map(),
   ) {
     this.nplurals = parseNplurals(raw.headers['Plural-Forms'])
   }
@@ -275,12 +275,22 @@ export class PoFile {
     }
   }
 
-  async save(path: string = this.path, now: Date = new Date()): Promise<void> {
+  /**
+   * Writes the catalogue out, atomically, in the source's own entry order.
+   *
+   * `stamp` records that this tool revised the file. An operation that changed
+   * no translation passes false: splitting a catalogue into parts would
+   * otherwise date every part today and claim polyglots wrote translations it
+   * only copied.
+   */
+  async save(path: string = this.path, now: Date = new Date(), stamp = true): Promise<void> {
     const target = await realpath(path).catch(() => path)
     const mode = (await stat(target).catch(() => undefined))?.mode
-    const stamp = { 'PO-Revision-Date': revisionDate(now), 'X-Generator': 'polyglots' }
+    const stamped: Record<string, string> = stamp
+      ? { 'PO-Revision-Date': revisionDate(now), 'X-Generator': 'polyglots' }
+      : {}
     const buffer = po.compile(
-      { ...this.raw, headers: { ...this.raw.headers, ...stamp } },
+      { ...this.raw, headers: { ...this.raw.headers, ...stamped } },
       { sort: (a, b) => this.rank(unitKey(a.msgid, a.msgctxt)) - this.rank(unitKey(b.msgid, b.msgctxt)) },
     )
     const tmp = join(dirname(target), `.${basename(target)}.${randomBytes(6).toString('hex')}.tmp`)
@@ -292,7 +302,7 @@ export class PoFile {
       await unlink(tmp).catch(() => undefined)
       throw err
     }
-    if (path === this.path) Object.assign(this.raw.headers, stamp)
+    if (path === this.path) Object.assign(this.raw.headers, stamped)
   }
 }
 

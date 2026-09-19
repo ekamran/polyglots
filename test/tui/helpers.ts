@@ -6,6 +6,7 @@ import type { ReactElement } from 'react'
 import { render as inkRender } from 'ink-testing-library'
 import { vi } from 'vitest'
 import { loadConfig, saveConfig, loadSecrets, saveSecret } from '../../src/config.js'
+import type { SplitOptions } from '../../src/commands/split.js'
 import type { StatsOptions } from '../../src/commands/stats.js'
 import type { TmImportOptions } from '../../src/commands/tm-import.js'
 import type { TranslateEvent, TranslateOptions, TranslateSummary } from '../../src/commands/translate.js'
@@ -196,6 +197,14 @@ export function fakeCommands(overrides: Partial<TuiCommands> = {}): TuiCommands 
       return { files: files.length, entries: 3 * files.length, upserted: 2 * files.length }
     }),
     syncGlossary: vi.fn(async () => ({ entries: 42 })),
+    splitPo: vi.fn(async (opts: SplitOptions) => ({
+      file: opts.file,
+      dir: opts.file.replace(/\.po$/, '-split'),
+      entries: 10,
+      size: opts.size,
+      parts: [{ file: 'part-01.po', entries: opts.size }],
+      leftBehind: [],
+    })),
     reviewFile: vi.fn(async (opts: ReviewFileOptions) => {
       const summary = reviewSummaryOf(opts.file)
       opts.onProgress?.({ type: 'start', file: opts.file, total: summary.total, reviewable: summary.reviewed })

@@ -39,6 +39,7 @@ afterEach(async () => {
 const EXPECTED_LABELS = [
   'Translate a .po file',
   'Review a submitted .po',
+  'Split a .po into parts',
   'Review statistics',
   'Import Translation Memory (.tmx)',
   /Sync .*glossary/,
