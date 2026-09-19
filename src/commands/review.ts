@@ -16,7 +16,7 @@ import {
   type ReviewMarker,
 } from '../audit/resume.js'
 import {
-  abandonRun,
+  endRun,
   configHash as computeConfigHash,
   engineId,
   finishRun,
@@ -338,10 +338,12 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
     else if (pending === 0) await rm(target, { force: true })
 
     // Written once, from the same numbers the caller is about to be given, so the
-    // history and the report cannot disagree. A run stopped part way is abandoned
-    // rather than marked done: it has no totals worth freezing, and abandoning it
-    // also drops the scratch entry rows nothing will read again.
-    if (pending > 0) abandonRun(jobs, runId)
+    // history and the report cannot disagree. A run stopped part way is ended
+    // rather than marked done: it has no totals worth freezing, and ending it
+    // also drops the scratch entry rows nothing will read again. It ends as
+    // `stopped`, not as a fault: the operator asked for it, and what it got
+    // through is cached for the run that resumes it.
+    if (pending > 0) endRun(jobs, runId, 'stopped')
     else {
       finishRun(jobs, runId, {
         entries: summary.reviewed,
@@ -356,7 +358,7 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
     // A run in progress when this throws is neither done nor still running: mark
     // it stopped so history does not claim otherwise, before the handle it needs
     // to do that is closed underneath it.
-    if (runId !== undefined) abandonRun(jobs, runId)
+    if (runId !== undefined) endRun(jobs, runId, 'failed')
     throw err
   } finally {
     if (ownsJobsDb) jobs.close()

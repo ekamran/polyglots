@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import type Database from 'better-sqlite3'
 import { openJobsDb } from '../../src/jobs/db.js'
 import {
-  abandonRun,
+  endRun,
   finishRun,
   getRun,
   liveRuns,
@@ -166,10 +166,10 @@ describe('getRun reading a row back', () => {
   })
 })
 
-describe('abandonRun', () => {
+describe('endRun', () => {
   it('marks a run stopped, with no totals to report', () => {
     const id = startRun(db, input, () => 1000)
-    abandonRun(db, id, () => 5000)
+    endRun(db, id, 'stopped', () => 5000)
     const row = getRun(db, id)!
     expect(row.state).toBe('stopped')
     expect(row.finishedAt).toBe(5000)
@@ -182,7 +182,7 @@ describe('abandonRun', () => {
   it('drops the scratch entry rows, which nothing will ever read once abandoned', () => {
     const id = startRun(db, input)
     recordEntries(db, id, ['a', 'b'])
-    abandonRun(db, id)
+    endRun(db, id, 'stopped')
     const n = db.prepare<[number], { n: number }>('SELECT COUNT(*) AS n FROM entry WHERE run_id = ?').get(id)!.n
     expect(n).toBe(0)
   })
@@ -201,7 +201,7 @@ describe('liveRuns', () => {
   })
 
   it('ignores an abandoned run', () => {
-    abandonRun(db, startRun(db, input))
+    endRun(db, startRun(db, input), 'stopped')
     expect(liveRuns(db)).toEqual([])
   })
 
@@ -289,14 +289,14 @@ describe('reapAbandonedRuns', () => {
 
   it('does not touch an already-stopped run', () => {
     const id = startRun(db, input)
-    abandonRun(db, id, () => 100)
+    endRun(db, id, 'stopped', () => 100)
     expect(reapAbandonedRuns(db, () => 200)).toBe(0)
     expect(getRun(db, id)!.finishedAt).toBe(100)
   })
 
   it('claims no totals for the run it reaps', () => {
     // An abandoned run did not look at every entry, so it has no honest
-    // throughput to report. Same reasoning as abandonRun.
+    // throughput to report. Same reasoning as endRun.
     const id = startRun(db, input)
     dead(id)
     reapAbandonedRuns(db)
@@ -324,5 +324,47 @@ describe('reapAbandonedRuns', () => {
     expect(stillRunning.map((r) => r.id)).toEqual(liveIds)
     expect(liveIds).toEqual([live])
     expect(gone).not.toBe(live)
+  })
+})
+
+describe('how a run ended', () => {
+  it('records that the operator stopped it', () => {
+    // Pressing q is a pause, not a failure: the work is cached and the next
+    // run resumes from it. Filing it as abandoned is what made the stats page
+    // call a normal workflow step a warning.
+    const id = startRun(db, input)
+    endRun(db, id, 'stopped')
+    expect(getRun(db, id)).toMatchObject({ state: 'stopped', ending: 'stopped' })
+  })
+
+  it('records that it threw', () => {
+    const id = startRun(db, input)
+    endRun(db, id, 'failed')
+    expect(getRun(db, id)!.ending).toBe('failed')
+  })
+
+  it('records that the reaper found it', () => {
+    const id = startRun(db, input)
+    db.prepare('UPDATE run SET pid = ? WHERE id = ?').run(999_999, id)
+    reapAbandonedRuns(db)
+    expect(getRun(db, id)!.ending).toBe('abandoned')
+  })
+
+  it('leaves the ending unset on a row that predates the column', () => {
+    // Nothing can say how these ended, and guessing would either invent a
+    // crash or hide one.
+    const id = startRun(db, input)
+    db.prepare(`UPDATE run SET state = 'stopped', ended = NULL WHERE id = ?`).run(id)
+    expect(getRun(db, id)!.ending).toBeUndefined()
+  })
+
+  it('says nothing about a run still going', () => {
+    expect(getRun(db, startRun(db, input))!.ending).toBeUndefined()
+  })
+
+  it('says nothing about a run that finished', () => {
+    const id = startRun(db, input)
+    finishRun(db, id, { entries: 1, flagged: 0, repaired: 0, unreviewed: 0, approvable: 1, byCategory: {} })
+    expect(getRun(db, id)!.ending).toBeUndefined()
   })
 })

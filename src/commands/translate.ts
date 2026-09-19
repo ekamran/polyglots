@@ -4,7 +4,7 @@ import type { RunControl } from '../run-control.js'
 import { loadConfig, loadSecrets } from '../config.js'
 import { DraftQuotaError, DraftRateLimitError, getDraftEngine } from '../draft/index.js'
 import {
-  abandonRun,
+  endRun,
   draftConfigHash,
   draftHash,
   finishRun,
@@ -447,9 +447,11 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
 
     // Written once, from the same numbers the caller is about to be handed, so
     // the history and the report cannot disagree. A run stopped part way is
-    // abandoned rather than marked done: it has no totals worth freezing.
+    // ended rather than marked done: it has no totals worth freezing. It ends
+    // as `stopped`, not as a fault: the operator asked for it, and its drafts
+    // are cached for the run that resumes it.
     if (summary.stopped !== undefined) {
-      abandonRun(jobs, runId)
+      endRun(jobs, runId, 'stopped')
     } else {
       finishRun(jobs, runId, {
         // The entries this run worked on, which is what review freezes in the
@@ -470,7 +472,7 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
     // A run in progress when this throws is neither done nor still running:
     // mark it stopped so history does not claim otherwise, before the handle
     // it needs to do that is closed underneath it.
-    if (runId !== undefined) abandonRun(jobs, runId)
+    if (runId !== undefined) endRun(jobs, runId, 'failed')
     throw err
   } finally {
     if (ownsDb) db.close()

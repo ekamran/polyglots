@@ -23,7 +23,7 @@ export {
   type VerdictKey,
 } from './verdicts.js'
 export {
-  abandonRun,
+  endRun,
   finishRun,
   liveRuns,
   getRun,
@@ -31,6 +31,7 @@ export {
   recordEntries,
   startRun,
   type LiveRun,
+  type RunEnding,
   type RunRow,
   type RunRowState,
   type RunTotals,

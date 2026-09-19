@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type Database from 'better-sqlite3'
 import { openJobsDb } from '../../src/jobs/db.js'
-import { abandonRun, finishRun, startRun } from '../../src/jobs/runs.js'
+import { endRun, finishRun, startRun } from '../../src/jobs/runs.js'
 import { reviewStats, translateStats } from '../../src/stats/query.js'
 
 let db: Database.Database
@@ -119,11 +119,11 @@ describe('reviewStats and runs that never finished', () => {
       { file: '/tmp/x.po', command: 'review', locale: 'tr', nplurals: 2, batchSize: 25, engine: 'claude' },
       () => MONDAY,
     )
-    abandonRun(db, id)
+    endRun(db, id, 'stopped')
     expect(reviewStats(db).entries).toBe(100)
   })
 
-  it('counts them separately, so the page can say they happened', () => {
+  it('counts a run that threw, so the page can say it happened', () => {
     // Silently dropping failures is the same class of lie as a count that
     // disagrees with the file it describes.
     const id = startRun(
@@ -131,8 +131,44 @@ describe('reviewStats and runs that never finished', () => {
       { file: '/tmp/x.po', command: 'review', locale: 'tr', nplurals: 2, batchSize: 25, engine: 'claude' },
       () => MONDAY,
     )
-    abandonRun(db, id)
+    endRun(db, id, 'failed')
     expect(reviewStats(db).incomplete).toBe(1)
+  })
+
+  it('counts a run the reaper cleared, which really did not finish', () => {
+    const id = startRun(
+      db,
+      { file: '/tmp/x.po', command: 'review', locale: 'tr', nplurals: 2, batchSize: 25, engine: 'claude' },
+      () => MONDAY,
+    )
+    endRun(db, id, 'abandoned')
+    expect(reviewStats(db).incomplete).toBe(1)
+  })
+
+  it('does not count a run the operator stopped on purpose', () => {
+    // Stopping to review part way and resuming is ordinary use, not a fault.
+    // Its work is cached and the next run picks it up, so warning about it
+    // reports a workflow as a problem.
+    const id = startRun(
+      db,
+      { file: '/tmp/x.po', command: 'review', locale: 'tr', nplurals: 2, batchSize: 25, engine: 'claude' },
+      () => MONDAY,
+    )
+    endRun(db, id, 'stopped')
+    expect(reviewStats(db).incomplete).toBe(0)
+  })
+
+  it('does not count a row that predates the ending column', () => {
+    // It cannot say how it ended. By far the commonest way a run stopped was
+    // the operator stopping it, so treating the unknown as a fault would put a
+    // warning on the page for something that was probably routine.
+    const id = startRun(
+      db,
+      { file: '/tmp/x.po', command: 'review', locale: 'tr', nplurals: 2, batchSize: 25, engine: 'claude' },
+      () => MONDAY,
+    )
+    db.prepare(`UPDATE run SET state = 'stopped', ended = NULL WHERE id = ?`).run(id)
+    expect(reviewStats(db).incomplete).toBe(0)
   })
 
   it('does not count a translate run that was abandoned', () => {
@@ -141,7 +177,7 @@ describe('reviewStats and runs that never finished', () => {
       { file: '/tmp/t.po', command: 'translate', locale: 'tr', nplurals: 2, batchSize: 25, engine: 'deepl' },
       () => MONDAY,
     )
-    abandonRun(db, id)
+    endRun(db, id, 'failed')
     expect(reviewStats(db).incomplete).toBe(0)
   })
 })

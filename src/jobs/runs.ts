@@ -18,6 +18,22 @@ import { parseTally, type Clock } from './json.js'
 // paused run, adding the member back is one word.
 export type RunRowState = 'running' | 'done' | 'stopped'
 
+/**
+ * How a run that did not finish came to an end.
+ *
+ * `state` alone cannot say. It records only that a run is terminal, so a
+ * deliberate stop, a thrown error and a killed process all read as `stopped`,
+ * and anything counting "did not finish" counts all three as faults. Stopping
+ * part way to look at the output and resuming later is ordinary use of this
+ * tool, and its work is cached, so filing it beside a crash reports a workflow
+ * as a problem.
+ *
+ * - `stopped`   the operator ended it; the work so far is cached and resumable
+ * - `failed`    it threw; the run did not decide how much it got through
+ * - `abandoned` the process died and `reapAbandonedRuns` cleared the row later
+ */
+export type RunEnding = 'stopped' | 'failed' | 'abandoned'
+
 export interface StartRunInput {
   file: string
   // The Project-Id-Version header. Captured because a reviewed file gets moved,
@@ -50,6 +66,9 @@ export interface RunRow extends StartRunInput {
   unreviewed?: number
   approvable?: number
   byCategory?: Record<string, number>
+  // Absent while running, absent when `done`, and absent on a row written
+  // before the column existed, which cannot say how it ended.
+  ending?: RunEnding
 }
 
 export function startRun(db: Database.Database, input: StartRunInput, now: Clock = () => Date.now()): number {
@@ -119,9 +138,22 @@ export function finishRun(
 // control state a run passes through. It freezes no totals — a run that did
 // not look at every entry has no honest throughput or quality numbers to
 // report — but it does drop the scratch rows, which nothing will ever read.
-export function abandonRun(db: Database.Database, runId: number, now: Clock = () => Date.now()): void {
+//
+// `ending` is required rather than defaulted because the caller is the only
+// thing that knows, and a default would quietly file every crash as whatever
+// the common case happened to be. That conflation is the defect this replaced.
+export function endRun(
+  db: Database.Database,
+  runId: number,
+  ending: RunEnding,
+  now: Clock = () => Date.now(),
+): void {
   const write = db.transaction((): void => {
-    db.prepare(`UPDATE run SET state = 'stopped', finished_at = ? WHERE id = ?`).run(now(), runId)
+    db.prepare(`UPDATE run SET state = 'stopped', ended = ?, finished_at = ? WHERE id = ?`).run(
+      ending,
+      now(),
+      runId,
+    )
     db.prepare('DELETE FROM entry WHERE run_id = ?').run(runId)
   })
   write()
@@ -145,6 +177,7 @@ interface Row {
   unreviewed: number | null
   approvable: number | null
   by_category: string | null
+  ended: string | null
 }
 
 function optional(value: number | null): number | undefined {
@@ -173,7 +206,16 @@ export function getRun(db: Database.Database, runId: number): RunRow | undefined
     ...(optional(row.unreviewed) === undefined ? {} : { unreviewed: row.unreviewed! }),
     ...(optional(row.approvable) === undefined ? {} : { approvable: row.approvable! }),
     ...(byCategory === undefined ? {} : { byCategory }),
+    ...(isEnding(row.ended) ? { ending: row.ended } : {}),
   }
+}
+
+const ENDINGS: ReadonlySet<string> = new Set<RunEnding>(['stopped', 'failed', 'abandoned'])
+
+// A value this build does not know reads as absent rather than as itself: the
+// alternative is handing a caller a union member that does not exist.
+function isEnding(value: string | null): value is RunEnding {
+  return value !== null && ENDINGS.has(value)
 }
 
 export interface LiveRun {
@@ -249,7 +291,7 @@ export function reapAbandonedRuns(db: Database.Database, now: Clock = () => Date
   const reap = db.transaction((ids: number[]): void => {
     // No totals, for the reason abandonRun gives: a run that did not reach
     // every entry has no honest numbers to report.
-    const stop = db.prepare(`UPDATE run SET state = 'stopped', finished_at = ? WHERE id = ?`)
+    const stop = db.prepare(`UPDATE run SET state = 'stopped', ended = 'abandoned', finished_at = ? WHERE id = ?`)
     const clear = db.prepare('DELETE FROM entry WHERE run_id = ?')
     const at = now()
     for (const id of ids) {

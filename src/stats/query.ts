@@ -132,10 +132,26 @@ function finishedRuns(db: Database.Database, command: 'review' | 'translate', si
     .all(since)
 }
 
+// Runs that really did not finish, which is narrower than "not done".
+//
+// A run the operator stopped is not a fault: stopping part way to look at the
+// output and resuming later is ordinary use, and the work so far is cached, so
+// counting it here would put a warning on the page for a workflow working
+// exactly as intended. Only a throw and a killed process count.
+//
+// A row from before the `ended` column cannot say how it ended, and is not
+// counted: the commonest way a run stopped was the operator stopping it, so
+// treating the unknown as a fault invents crashes that mostly did not happen.
+// The cost is that a genuine old crash goes unreported, which is the quieter
+// of the two wrong answers.
+//
+// A row still at `running` is excluded by the same rule, and the reaper turns
+// a dead one into `abandoned`, at which point it is counted.
 function unfinishedRuns(db: Database.Database, command: 'review' | 'translate', since: number): number {
   return db
     .prepare<[string, number], { n: number }>(
-      `SELECT COUNT(*) AS n FROM run WHERE command = ? AND state <> 'done' AND started_at >= ?`,
+      `SELECT COUNT(*) AS n FROM run
+       WHERE command = ? AND ended IN ('failed', 'abandoned') AND started_at >= ?`,
     )
     .get(command, since)!.n
 }

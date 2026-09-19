@@ -23,6 +23,13 @@ CREATE TABLE IF NOT EXISTS run (
   -- be running, and without a pid there is no way to tell that from a run that
   -- is genuinely in flight.
   pid         INTEGER,
+  -- How a run that did not finish came to an end: 'stopped' by the operator,
+  -- 'failed' on a throw, 'abandoned' when the reaper found the process gone.
+  -- The state column says only that a run is terminal, which cannot tell a
+  -- deliberate pause from a crash, and the stats page needs those apart. NULL
+  -- on a row written before this column, and on any run still going or
+  -- finished cleanly.
+  ended       TEXT,
   started_at  INTEGER NOT NULL,
   finished_at INTEGER,
   entries     INTEGER,
@@ -86,6 +93,7 @@ function addMissingColumns(db: Database.Database): void {
   const has = (table: string, column: string): boolean =>
     (db.pragma(`table_info(${table})`) as Array<{ name: string }>).some((c) => c.name === column)
   if (!has('run', 'pid')) db.exec('ALTER TABLE run ADD COLUMN pid INTEGER')
+  if (!has('run', 'ended')) db.exec('ALTER TABLE run ADD COLUMN ended TEXT')
 }
 
 export function openJobsDb(path: string = jobsDbFile()): Database.Database {
