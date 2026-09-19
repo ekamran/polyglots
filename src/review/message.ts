@@ -63,8 +63,8 @@ export function groupFor(rule: string): string {
  * something that demonstrably happened.
  *
  * `cap` is the total the sentence already claimed. Rounding up past it would
- * print more of something than there were entries altogether — 25 glossary
- * fixes out of 24 entries — so the rounding goes down instead. That is the one
+ * print more of something than there were entries altogether, 25 glossary
+ * fixes out of 24 entries, so the rounding goes down instead. That is the one
  * direction an approximation cannot be allowed to err in a message someone
  * else will read.
  */

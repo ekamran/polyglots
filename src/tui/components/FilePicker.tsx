@@ -43,7 +43,7 @@ export interface FilePickerProps {
    * Extra detail to show beside a matching file, such as how many entries it
    * holds. Called once per file per listing.
    *
-   * Must be a stable reference — a module-level function, not an inline arrow.
+   * Must be a stable reference: a module-level function, not an inline arrow.
    * It is a dependency of the memo that stops the directory being re-read on
    * every keystroke, so a new identity each render would defeat it.
    */
@@ -85,8 +85,8 @@ function isDirectory(path: string, entry: { isDirectory(): boolean; isSymbolicLi
 }
 
 // A name tiebreak under every mode, so the list cannot reshuffle between renders
-// of the same directory. Files written in the same millisecond are ordinary —
-// a split job emits a directory of them at once — and an unstable order in a
+// of the same directory. Files written in the same millisecond are ordinary,
+// a split job emits a directory of them at once, and an unstable order in a
 // picker means the row under the cursor is not the row that was under it a
 // moment ago.
 export function compareEntries(mode: SortMode): (a: Entry, b: Entry) => number {
@@ -164,8 +164,8 @@ export function FilePicker({ dir, extensions, onPick, limit = 15, annotate }: Fi
 
   // SelectInput binds the arrows, j, k and return; s is free. It resets its
   // cursor to the top whenever the item values change, which is what a re-sort
-  // wants — the row that was under the cursor has moved, and leaving the cursor
-  // at the same index would leave it on an unrelated file.
+  // wants, because the row that was under the cursor has moved and holding the
+  // index would put the cursor on an unrelated file.
   useInput((input) => {
     if (input === 's') setSort(nextSort)
   })

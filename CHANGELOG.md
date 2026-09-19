@@ -10,6 +10,66 @@ Run `polyglots --version` to see which build you have; the TUI shows it beside i
 
 ## [Unreleased]
 
+## [0.7.4] - 2026-09-19
+
+### Added
+
+- `CLAUDE.md` in the project root, recording the things about this repository that
+  are expensive to rediscover: the build guard, which database holds work that
+  cannot be regenerated, the template-literal trap in the migrations, and where a
+  cache invalidates itself.
+
+## [0.7.3] - 2026-09-19
+
+Say it in a sentence the requester can read.
+
+### Added
+
+- The review results screen offers the line to post back to whoever submitted the
+  translation, and `c` puts it on the clipboard. The tally a review ends with
+  answers the reviewer's question; a contributor reads `ai:glossary 23 · glossary
+  20` and learns nothing.
+  - The link is left as an empty `href`. Only the reviewer knows which
+    translations page they mean, and guessing a URL into a message bound for a
+    public forum is not a guess worth making.
+  - `polyglots review` prints the same sentence rather than copying it. A run
+    there may be in a pipe or a script, where reaching for the clipboard is a
+    side effect nobody asked for.
+  - Clipboard access never throws. A missing helper, a sandbox that blocks
+    spawning, or a headless machine is a reported failure with the sentence still
+    on screen, so a copy that did not work costs a keystroke rather than the
+    run's output.
+- `byGroup` on the review summary: the run's findings folded into the few groups
+  the message names, counted over repaired entries, once per entry per group.
+  `byRule` counts a rule firing, so an entry both a rule and the model caught
+  appears in it twice; summing that per group reported 43 glossary problems out
+  of 37 entries fixed. Rounding in the sentence is capped by the number it opens
+  with, so a group that is nearly the whole run rounds down rather than claiming
+  more fixes of one kind than there were fixes at all.
+
+## [0.7.2] - 2026-09-19
+
+Know which file you are about to review.
+
+### Added
+
+- Each catalogue in the file picker shows how many entries it holds, in a column.
+  A 9,826-entry stable export and the 222-entry waiting export next to it are
+  otherwise indistinguishable until several minutes into a run. The count is read
+  from the file rather than parsed, which agrees with the parser on every export
+  translate.wordpress.org produces and is fast enough to redo on every keystroke.
+- `s` cycles the picker's order: newest first, name A-Z, name Z-A, oldest first.
+
+### Changed
+
+- The picker orders by modification time, newest first, instead of by name. The
+  file a session is about is nearly always the one just downloaded, and a name
+  sort puts it wherever the alphabet says. Every order breaks ties on name, so a
+  directory a split job wrote in one millisecond cannot reshuffle between renders.
+- The selected row in the picker takes the same blue as the pointer. It was
+  yellow, as were all the unselected catalogues around it, leaving weight as the
+  only thing distinguishing the cursor from its neighbours.
+
 ## [0.7.1] - 2026-09-19
 
 ### Added
