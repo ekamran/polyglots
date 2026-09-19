@@ -44,16 +44,23 @@ export function Stats({ onBack }: StatsProps) {
       {editing && <Hint>enter to write the page · esc back to menu</Hint>}
       {running && <Text>Reading the run history…</Text>}
       {task.state.status === 'done' &&
-        (task.state.result.submissions === 0 ? (
+        (task.state.result.submissions === 0 && task.state.result.translateRuns === 0 ? (
           <Box flexDirection="column">
-            <Text bold>No finished reviews recorded yet.</Text>
-            <Text dimColor>Wrote {task.state.result.file} anyway; it will fill in as you review.</Text>
+            <Text bold>Nothing recorded yet.</Text>
+            <Text dimColor>Wrote {task.state.result.file} anyway; it will fill in as you work.</Text>
           </Box>
         ) : (
           <Box flexDirection="column">
-            <Text bold>
-              {task.state.result.submissions} submissions, {task.state.result.entries} entries.
-            </Text>
+            {task.state.result.submissions > 0 && (
+              <Text bold>
+                {task.state.result.submissions} submissions reviewed, {task.state.result.entries} entries.
+              </Text>
+            )}
+            {task.state.result.translateRuns > 0 && (
+              <Text bold>
+                {task.state.result.translateRuns} translate runs, {task.state.result.translateEntries} entries drafted.
+              </Text>
+            )}
             <Text>Wrote {task.state.result.file}. Open it in a browser.</Text>
             {task.state.result.incomplete > 0 && (
               <Text dimColor>

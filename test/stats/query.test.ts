@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import type Database from 'better-sqlite3'
 import { openJobsDb } from '../../src/jobs/db.js'
 import { abandonRun, finishRun, startRun } from '../../src/jobs/runs.js'
-import { reviewStats } from '../../src/stats/query.js'
+import { reviewStats, translateStats } from '../../src/stats/query.js'
 
 let db: Database.Database
 let dir: string
@@ -220,7 +220,7 @@ describe('reviewStats by project', () => {
     reviewed({ project: 'Plugins - Beta', startedAt: MONDAY, tookMs: 1, entries: 5, flagged: 0 })
     const rows = reviewStats(db).byProject
     expect(rows).toHaveLength(2)
-    expect(rows[0]).toEqual({ project: 'Plugins - Alpha', submissions: 2, entries: 30, flagged: 5 })
+    expect(rows[0]).toEqual({ project: 'Plugins - Alpha', runs: 2, entries: 30, flagged: 5 })
   })
 
   it('falls back to the file name when the .po declared no project', () => {
@@ -256,5 +256,140 @@ describe('reviewStats over a window', () => {
     const s = reviewStats(db, { since: MONDAY + 30 * DAY })
     expect(s.from).toBeUndefined()
     expect(s.to).toBeUndefined()
+  })
+})
+
+describe('reviewStats by engine', () => {
+  function withEngine(engine: string, startedAt: number, tookMs: number, entries: number, flagged: number): void {
+    const id = startRun(
+      db,
+      { file: '/tmp/p.po', command: 'review', locale: 'tr', nplurals: 2, batchSize: 25, engine },
+      () => startedAt,
+    )
+    finishRun(
+      db,
+      id,
+      { entries, flagged, repaired: flagged, unreviewed: 0, approvable: entries - flagged, byCategory: {} },
+      () => startedAt + tookMs,
+    )
+  }
+
+  it('groups runs by the engine that judged them', () => {
+    withEngine('claude:opus', MONDAY, 1000, 100, 30)
+    withEngine('claude:opus', MONDAY, 1000, 100, 10)
+    withEngine('rules', MONDAY, 10, 50, 25)
+    const rows = reviewStats(db).byEngine
+    expect(rows).toHaveLength(2)
+    expect(rows.find((r) => r.engine === 'claude:opus')).toMatchObject({ runs: 2, entries: 200, flagged: 40 })
+  })
+
+  it('keeps two models apart, which is the comparison this exists for', () => {
+    withEngine('claude:opus', MONDAY, 1000, 100, 30)
+    withEngine('claude:sonnet', MONDAY, 1000, 100, 50)
+    expect(reviewStats(db).byEngine.map((r) => r.engine).sort()).toEqual(['claude:opus', 'claude:sonnet'])
+  })
+
+  it('reports each engine its own median, so a slow one is visible', () => {
+    withEngine('claude:opus', MONDAY, 7_200_000, 10, 1)
+    withEngine('rules', MONDAY, 4000, 10, 1)
+    const rows = reviewStats(db).byEngine
+    expect(rows.find((r) => r.engine === 'rules')!.medianTurnaroundMs).toBe(4000)
+    expect(rows.find((r) => r.engine === 'claude:opus')!.medianTurnaroundMs).toBe(7_200_000)
+  })
+
+  it('orders by entries, so the engine doing the work leads', () => {
+    withEngine('rules', MONDAY, 10, 5, 0)
+    withEngine('claude:opus', MONDAY, 10, 500, 0)
+    expect(reviewStats(db).byEngine[0]!.engine).toBe('claude:opus')
+  })
+})
+
+describe('translateStats', () => {
+  function drafted(over: {
+    engine?: string
+    project?: string
+    startedAt: number
+    tookMs?: number
+    entries: number
+    fuzzy: number
+    skipped?: number
+  }): void {
+    const id = startRun(
+      db,
+      {
+        file: '/tmp/t-tr.po',
+        ...(over.project ? { project: over.project } : {}),
+        command: 'translate',
+        locale: 'tr',
+        nplurals: 2,
+        batchSize: 25,
+        engine: over.engine ?? 'deepl',
+      },
+      () => over.startedAt,
+    )
+    finishRun(
+      db,
+      id,
+      {
+        entries: over.entries,
+        flagged: over.fuzzy,
+        repaired: over.entries - over.fuzzy,
+        unreviewed: over.skipped ?? 0,
+        approvable: over.entries - over.fuzzy,
+        byCategory: {},
+      },
+      () => over.startedAt + (over.tookMs ?? 1000),
+    )
+  }
+
+  it('reports zeroes rather than throwing when nothing was translated', () => {
+    const s = translateStats(db)
+    expect(s.runs).toBe(0)
+    expect(s.fuzzyRate).toBe(0)
+  })
+
+  it('counts finished translate runs and what they drafted', () => {
+    drafted({ startedAt: MONDAY, entries: 100, fuzzy: 20 })
+    drafted({ startedAt: MONDAY + DAY, entries: 200, fuzzy: 10 })
+    const s = translateStats(db)
+    expect(s.runs).toBe(2)
+    expect(s.entries).toBe(300)
+    expect(s.fuzzy).toBe(30)
+    expect(s.fuzzyRate).toBeCloseTo(0.1, 5)
+  })
+
+  it('ignores review runs, which measure different work', () => {
+    const id = startRun(
+      db,
+      { file: '/tmp/r.po', command: 'review', locale: 'tr', nplurals: 2, batchSize: 25, engine: 'claude' },
+      () => MONDAY,
+    )
+    finishRun(db, id, { entries: 999, flagged: 9, repaired: 0, unreviewed: 0, approvable: 0, byCategory: {} })
+    expect(translateStats(db).runs).toBe(0)
+  })
+
+  it('counts batches an engine gave up on, separately from fuzzy drafts', () => {
+    // A skipped batch was never drafted; a fuzzy draft was drafted and needs a
+    // human. Folding them together would hide an engine that keeps failing.
+    drafted({ startedAt: MONDAY, entries: 100, fuzzy: 20, skipped: 5 })
+    const s = translateStats(db)
+    expect(s.skipped).toBe(5)
+    expect(s.fuzzy).toBe(20)
+  })
+
+  it('compares the draft engines that produced the work', () => {
+    drafted({ engine: 'deepl', startedAt: MONDAY, entries: 300, fuzzy: 30 })
+    drafted({ engine: 'openai', startedAt: MONDAY, entries: 100, fuzzy: 25 })
+    const rows = translateStats(db).byEngine
+    expect(rows.find((r) => r.engine === 'deepl')).toMatchObject({ runs: 1, entries: 300, flagged: 30 })
+    expect(rows.find((r) => r.engine === 'openai')).toMatchObject({ runs: 1, entries: 100, flagged: 25 })
+  })
+
+  it('buckets by week and groups by project, like the review side', () => {
+    drafted({ project: 'Patterns', startedAt: MONDAY, entries: 10, fuzzy: 1 })
+    drafted({ project: 'Patterns', startedAt: MONDAY + 7 * DAY, entries: 20, fuzzy: 2 })
+    const s = translateStats(db)
+    expect(s.byWeek).toHaveLength(2)
+    expect(s.byProject[0]).toMatchObject({ project: 'Patterns', runs: 2, entries: 30 })
   })
 })

@@ -25,7 +25,14 @@ Say what the reviewing has added up to.
   - Light, dark and follow-the-system, and English or Turkish, switched in the page
     itself. Both languages ship inside it and CSS shows one, so the switches need no
     script. Numbers are grouped the way each language groups them.
-  - Only finished reviews count. One that stopped part way froze no totals, and the
+  - A second section covers translation: entries drafted, how many were left fuzzy,
+    and what an engine skipped. Kept apart from the review numbers rather than summed,
+    because "looks wrong" and "wants a human eye" answer different questions.
+  - Both sections compare the engines that did the work. Review rows separate two
+    Claude models; translation rows separate DeepL from OpenAI. Each engine gets its
+    own median, so a slow one is visible. The table is omitted when only one engine
+    ever ran, since a comparison of one thing is a row of numbers pretending.
+  - Only finished runs count. One that stopped part way froze no totals, and the
     page says how many did that rather than quietly shrinking the denominator.
   - It states that a flag measures what the tool flagged, not the quality of anyone's
     work. These numbers may be read by the people who volunteered the translations.

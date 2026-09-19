@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { renderStats } from '../../src/stats/render.js'
-import type { ReviewStats } from '../../src/stats/query.js'
+import type { ReviewStats, TranslateStats } from '../../src/stats/query.js'
 
 const HOUR = 3_600_000
 
@@ -15,6 +15,7 @@ const empty: ReviewStats = {
   byCategory: {},
   byWeek: [],
   byProject: [],
+  byEngine: [],
 }
 
 const full: ReviewStats = {
@@ -30,12 +31,16 @@ const full: ReviewStats = {
   incomplete: 2,
   byCategory: { 'title-case': 560, glossary: 354, placeholder: 133 },
   byWeek: [
-    { week: '2026-09-07', submissions: 12, entries: 1800, flagged: 600 },
-    { week: '2026-09-14', submissions: 16, entries: 2302, flagged: 877 },
+    { week: '2026-09-07', runs: 12, entries: 1800, flagged: 600 },
+    { week: '2026-09-14', runs: 16, entries: 2302, flagged: 877 },
   ],
   byProject: [
-    { project: 'Plugins - Alpha', submissions: 3, entries: 900, flagged: 300 },
-    { project: 'Plugins - Beta', submissions: 2, entries: 400, flagged: 40 },
+    { project: 'Plugins - Alpha', runs: 3, entries: 900, flagged: 300 },
+    { project: 'Plugins - Beta', runs: 2, entries: 400, flagged: 40 },
+  ],
+  byEngine: [
+    { engine: 'claude:opus', runs: 20, entries: 3000, flagged: 1100, medianTurnaroundMs: 2.4 * HOUR },
+    { engine: 'rules', runs: 8, entries: 1102, flagged: 377, medianTurnaroundMs: 4000 },
   ],
 }
 
@@ -101,8 +106,8 @@ describe('renderStats weekly chart', () => {
     const html = renderStats({
       ...full,
       byWeek: [
-        { week: '2026-09-07', submissions: 1, entries: 50, flagged: 0 },
-        { week: '2026-09-14', submissions: 1, entries: 100, flagged: 0 },
+        { week: '2026-09-07', runs: 1, entries: 50, flagged: 0 },
+        { week: '2026-09-14', runs: 1, entries: 100, flagged: 0 },
       ],
     })
     const heights = [...html.matchAll(/<rect[^>]*class="bar"[^>]*height="([\d.]+)"/g)].map((m) => Number(m[1]))
@@ -113,7 +118,7 @@ describe('renderStats weekly chart', () => {
   it('does not divide by zero when every week is empty', () => {
     const html = renderStats({
       ...full,
-      byWeek: [{ week: '2026-09-07', submissions: 1, entries: 0, flagged: 0 }],
+      byWeek: [{ week: '2026-09-07', runs: 1, entries: 0, flagged: 0 }],
     })
     expect(html).not.toContain('NaN')
   })
@@ -150,7 +155,7 @@ describe('renderStats project table', () => {
     // Removal &amp; Auto Cleanup". Unescaped, a name could also close a tag.
     const html = renderStats({
       ...full,
-      byProject: [{ project: 'Anti & <script>alert(1)</script> Malware', submissions: 1, entries: 1, flagged: 0 }],
+      byProject: [{ project: 'Anti & <script>alert(1)</script> Malware', runs: 1, entries: 1, flagged: 0 }],
     })
     expect(html).not.toContain('<script>alert(1)</script>')
     expect(html).toContain('&amp;')
@@ -245,5 +250,84 @@ describe('renderStats language switch', () => {
 
   it('translates the empty state', () => {
     expect(renderStats(empty)).toContain('Henüz tamamlanmış inceleme')
+  })
+})
+
+const drafted: TranslateStats = {
+  from: Date.UTC(2026, 8, 7),
+  to: Date.UTC(2026, 8, 18),
+  runs: 12,
+  entries: 7140,
+  fuzzy: 1285,
+  fuzzyRate: 1285 / 7140,
+  skipped: 50,
+  medianTurnaroundMs: 5.5 * HOUR,
+  incomplete: 1,
+  byWeek: [{ week: '2026-09-14', runs: 12, entries: 7140, flagged: 1285 }],
+  byProject: [{ project: 'Patterns', runs: 12, entries: 7140, flagged: 1285 }],
+  byEngine: [
+    { engine: 'deepl', runs: 9, entries: 6000, flagged: 900, medianTurnaroundMs: 5 * HOUR },
+    { engine: 'openai', runs: 3, entries: 1140, flagged: 385, medianTurnaroundMs: 6 * HOUR },
+  ],
+}
+
+describe('renderStats translation section', () => {
+  it('is absent when nothing has been translated', () => {
+    expect(renderStats(full)).not.toMatch(/Entries drafted/i)
+  })
+
+  it('appears when there are translate runs', () => {
+    const html = renderStats(full, { translate: drafted })
+    expect(html).toContain('7,140')
+    expect(html).toMatch(/Entries drafted/i)
+  })
+
+  it('says "left fuzzy", never "flagged", because it is a different claim', () => {
+    // A fuzzy draft is the engine asking for a human. A review flag is the tool
+    // saying something looks wrong. One word for both invites conflation.
+    const html = renderStats(full, { translate: drafted })
+    const section = html.slice(html.indexOf('Translation'))
+    expect(section).toMatch(/left fuzzy/i)
+  })
+
+  it('reports what the engine skipped apart from what it left fuzzy', () => {
+    const html = renderStats(full, { translate: drafted })
+    expect(html).toContain('50')
+    expect(html).toMatch(/skipped by the engine/i)
+  })
+
+  it('carries its own caveat, not the review one', () => {
+    expect(renderStats(full, { translate: drafted })).toMatch(/not a count of mistakes/i)
+  })
+
+  it('translates the whole section', () => {
+    const html = renderStats(full, { translate: drafted })
+    expect(html).toContain('Çeviri')
+    expect(html).toContain('bulanık bırakılan')
+  })
+})
+
+describe('renderStats engine comparison', () => {
+  it('lists each review engine with its own numbers', () => {
+    const html = renderStats(full)
+    expect(html).toContain('claude:opus')
+    expect(html).toContain('rules')
+  })
+
+  it('gives each engine its own median, so a slow one is visible', () => {
+    const html = renderStats(full)
+    expect(html).toContain('2.4h')
+    expect(html).toContain('4s')
+  })
+
+  it('lists each draft engine too', () => {
+    const html = renderStats(full, { translate: drafted })
+    expect(html).toContain('deepl')
+    expect(html).toContain('openai')
+  })
+
+  it('is absent when only one engine ever ran, since there is nothing to compare', () => {
+    const one = { ...full, byEngine: [{ engine: 'claude', runs: 1, entries: 10, flagged: 1 }] }
+    expect(renderStats(one)).not.toMatch(/By engine/i)
   })
 })

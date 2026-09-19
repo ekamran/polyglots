@@ -1,4 +1,4 @@
-import type { ReviewStats } from './query.js'
+import type { EngineRow, ProjectRow, ReviewStats, TranslateStats, WeekRow } from './query.js'
 import { PHRASES, count, duration, type Lang, type Phrase, type PhraseKey } from './i18n.js'
 
 // Everything is inline. The page has to open from an email attachment, on a
@@ -60,11 +60,11 @@ function figure(value: string, key: PhraseKey): string {
   return `<figure class="stat"><b>${value}</b><figcaption>${say(key)}</figcaption></figure>`
 }
 
-function weeklyChart(stats: ReviewStats): string {
-  if (stats.byWeek.length === 0) return ''
-  const peak = Math.max(...stats.byWeek.map((w) => w.entries))
-  const width = 100 / stats.byWeek.length
-  const bars = stats.byWeek
+function weeklyChart(weeks: WeekRow[], heading: PhraseKey): string {
+  if (weeks.length === 0) return ''
+  const peak = Math.max(...weeks.map((w) => w.entries))
+  const width = 100 / weeks.length
+  const bars = weeks
     .map((w, i) => {
       // A week with no entries still gets a bar of zero height rather than a
       // division by zero, and the whole chart survives an all-empty peak.
@@ -81,8 +81,8 @@ function weeklyChart(stats: ReviewStats): string {
   // Labels are HTML, not SVG text. The bars are drawn in a stretched viewBox so
   // they fill the width whatever the week count, and that same stretch turns
   // text into smears.
-  const labels = stats.byWeek.map((w) => `<span>${escapeHtml(w.week.slice(5))}</span>`).join('')
-  return `<section><h2>${say('weeklyHeading')}</h2>
+  const labels = weeks.map((w) => `<span>${escapeHtml(w.week.slice(5))}</span>`).join('')
+  return `<section><h2>${say(heading)}</h2>
 <svg viewBox="0 0 100 100" preserveAspectRatio="none" class="bars" role="img">${bars}</svg>
 <div class="ticks">${labels}</div>
 <p class="peak">${say('peak')} ${num(peak)} ${say('entries')}</p></section>`
@@ -125,20 +125,43 @@ ${segments}</svg>
 <ul class="legend">${legend}</ul></div></section>`
 }
 
-function projectTable(stats: ReviewStats): string {
-  if (stats.byProject.length === 0) return ''
-  const rows = stats.byProject
+function projectTable(rows: ProjectRow[], runsLabel: PhraseKey): string {
+  if (rows.length === 0) return ''
+  const body = rows
     .map(
       (p) =>
-        `<tr><td>${escapeHtml(p.project)}</td><td>${num(p.submissions)}</td>` +
+        `<tr><td>${escapeHtml(p.project)}</td><td>${num(p.runs)}</td>` +
         `<td>${num(p.entries)}</td><td>${num(p.flagged)}</td>` +
         `<td>${p.entries === 0 ? '—' : percent(p.flagged / p.entries)}</td></tr>`,
     )
     .join('')
   return `<section><h2>${say('projectHeading')}</h2><table>
-<thead><tr><th>${say('colProject')}</th><th>${say('colSubmissions')}</th><th>${say('colEntries')}</th>
+<thead><tr><th>${say('colProject')}</th><th>${say(runsLabel)}</th><th>${say('colEntries')}</th>
 <th>${say('colFlagged')}</th><th>${say('colRate')}</th></tr></thead>
-<tbody>${rows}</tbody></table></section>`
+<tbody>${body}</tbody></table></section>`
+}
+
+// Only drawn when more than one engine ran: a table comparing a thing to
+// itself is a row of numbers pretending to be a comparison.
+function engineTable(rows: EngineRow[]): string {
+  if (rows.length < 2) return ''
+  const body = rows
+    .map(
+      (e) =>
+        `<tr><td>${escapeHtml(e.engine)}</td><td>${num(e.runs)}</td>` +
+        `<td>${num(e.entries)}</td>` +
+        `<td>${e.entries === 0 ? '—' : percent(e.flagged / e.entries)}</td>` +
+        `<td>${
+          e.medianTurnaroundMs === undefined
+            ? '—'
+            : both(duration(e.medianTurnaroundMs, 'en'), duration(e.medianTurnaroundMs, 'tr'))
+        }</td></tr>`,
+    )
+    .join('')
+  return `<section><h2>${say('engineHeading')}</h2><table>
+<thead><tr><th>${say('colEngine')}</th><th>${say('colRuns')}</th><th>${say('colEntries')}</th>
+<th>${say('colRate')}</th><th>${say('colMedian')}</th></tr></thead>
+<tbody>${body}</tbody></table></section>`
 }
 
 // Controls are radios rather than a checkbox so "auto" stays reachable: a
@@ -198,6 +221,7 @@ td:not(:first-child),th:not(:first-child){text-align:right;font-variant-numeric:
 tr:last-child td{border-bottom:0}
 .note{color:var(--dim);font-size:.85rem;margin:1.4rem 0 0}
 .empty{color:var(--dim)}
+.section-title{font-size:1.15rem;text-transform:none;letter-spacing:0;color:var(--ink);margin:2.4rem 0 .9rem}
 .sw{position:absolute;opacity:0;pointer-events:none}
 .bar-controls{display:flex;gap:.6rem;justify-content:flex-end;flex-wrap:wrap;margin:0 0 1rem}
 .group{display:flex;border:1px solid var(--rule);border-radius:7px;overflow:hidden;background:var(--card)}
@@ -210,12 +234,42 @@ tr:last-child td{border-bottom:0}
 :root:has(#lang-tr:checked) .l.tr{display:inline}
 :root:has(#lang-tr:checked) p.l.tr,:root:has(#lang-tr:checked) span.l.tr{display:inline}`
 
+function translateSection(t: TranslateStats): string {
+  if (t.runs === 0) return ''
+  const incomplete =
+    t.incomplete === 0
+      ? ''
+      : ` ${num(t.incomplete)} ${say(t.incomplete === 1 ? 'incompleteOne' : 'incompleteMany')}`
+  return `<h2 class="section-title">${say('translateHeading')}</h2>
+<section><div class="stats">
+${figure(num(t.runs), 'runs')}
+${figure(num(t.entries), 'drafted')}
+${figure(percent(t.fuzzyRate), 'leftFuzzy')}
+${t.skipped === 0 ? '' : figure(num(t.skipped), 'skippedEntries')}
+${
+  t.medianTurnaroundMs === undefined
+    ? ''
+    : figure(both(duration(t.medianTurnaroundMs, 'en'), duration(t.medianTurnaroundMs, 'tr')), 'turnaround')
+}
+</div></section>
+${weeklyChart(t.byWeek, 'translateWeekly')}
+${engineTable(t.byEngine)}
+${projectTable(t.byProject, 'colRuns')}
+<p class="note">${say('translateCaveat')}${incomplete}</p>`
+}
+
 /**
  * One self-contained HTML page carrying both languages, with CSS-only theme and
  * language switches. Takes the numbers and nothing else, so the counts can be
  * asserted without parsing markup.
  */
-export function renderStats(stats: ReviewStats, now: Date = new Date()): string {
+export interface RenderOptions {
+  translate?: TranslateStats
+  now?: Date
+}
+
+export function renderStats(stats: ReviewStats, options: RenderOptions = {}): string {
+  const now = options.now ?? new Date()
   const span =
     stats.from === undefined || stats.to === undefined
       ? say('noneYet')
@@ -257,9 +311,11 @@ ${controls()}
 <h1>${say('title')}</h1>
 <p class="span">${span} · ${say('generated')} ${day(now.getTime())}</p>
 ${headline}
-${weeklyChart(stats)}
+${weeklyChart(stats.byWeek, 'weeklyHeading')}
 ${categoryDonut(stats)}
-${projectTable(stats)}
+${projectTable(stats.byProject, 'colSubmissions')}
+${engineTable(stats.byEngine)}
 ${caveat}
+${options.translate ? translateSection(options.translate) : ''}
 </main></body></html>`
 }

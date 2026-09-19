@@ -181,6 +181,8 @@ export function fakeCommands(overrides: Partial<TuiCommands> = {}): TuiCommands 
       submissions: 4,
       entries: 120,
       incomplete: 0,
+      translateRuns: 2,
+      translateEntries: 900,
     })),
     translateFile: vi.fn(async (opts: TranslateOptions) => {
       const summary = summaryOf(opts.file)

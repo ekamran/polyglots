@@ -5,16 +5,29 @@ import { parseTally } from '../jobs/json.js'
 export interface WeekRow {
   // The Monday the week starts on, as YYYY-MM-DD.
   week: string
-  submissions: number
+  // Named for what it counts in both sections. A review run is one
+  // contributor submission and the page labels it so; a translate run is not.
+  runs: number
   entries: number
   flagged: number
 }
 
 export interface ProjectRow {
   project: string
-  submissions: number
+  runs: number
   entries: number
   flagged: number
+}
+
+// One row per engine that produced work. Review records which model judged, so
+// two Claude models appear separately; translate records which draft engine
+// wrote. The median is per engine because a slow one is the thing worth seeing.
+export interface EngineRow {
+  engine: string
+  runs: number
+  entries: number
+  flagged: number
+  medianTurnaroundMs?: number
 }
 
 export interface ReviewStats {
@@ -39,6 +52,33 @@ export interface ReviewStats {
   byCategory: Record<string, number>
   byWeek: WeekRow[]
   byProject: ProjectRow[]
+  byEngine: EngineRow[]
+}
+
+/**
+ * What the translate command has drafted.
+ *
+ * Deliberately a separate figure from the review side rather than folded in.
+ * `flagged` there means the tool thinks something is wrong; `fuzzy` here means
+ * the draft wants a human eye. Summing them would produce a number that
+ * answers no question.
+ */
+export interface TranslateStats {
+  from?: number
+  to?: number
+  runs: number
+  entries: number
+  fuzzy: number
+  fuzzyRate: number
+  // Entries in batches an engine gave up on. Never drafted at all, so kept
+  // apart from `fuzzy`: folding them together would hide an engine that keeps
+  // failing behind a plausible-looking quality figure.
+  skipped: number
+  medianTurnaroundMs?: number
+  incomplete: number
+  byWeek: WeekRow[]
+  byProject: ProjectRow[]
+  byEngine: EngineRow[]
 }
 
 export interface StatsWindow {
@@ -48,6 +88,7 @@ export interface StatsWindow {
 interface Row {
   file: string
   project: string | null
+  engine: string
   started_at: number
   finished_at: number | null
   entries: number | null
@@ -80,33 +121,128 @@ function byValueDescending(counts: Map<string, number>): Record<string, number> 
   return Object.fromEntries([...counts].sort(([, a], [, b]) => b - a))
 }
 
+function finishedRuns(db: Database.Database, command: 'review' | 'translate', since: number): Row[] {
+  return db
+    .prepare<[number], Row>(
+      `SELECT file, project, engine, started_at, finished_at, entries, flagged, repaired, approvable, by_category
+       FROM run
+       WHERE command = ? AND state = 'done' AND started_at >= ?
+       ORDER BY started_at`.replace('command = ?', `command = '${command}'`),
+    )
+    .all(since)
+}
+
+function unfinishedRuns(db: Database.Database, command: 'review' | 'translate', since: number): number {
+  return db
+    .prepare<[string, number], { n: number }>(
+      `SELECT COUNT(*) AS n FROM run WHERE command = ? AND state <> 'done' AND started_at >= ?`,
+    )
+    .get(command, since)!.n
+}
+
+interface Grouped {
+  entries: number
+  flagged: number
+  repaired: number
+  approvable: number
+  turnarounds: number[]
+  categories: Map<string, number>
+  weeks: Map<string, WeekRow>
+  projects: Map<string, ProjectRow>
+  engines: Map<string, { row: EngineRow; turnarounds: number[] }>
+}
+
+// Both commands roll up the same way and differ only in what the columns are
+// called afterwards, so the rolling up happens once.
+function group(rows: Row[]): Grouped {
+  const g: Grouped = {
+    entries: 0,
+    flagged: 0,
+    repaired: 0,
+    approvable: 0,
+    turnarounds: [],
+    categories: new Map(),
+    weeks: new Map(),
+    projects: new Map(),
+    engines: new Map(),
+  }
+
+  for (const row of rows) {
+    const entries = row.entries ?? 0
+    const flagged = row.flagged ?? 0
+    g.entries += entries
+    g.flagged += flagged
+    g.repaired += row.repaired ?? 0
+    g.approvable += row.approvable ?? 0
+
+    const took = row.finished_at === null ? undefined : row.finished_at - row.started_at
+    if (took !== undefined) g.turnarounds.push(took)
+
+    for (const [name, n] of Object.entries(parseTally(row.by_category) ?? {})) {
+      g.categories.set(name, (g.categories.get(name) ?? 0) + n)
+    }
+
+    const week = weekOf(row.started_at)
+    const w = g.weeks.get(week) ?? { week, runs: 0, entries: 0, flagged: 0 }
+    w.runs += 1
+    w.entries += entries
+    w.flagged += flagged
+    g.weeks.set(week, w)
+
+    // A .po that declared no Project-Id-Version still has to appear as
+    // something a human recognises, and its file name is what they chose.
+    const name = row.project ?? basename(row.file)
+    const p = g.projects.get(name) ?? { project: name, runs: 0, entries: 0, flagged: 0 }
+    p.runs += 1
+    p.entries += entries
+    p.flagged += flagged
+    g.projects.set(name, p)
+
+    const e = g.engines.get(row.engine) ?? {
+      row: { engine: row.engine, runs: 0, entries: 0, flagged: 0 },
+      turnarounds: [],
+    }
+    e.row.runs += 1
+    e.row.entries += entries
+    e.row.flagged += flagged
+    if (took !== undefined) e.turnarounds.push(took)
+    g.engines.set(row.engine, e)
+  }
+
+  return g
+}
+
+function weeksOf(g: Grouped): WeekRow[] {
+  return [...g.weeks.values()].sort((a, b) => a.week.localeCompare(b.week))
+}
+
+function projectsOf(g: Grouped): ProjectRow[] {
+  return [...g.projects.values()].sort((a, b) => b.entries - a.entries)
+}
+
+// Ordered by entries so the engine doing the work leads, which is the question
+// a comparison table is usually asked.
+function enginesOf(g: Grouped): EngineRow[] {
+  return [...g.engines.values()]
+    .map(({ row, turnarounds }) => {
+      const mid = median(turnarounds)
+      return mid === undefined ? row : { ...row, medianTurnaroundMs: mid }
+    })
+    .sort((a, b) => b.entries - a.entries)
+}
+
 /**
  * What the review command has done, from the frozen per-run totals.
  *
  * Only finished reviews contribute. A run that stopped part way froze no
  * totals, on purpose: a review that did not look at every entry has no honest
- * throughput or problem rate to report. Translate runs are excluded entirely —
- * they measure drafting, not reviewing, and mixing them would make both
- * numbers mean nothing.
+ * throughput or problem rate to report. Translate runs are reported separately
+ * by translateStats — summing the two would add a count of "looks wrong" to a
+ * count of "wants a human eye" and produce a number answering no question.
  */
 export function reviewStats(db: Database.Database, window: StatsWindow = {}): ReviewStats {
   const since = window.since ?? 0
-
-  const rows = db
-    .prepare<[number], Row>(
-      `SELECT file, project, started_at, finished_at, entries, flagged, repaired, approvable, by_category
-       FROM run
-       WHERE command = 'review' AND state = 'done' AND started_at >= ?
-       ORDER BY started_at`,
-    )
-    .all(since)
-
-  const incomplete = db
-    .prepare<[number], { n: number }>(
-      `SELECT COUNT(*) AS n FROM run WHERE command = 'review' AND state <> 'done' AND started_at >= ?`,
-    )
-    .get(since)!.n
-
+  const rows = finishedRuns(db, 'review', since)
   const stats: ReviewStats = {
     submissions: rows.length,
     entries: 0,
@@ -114,56 +250,71 @@ export function reviewStats(db: Database.Database, window: StatsWindow = {}): Re
     repaired: 0,
     approvable: 0,
     problemRate: 0,
-    incomplete,
+    incomplete: unfinishedRuns(db, 'review', since),
     byCategory: {},
     byWeek: [],
     byProject: [],
+    byEngine: [],
   }
   if (rows.length === 0) return stats
 
-  const turnarounds: number[] = []
-  const categories = new Map<string, number>()
-  const weeks = new Map<string, WeekRow>()
-  const projects = new Map<string, ProjectRow>()
-
-  for (const row of rows) {
-    const entries = row.entries ?? 0
-    const flagged = row.flagged ?? 0
-    stats.entries += entries
-    stats.flagged += flagged
-    stats.repaired += row.repaired ?? 0
-    stats.approvable += row.approvable ?? 0
-
-    if (row.finished_at !== null) turnarounds.push(row.finished_at - row.started_at)
-
-    for (const [name, n] of Object.entries(parseTally(row.by_category) ?? {})) {
-      categories.set(name, (categories.get(name) ?? 0) + n)
-    }
-
-    const week = weekOf(row.started_at)
-    const w = weeks.get(week) ?? { week, submissions: 0, entries: 0, flagged: 0 }
-    w.submissions += 1
-    w.entries += entries
-    w.flagged += flagged
-    weeks.set(week, w)
-
-    // A .po that declared no Project-Id-Version still has to appear as
-    // something a human recognises, and its file name is what they chose.
-    const name = row.project ?? basename(row.file)
-    const p = projects.get(name) ?? { project: name, submissions: 0, entries: 0, flagged: 0 }
-    p.submissions += 1
-    p.entries += entries
-    p.flagged += flagged
-    projects.set(name, p)
-  }
-
+  const g = group(rows)
   stats.from = rows[0]!.started_at
   stats.to = rows[rows.length - 1]!.started_at
-  stats.problemRate = stats.entries === 0 ? 0 : stats.flagged / stats.entries
-  const turnaround = median(turnarounds)
+  stats.entries = g.entries
+  stats.flagged = g.flagged
+  stats.repaired = g.repaired
+  stats.approvable = g.approvable
+  stats.problemRate = g.entries === 0 ? 0 : g.flagged / g.entries
+  const turnaround = median(g.turnarounds)
   if (turnaround !== undefined) stats.medianTurnaroundMs = turnaround
-  stats.byCategory = byValueDescending(categories)
-  stats.byWeek = [...weeks.values()].sort((a, b) => a.week.localeCompare(b.week))
-  stats.byProject = [...projects.values()].sort((a, b) => b.entries - a.entries)
+  stats.byCategory = byValueDescending(g.categories)
+  stats.byWeek = weeksOf(g)
+  stats.byProject = projectsOf(g)
+  stats.byEngine = enginesOf(g)
+  return stats
+}
+
+/**
+ * What the translate command has drafted.
+ *
+ * `fuzzy` is the run's `flagged` column read for what it means on this side: a
+ * draft the engine or its review wants a human to look at. `skipped` is the
+ * `unreviewed` column, entries in batches an engine gave up on, which were
+ * never drafted at all.
+ */
+export function translateStats(db: Database.Database, window: StatsWindow = {}): TranslateStats {
+  const since = window.since ?? 0
+  const rows = finishedRuns(db, 'translate', since)
+  const stats: TranslateStats = {
+    runs: rows.length,
+    entries: 0,
+    fuzzy: 0,
+    fuzzyRate: 0,
+    skipped: 0,
+    incomplete: unfinishedRuns(db, 'translate', since),
+    byWeek: [],
+    byProject: [],
+    byEngine: [],
+  }
+  if (rows.length === 0) return stats
+
+  const g = group(rows)
+  stats.from = rows[0]!.started_at
+  stats.to = rows[rows.length - 1]!.started_at
+  stats.entries = g.entries
+  stats.fuzzy = g.flagged
+  stats.fuzzyRate = g.entries === 0 ? 0 : g.flagged / g.entries
+  // `unreviewed` on a translate row is the batches its engine gave up on.
+  stats.skipped = db
+    .prepare<[number], { n: number | null }>(
+      `SELECT SUM(unreviewed) AS n FROM run WHERE command = 'translate' AND state = 'done' AND started_at >= ?`,
+    )
+    .get(since)!.n ?? 0
+  const turnaround = median(g.turnarounds)
+  if (turnaround !== undefined) stats.medianTurnaroundMs = turnaround
+  stats.byWeek = weeksOf(g)
+  stats.byProject = projectsOf(g)
+  stats.byEngine = enginesOf(g)
   return stats
 }

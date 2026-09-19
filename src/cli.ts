@@ -480,11 +480,16 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
         ...(flags.out ? { out: flags.out } : {}),
         ...(flags.since ? { since: flags.since } : {}),
       })
-      if (result.submissions === 0) {
-        cli.out(`No finished reviews recorded yet. Wrote ${result.file} anyway; it will fill in as you review.`)
+      const parts: string[] = []
+      if (result.submissions > 0) parts.push(`${result.submissions} submissions reviewed, ${result.entries} entries`)
+      if (result.translateRuns > 0) parts.push(`${result.translateRuns} translate runs, ${result.translateEntries} entries drafted`)
+      // Saying "nothing recorded yet" while the page holds real translate
+      // numbers would send the user to look at a page they think is empty.
+      if (parts.length === 0) {
+        cli.out(`Nothing recorded yet. Wrote ${result.file} anyway; it will fill in as you work.`)
         return
       }
-      cli.out(`${result.submissions} submissions, ${result.entries} entries. Wrote ${result.file}.`)
+      cli.out(`${parts.join('. ')}. Wrote ${result.file}.`)
       if (result.incomplete > 0) {
         const were = result.incomplete === 1 ? 'review is' : 'reviews are'
         cli.out(`${result.incomplete} unfinished ${were} left out of the totals.`)

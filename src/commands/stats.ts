@@ -2,7 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import type Database from 'better-sqlite3'
 import { openJobsDb } from '../jobs/index.js'
-import { reviewStats } from '../stats/query.js'
+import { reviewStats, translateStats } from '../stats/query.js'
 import { renderStats } from '../stats/render.js'
 
 export const DEFAULT_STATS_FILE = 'polyglots-stats.html'
@@ -22,6 +22,8 @@ export interface StatsSummary {
   submissions: number
   entries: number
   incomplete: number
+  translateRuns: number
+  translateEntries: number
 }
 
 function parseSince(since: string): number {
@@ -42,15 +44,22 @@ export async function writeStats(opts: StatsOptions = {}): Promise<StatsSummary>
   const jobs = opts.jobsDb ?? openJobsDb()
   const ownsJobsDb = opts.jobsDb === undefined
   try {
-    const stats = reviewStats(jobs, opts.since === undefined ? {} : { since: parseSince(opts.since) })
+    const window = opts.since === undefined ? {} : { since: parseSince(opts.since) }
+    const stats = reviewStats(jobs, window)
+    // Queried and rendered together, on one page, but never summed: a count of
+    // "looks wrong" and a count of "wants a human eye" answer different
+    // questions and their total answers neither.
+    const translate = translateStats(jobs, window)
     const file = resolve(opts.out ?? DEFAULT_STATS_FILE)
     await mkdir(dirname(file), { recursive: true })
-    await writeFile(file, renderStats(stats, opts.now ?? new Date()), 'utf8')
+    await writeFile(file, renderStats(stats, { translate, now: opts.now ?? new Date() }), 'utf8')
     return {
       file,
       submissions: stats.submissions,
       entries: stats.entries,
       incomplete: stats.incomplete,
+      translateRuns: translate.runs,
+      translateEntries: translate.entries,
     }
   } finally {
     if (ownsJobsDb) jobs.close()

@@ -48,6 +48,24 @@ export const PHRASES = {
   incompleteOne: { en: 'review did not finish and contributed nothing to these totals.', tr: 'inceleme tamamlanmadı ve bu toplamlara katkı vermedi.' },
   incompleteMany: { en: 'reviews did not finish and contributed nothing to these totals.', tr: 'inceleme tamamlanmadı ve bu toplamlara katkı vermedi.' },
 
+  translateHeading: { en: 'Translation', tr: 'Çeviri' },
+  translateWeekly: { en: 'Entries drafted, by week', tr: 'Haftalara göre çevrilen dizgeler' },
+  runs: { en: 'runs', tr: 'çalıştırma' },
+  drafted: { en: 'entries drafted', tr: 'çevrilen dizge' },
+  leftFuzzy: { en: 'left fuzzy', tr: 'bulanık bırakılan' },
+  skippedEntries: { en: 'skipped by the engine', tr: 'motorun atladığı' },
+  engineHeading: { en: 'By engine', tr: 'Motora göre' },
+  colEngine: { en: 'Engine', tr: 'Motor' },
+  colRuns: { en: 'Runs', tr: 'Çalıştırma' },
+  colMedian: { en: 'Median', tr: 'Ortanca' },
+  // Said separately from the review caveat because it is a different claim: a
+  // fuzzy draft is the engine asking for a human, not the tool saying the text
+  // is wrong.
+  translateCaveat: {
+    en: '“Left fuzzy” counts drafts marked for a human to check before they ship. It is what the draft engine and its review were unsure about, not a count of mistakes.',
+    tr: '“Bulanık bırakılan”, yayına girmeden önce bir insanın denetlemesi için işaretlenen taslakları sayar. Taslak motorunun ve onun incelemesinin emin olamadığı yerlerdir; hata sayısı değildir.',
+  },
+
   theme: { en: 'Theme', tr: 'Tema' },
   themeAuto: { en: 'Auto', tr: 'Otomatik' },
   themeLight: { en: 'Light', tr: 'Açık' },
