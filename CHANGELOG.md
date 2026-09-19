@@ -10,6 +10,23 @@ Run `polyglots --version` to see which build you have; the TUI shows it beside i
 
 ## [Unreleased]
 
+## [0.7.5] - 2026-09-19
+
+Open it where you were going to open it anyway.
+
+### Added
+
+- `o` on either results screen opens the file in whatever the desktop associates
+  with `.po`, which on a translator's machine is PoEdit. Review opens the
+  repaired file rather than the submission, since the submission on disk is
+  unchanged and would show none of the run's work. Translate opens the file it
+  rewrote in place.
+  - The launcher is detached, so the editor outlives the run and a large
+    catalogue loading does not block the screen. Neither screen accepts `o`
+    while a run is still going: the catalogue is rewritten after every batch,
+    and opening it mid-run shows exactly the half-written state this tool works
+    to avoid.
+
 ## [0.7.4] - 2026-09-19
 
 ### Added

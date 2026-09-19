@@ -1,9 +1,22 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import React from 'react'
 import type { TranslateEvent } from '../../src/commands/translate.js'
 import { Progress, reduceProgress } from '../../src/tui/components/Progress.js'
 import { ReviewProgress, reduceReviewProgress } from '../../src/tui/components/ReviewProgress.js'
 import { render, tick } from './helpers.js'
+import { openInDefaultApp } from '../../src/tui/open-file.js'
+
+// The real one launches a GUI application. A test run must not open PoEdit on
+// whoever is running it.
+vi.mock('../../src/tui/open-file.js', () => ({
+  openInDefaultApp: vi.fn(() => true),
+  openCommand: vi.fn(() => ({ command: 'open', args: [] })),
+}))
+
+vi.mock('../../src/tui/clipboard.js', () => ({
+  copyToClipboard: vi.fn(() => true),
+  clipboardCommands: vi.fn(() => []),
+}))
 
 const FILE = '/tmp/work/plugin-tr.po'
 const T = 1_700_000_000_000
@@ -179,5 +192,38 @@ describe('ReviewProgress and an ignored marker', () => {
     )
     await tick()
     expect(lastFrame()).toMatch(/earlier version/i)
+  })
+})
+
+describe('Progress opening the translated file', () => {
+  const done: TranslateEvent[] = [
+    { type: 'start', file: FILE, total: 10, pending: 6 },
+    {
+      type: 'done',
+      summary: { file: FILE, total: 10, pending: 6, fromTm: 1, translated: 4, fuzzy: 1, skipped: 0 },
+    },
+  ]
+
+  // Translate rewrites the submission in place, so the file worth opening is the
+  // one that was handed in, not a separate output.
+  it('opens the file the run wrote in place', async () => {
+    vi.mocked(openInDefaultApp).mockClear()
+    const { lastFrame, stdin } = render(<Progress events={done} />)
+    await tick()
+    expect(lastFrame() ?? '').toContain('o to open')
+    stdin.write('o')
+    await tick()
+    expect(vi.mocked(openInDefaultApp)).toHaveBeenCalledWith(FILE)
+  })
+
+  // Opening it mid-run would show a catalogue still being rewritten after every
+  // batch, which is exactly the half-written state the tool works to avoid.
+  it('does nothing while the run is still going', async () => {
+    vi.mocked(openInDefaultApp).mockClear()
+    const { stdin } = render(<Progress events={[{ type: 'start', file: FILE, total: 10, pending: 6 }]} />)
+    await tick()
+    stdin.write('o')
+    await tick()
+    expect(vi.mocked(openInDefaultApp)).not.toHaveBeenCalled()
   })
 })

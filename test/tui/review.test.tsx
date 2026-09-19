@@ -8,6 +8,7 @@ import { App } from '../../src/tui/App.js'
 import { ReviewProgress, reduceReviewProgress } from '../../src/tui/components/ReviewProgress.js'
 import { batchSizeChoices } from '../../src/tui/screens/Review.js'
 import { copyToClipboard } from '../../src/tui/clipboard.js'
+import { openInDefaultApp } from '../../src/tui/open-file.js'
 
 // The real one shells out to pbcopy. Nothing in a test run should be writing to
 // the developer's clipboard, and a sandbox that blocks spawning would turn an
@@ -15,6 +16,13 @@ import { copyToClipboard } from '../../src/tui/clipboard.js'
 vi.mock('../../src/tui/clipboard.js', () => ({
   copyToClipboard: vi.fn(() => true),
   clipboardCommands: vi.fn(() => []),
+}))
+
+// The real one launches a GUI application. A test run must not open PoEdit on
+// whoever is running it.
+vi.mock('../../src/tui/open-file.js', () => ({
+  openInDefaultApp: vi.fn(() => true),
+  openCommand: vi.fn(() => ({ command: 'open', args: [] })),
 }))
 import type { ReviewFile } from '../../src/tui/commands.js'
 import {
@@ -610,5 +618,43 @@ describe('ReviewProgress requester message', () => {
     const frame = (lastFrame() ?? '').replace(/\s+/g, ' ')
     expect(frame).toMatch(/could not reach the clipboard/i)
     expect(frame).toContain('I fixed 4 entries')
+  })
+})
+
+describe('ReviewProgress opening the repaired file', () => {
+  const REPAIRED = '/tmp/work/submission-problems.po'
+
+  it('opens the repaired file rather than the submission', async () => {
+    const { stdin } = render(
+      <ReviewProgress
+        events={[
+          { type: 'start', file: FILE, total: 10, reviewable: 10 },
+          { type: 'done', summary: reviewSummaryOf(FILE, { problems: 2, problemsFile: REPAIRED }) },
+        ]}
+      />,
+    )
+    await tick()
+    stdin.write('o')
+    await tick()
+    expect(vi.mocked(openInDefaultApp)).toHaveBeenCalledWith(REPAIRED)
+  })
+
+  // Nothing was written, so there is nothing to open and o must not launch the
+  // submission the reviewer was given.
+  it('does nothing when the run wrote no file', async () => {
+    vi.mocked(openInDefaultApp).mockClear()
+    const { lastFrame, stdin } = render(
+      <ReviewProgress
+        events={[
+          { type: 'start', file: FILE, total: 10, reviewable: 10 },
+          { type: 'done', summary: reviewSummaryOf(FILE, { problems: 0, problemsFile: undefined }) },
+        ]}
+      />,
+    )
+    await tick()
+    stdin.write('o')
+    await tick()
+    expect(vi.mocked(openInDefaultApp)).not.toHaveBeenCalled()
+    expect(lastFrame() ?? '').not.toContain('o to open')
   })
 })

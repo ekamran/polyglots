@@ -3,6 +3,7 @@ import { useState } from 'react'
 import type { ReviewEvent, ReviewSummary } from '../../types.js'
 import { buildReport } from '../../review/message.js'
 import { copyToClipboard } from '../clipboard.js'
+import { openInDefaultApp } from '../open-file.js'
 import { renderBar } from './Progress.js'
 import { estimateRemainingMs, formatDuration, formatFinishTime } from '../../cli/progress.js'
 import { useElapsed } from '../hooks/useElapsed.js'
@@ -140,14 +141,18 @@ export function ReviewProgress({ events }: { events: ReviewEvent[] }) {
   const state = reduceReviewProgress(events)
   const elapsed = useElapsed(state.inFlight, state.batchIndex)
   const [copied, setCopied] = useState<'yes' | 'no' | undefined>(undefined)
+  const [opened, setOpened] = useState(false)
   const report = state.summary === undefined ? undefined : buildReport(state.summary)
+  // The repaired file, which is the thing worth opening: the submission itself is
+  // unchanged on disk and reviewing it again would show none of this run's work.
+  const repairedFile = state.summary?.problemsFile
 
-  // Only once there is something to copy. During a run the keys belong to pause,
-  // resume and stop, and a c that silently did nothing would still have to be
+  // Both only once the run is over. During it the keys belong to pause, resume
+  // and stop, and a c or an o that silently did nothing would still have to be
   // explained to whoever pressed it.
   useInput((input) => {
-    if (input !== 'c' || report === undefined) return
-    setCopied(copyToClipboard(report) ? 'yes' : 'no')
+    if (input === 'c' && report !== undefined) setCopied(copyToClipboard(report) ? 'yes' : 'no')
+    if (input === 'o' && repairedFile !== undefined) setOpened(openInDefaultApp(repairedFile))
   })
 
   if (!state.started) return <Text dimColor>Starting…</Text>
@@ -230,7 +235,11 @@ export function ReviewProgress({ events }: { events: ReviewEvent[] }) {
             </Box>
           )}
           {summary.problemsFile ? (
-            <Text>Wrote {summary.problemsFile}. Open it in PoEdit to review.</Text>
+            <>
+              <Text>Wrote {summary.problemsFile}.</Text>
+              <Text dimColor>o to open it in PoEdit</Text>
+              {opened && <Text color="green">Opening it now.</Text>}
+            </>
           ) : (
             summary.pending === 0 && <Text color="green">Nothing flagged; the whole submission looks approvable.</Text>
           )}

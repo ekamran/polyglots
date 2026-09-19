@@ -1,6 +1,8 @@
-import { Box, Text } from 'ink'
+import { Box, Text, useInput } from 'ink'
+import { useState } from 'react'
 import { estimateRemainingMs, formatDuration, formatFinishTime, renderBar as bar, type BatchPhase } from '../../cli/progress.js'
 import { useElapsed } from '../hooks/useElapsed.js'
+import { openInDefaultApp } from '../open-file.js'
 import type { TranslateEvent, TranslateSummary } from '../../commands/translate.js'
 
 export interface ProgressState {
@@ -128,6 +130,17 @@ export function formatSummary(summary: TranslateSummary): string {
 export function Progress({ events }: { events: TranslateEvent[] }) {
   const state = reduceProgress(events)
   const elapsed = useElapsed(state.phase !== undefined, state.phase?.since ?? 0)
+  const [opened, setOpened] = useState(false)
+  // Translate writes in place, so the file to open is the one that was handed in.
+  const translatedFile = state.summary?.file
+
+  // Only once the run is over: during it the keys belong to pause, resume and
+  // stop, and opening the file mid-run would show a catalogue still being
+  // rewritten after every batch.
+  useInput((input) => {
+    if (input === 'o' && translatedFile !== undefined) setOpened(openInDefaultApp(translatedFile))
+  })
+
   if (!state.started) return <Text dimColor>Starting…</Text>
 
   const batch = state.batch ? `  batch ${state.batch.index}/${state.batch.of}` : ''
@@ -160,6 +173,8 @@ export function Progress({ events }: { events: TranslateEvent[] }) {
           {state.summary.stopped && <Text color="red">Stopped: {state.summary.stopped}</Text>}
           <Text bold>{formatSummary(state.summary)}</Text>
           <Text>Open {state.summary.file} in PoEdit to review.</Text>
+          <Text dimColor>o to open it</Text>
+          {opened && <Text color="green">Opening it now.</Text>}
         </Box>
       )}
     </Box>
