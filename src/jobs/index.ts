@@ -27,6 +27,7 @@ export {
   finishRun,
   liveRuns,
   getRun,
+  reapAbandonedRuns,
   recordEntries,
   startRun,
   type LiveRun,

@@ -11,6 +11,7 @@ import {
   getDraft,
   getDraftVerdict,
   openJobsDb,
+  reapAbandonedRuns,
   pruneStaleConfigs,
   putDraft,
   putDraftVerdict,
@@ -320,6 +321,12 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
     if (ownsDb) db.close()
     throw err
   }
+  // Clear rows a hard kill left at `running` before opening a new one, so the
+  // history this run joins does not already claim two jobs are in flight. Only
+  // rows whose process is gone are touched; a genuinely concurrent run is left
+  // alone. Deliberately not done in `stats`, which promises to write nothing.
+  reapAbandonedRuns(jobs)
+
   // Everything below opens a run in `jobs` and does real work against it, so
   // from here on a throw — a caller's onProgress blowing up, a batch that
   // could not even produce a draft — must not leak the handle this call

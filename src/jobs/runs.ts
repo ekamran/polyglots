@@ -215,3 +215,48 @@ export function liveRuns(db: Database.Database): LiveRun[] {
     .filter((r): r is typeof r & { pid: number } => r.pid !== null && alive(r.pid))
     .map((r) => ({ id: r.id, command: r.command, file: r.file, pid: r.pid, startedAt: r.started_at }))
 }
+
+/**
+ * Clears run rows left at `running` by a process that no longer exists.
+ *
+ * `abandonRun` handles an ordinary stop. A `kill -9`, a crash, or a closed
+ * terminal has no such path, so the row stays `running` for good, keeping its
+ * `entry` scratch rows with it. Nothing breaks — `liveRuns` already declines to
+ * treat such a row as in flight, so it blocks no build — but `stats` counts it
+ * under "did not finish" forever, and the scratch rows are never read again.
+ *
+ * The live set comes from `liveRuns` rather than from a second pid check, so
+ * the two can never disagree. A reaper with its own notion of "alive" could
+ * stop a run the build guard is still protecting, which is the one outcome
+ * that would make this worse than the mess it cleans up.
+ *
+ * Errs towards leaving rows behind. A pid the operating system has since
+ * recycled reads as alive and is skipped, so an abandoned row can survive a
+ * pass; it is reaped the next time that pid is free. Leaving a dead row costs
+ * a wrong number in `stats`. Stopping a live run costs the run.
+ *
+ * Assumes the database is local to this machine, which `~/.local/share` makes
+ * true: a pid means nothing on the host that did not issue it.
+ */
+export function reapAbandonedRuns(db: Database.Database, now: Clock = () => Date.now()): number {
+  const live = new Set(liveRuns(db).map((r) => r.id))
+  const running = db.prepare<[], { id: number }>(`SELECT id FROM run WHERE state = 'running'`).all()
+  const abandoned = running.filter((r) => !live.has(r.id)).map((r) => r.id)
+  if (abandoned.length === 0) return 0
+
+  // One transaction: a row marked stopped whose entry rows survived would be
+  // the same orphan this exists to remove, just harder to spot.
+  const reap = db.transaction((ids: number[]): void => {
+    // No totals, for the reason abandonRun gives: a run that did not reach
+    // every entry has no honest numbers to report.
+    const stop = db.prepare(`UPDATE run SET state = 'stopped', finished_at = ? WHERE id = ?`)
+    const clear = db.prepare('DELETE FROM entry WHERE run_id = ?')
+    const at = now()
+    for (const id of ids) {
+      stop.run(at, id)
+      clear.run(id)
+    }
+  })
+  reap(abandoned)
+  return abandoned.length
+}

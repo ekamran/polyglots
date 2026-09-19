@@ -4,7 +4,15 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type Database from 'better-sqlite3'
 import { openJobsDb } from '../../src/jobs/db.js'
-import { abandonRun, finishRun, getRun, liveRuns, recordEntries, startRun } from '../../src/jobs/runs.js'
+import {
+  abandonRun,
+  finishRun,
+  getRun,
+  liveRuns,
+  reapAbandonedRuns,
+  recordEntries,
+  startRun,
+} from '../../src/jobs/runs.js'
 
 let db: Database.Database
 let dir: string
@@ -217,5 +225,104 @@ describe('liveRuns', () => {
     const id = startRun(db, input)
     db.prepare('UPDATE run SET pid = NULL WHERE id = ?').run(id)
     expect(liveRuns(db)).toEqual([])
+  })
+})
+
+describe('reapAbandonedRuns', () => {
+  const dead = (id: number) => db.prepare('UPDATE run SET pid = ? WHERE id = ?').run(999_999, id)
+
+  it('marks a row whose process is gone as stopped', () => {
+    const id = startRun(db, input)
+    dead(id)
+    expect(reapAbandonedRuns(db, () => 5000)).toBe(1)
+    const row = getRun(db, id)!
+    expect(row.state).toBe('stopped')
+    expect(row.finishedAt).toBe(5000)
+  })
+
+  it('drops the scratch entry rows the abandoned run left behind', () => {
+    const id = startRun(db, input)
+    recordEntries(db, id, ['a', 'b', 'c'])
+    dead(id)
+    reapAbandonedRuns(db)
+    expect(db.prepare('SELECT count(*) n FROM entry WHERE run_id = ?').get(id)).toEqual({ n: 0 })
+  })
+
+  it('reaps a row with no pid, which predates the column', () => {
+    // This is the row the live database actually has: killed before 0.7.1 added
+    // the pid, so there is nothing to check it against and it can never clear
+    // itself. liveRuns already calls it not live; the two must agree.
+    const id = startRun(db, input)
+    db.prepare('UPDATE run SET pid = NULL WHERE id = ?').run(id)
+    expect(reapAbandonedRuns(db)).toBe(1)
+    expect(getRun(db, id)!.state).toBe('stopped')
+  })
+
+  it('leaves a genuinely running job alone', () => {
+    // The whole risk of a reaper: killing the bookkeeping of a run still in
+    // flight. This process is alive by definition, so its row must survive.
+    const id = startRun(db, input)
+    recordEntries(db, id, ['a', 'b'])
+    expect(reapAbandonedRuns(db)).toBe(0)
+    expect(getRun(db, id)!.state).toBe('running')
+    expect(db.prepare('SELECT count(*) n FROM entry WHERE run_id = ?').get(id)).toEqual({ n: 2 })
+  })
+
+  it('reaps the dead row and spares the live one in the same pass', () => {
+    const live = startRun(db, input)
+    const gone = startRun(db, input)
+    dead(gone)
+    expect(reapAbandonedRuns(db)).toBe(1)
+    expect(getRun(db, live)!.state).toBe('running')
+    expect(getRun(db, gone)!.state).toBe('stopped')
+  })
+
+  it('does not touch a finished run', () => {
+    const id = startRun(db, input)
+    finishRun(db, id, { entries: 9, flagged: 1, repaired: 0, unreviewed: 0, approvable: 8, byCategory: {} })
+    expect(reapAbandonedRuns(db)).toBe(0)
+    expect(getRun(db, id)!.state).toBe('done')
+    // finishRun froze these totals. A reaper that rewrote finished_at would
+    // corrupt the one record stats reads as history.
+    expect(getRun(db, id)!.entries).toBe(9)
+  })
+
+  it('does not touch an already-stopped run', () => {
+    const id = startRun(db, input)
+    abandonRun(db, id, () => 100)
+    expect(reapAbandonedRuns(db, () => 200)).toBe(0)
+    expect(getRun(db, id)!.finishedAt).toBe(100)
+  })
+
+  it('claims no totals for the run it reaps', () => {
+    // An abandoned run did not look at every entry, so it has no honest
+    // throughput to report. Same reasoning as abandonRun.
+    const id = startRun(db, input)
+    dead(id)
+    reapAbandonedRuns(db)
+    const row = getRun(db, id)!
+    expect(row.entries).toBeUndefined()
+    expect(row.flagged).toBeUndefined()
+  })
+
+  it('is idempotent', () => {
+    const id = startRun(db, input)
+    dead(id)
+    expect(reapAbandonedRuns(db)).toBe(1)
+    expect(reapAbandonedRuns(db)).toBe(0)
+  })
+
+  it('agrees with liveRuns about what is live', () => {
+    // Two notions of "live" that can drift is the defect this guards against:
+    // the reaper would stop a run the build guard still protects.
+    const live = startRun(db, input)
+    const gone = startRun(db, input)
+    dead(gone)
+    const liveIds = liveRuns(db).map((r) => r.id)
+    reapAbandonedRuns(db)
+    const stillRunning = db.prepare(`SELECT id FROM run WHERE state = 'running'`).all() as Array<{ id: number }>
+    expect(stillRunning.map((r) => r.id)).toEqual(liveIds)
+    expect(liveIds).toEqual([live])
+    expect(gone).not.toBe(live)
   })
 })

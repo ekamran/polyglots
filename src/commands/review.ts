@@ -22,6 +22,7 @@ import {
   finishRun,
   getAuditVerdict,
   openJobsDb,
+  reapAbandonedRuns,
   pruneStaleConfigs,
   putAuditVerdict,
   recordEntries,
@@ -129,6 +130,12 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
   // run starts over, exactly as the FORMAT=2 bump did in 0.3.0.
   const jobs = opts.jobsDb ?? openJobsDb()
   const ownsJobsDb = opts.jobsDb === undefined
+  // Clear rows a hard kill left at `running` before opening a new one, so the
+  // history this run joins does not already claim two jobs are in flight. Only
+  // rows whose process is gone are touched; a genuinely concurrent run is left
+  // alone. Deliberately not done in `stats`, which promises to write nothing.
+  reapAbandonedRuns(jobs)
+
   // Everything below opens a run in `jobs` and does real work against it, so
   // from here on a throw — a caller's onProgress blowing up, a batch that
   // could not even produce an unreviewed verdict — must not leak the handle
