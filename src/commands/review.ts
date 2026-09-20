@@ -33,7 +33,8 @@ import { writeMcpConfig, MCP_ENV } from '../mcp/config.js'
 import { loadPo, type Annotation } from '../po/po-file.js'
 import type { RunControl } from '../run-control.js'
 import { loadConfig } from '../config.js'
-import { allGlossary, openDb } from '../storage/index.js'
+import { tmKey } from '../audit/rules/index.js'
+import { allGlossary, findExactTm, openDb } from '../storage/index.js'
 import type { AuditEntry, Locale, ReviewEvent, ReviewSummary } from '../types.js'
 
 export interface ReviewOptions extends Partial<AgentRunOptions> {
@@ -69,6 +70,28 @@ function readGlossary(locale: Locale, injected?: Database.Database) {
     return allGlossary(db, locale)
   } finally {
     db.close()
+  }
+}
+
+/**
+ * What the memory already says about each source in this submission.
+ *
+ * Resolved once, here, because the rules read no database and one indexed
+ * lookup per entry is cheaper than the alternative: asking the model to look
+ * them up, one round trip at a time, for the 45% of entries the memory has
+ * nothing useful to say about.
+ */
+function readMemory(entries: AuditEntry[], locale: Locale, injected?: Database.Database): Map<string, string> {
+  const db = injected ?? openDb()
+  try {
+    const found = new Map<string, string>()
+    for (const entry of entries) {
+      const hit = findExactTm(db, entry.msgid, locale, entry.msgctxt)
+      if (hit) found.set(tmKey(entry.msgid, entry.msgctxt), hit.target)
+    }
+    return found
+  } finally {
+    if (!injected) db.close()
   }
 }
 
@@ -272,6 +295,7 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
 
     const verdicts = await auditEntries({
       entries: reviewable,
+      tm: readMemory(reviewable, opts.locale, opts.db),
       locale: opts.locale,
       nplurals: po.nplurals,
       glossary,

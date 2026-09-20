@@ -21,6 +21,9 @@ const UNIVERSAL = [
   'punctuation',
   'glossary',
   'inconsistent',
+  // The memory is per locale and says nothing about a language's orthography,
+  // so a conflict with it is worth reporting wherever polyglots is used.
+  'tm-conflict',
 ] as const
 
 export const DEFAULT_PROFILE: RuleProfile = {

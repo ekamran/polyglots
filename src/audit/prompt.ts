@@ -1,6 +1,9 @@
 import type { Finding, Locale } from '../types.js'
+import type { GlossaryMatch } from './rules/index.js'
 import { AUDIT_CATEGORIES } from './schema.js'
 import { profileFor } from './rules/profiles.js'
+
+const GLOSSARY_LIMIT = 12
 
 export interface AuditCandidate {
   id: number
@@ -12,6 +15,11 @@ export interface AuditCandidate {
   comments: string[]
   references: string[]
   hints: Finding[]
+  // The binding glossary terms this source contains, with their approved
+  // translations, resolved before the prompt is built. Carried inline because
+  // the alternative is a tool call per term, and an agent that issues those one
+  // at a time spends most of a batch on them.
+  glossary?: GlossaryMatch[]
   // Carries a rules-side mechanical repair through the batch round trip, since
   // toVerdict and unreviewed build a fresh Verdict per candidate and would
   // otherwise lose it.
@@ -54,6 +62,12 @@ export function buildAuditPrompt(candidates: AuditCandidate[], locale: Locale, n
       // adjudication, and invite a fix for an entry that already has one.
       const checks = c.hints.filter((h) => h.rule !== 'repaired')
       if (checks.length > 0) payload.automatedChecks = checks.map((h) => `${h.rule}: ${h.message}`)
+      // Capped, because a long source can touch a dozen terms and the list is
+      // repeated for every entry in the batch. The cap is generous enough that
+      // hitting it means the string is long enough for the model to ask.
+      if (c.glossary && c.glossary.length > 0) {
+        payload.glossary = Object.fromEntries(c.glossary.slice(0, GLOSSARY_LIMIT).map((g) => [g.term, g.translations]))
+      }
       if (c.repaired) payload.alreadyRepaired = true
       // Carried as a field rather than named as a list of rules in the guidance
       // below, so adding an error rule keeps the instruction true on its own.
@@ -68,7 +82,7 @@ Target locale: ${locale}
 nplurals: ${nplurals}
 
 The locale team's standards:
-- The official WordPress ${language} glossary is binding. Call glossary_lookup for any term you are unsure about.
+- The official WordPress ${language} glossary is binding. Every glossary term an entry's source contains is listed on that entry under "glossary", with its approved translation, so you do not need to look those up. Call glossary_lookup only for a term you need that is not listed there.
 ${capitalization}- Each entry's "references" are the source file and line the string comes from, and they are the best clue to its role: a path like admin-menu.php or help.php points at a label or a heading, while one like actions.php, or a translation in the imperative, points at a command.
 - Placeholders (%s, %1$s, %d, {x}), HTML tags, and leading/trailing whitespace must match the source exactly.
 - Use the formal, neutral register standard in WordPress ${language}. No slang, no over-familiar address.

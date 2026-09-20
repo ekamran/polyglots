@@ -10,6 +10,57 @@ Run `polyglots --version` to see which build you have; the TUI shows it beside i
 
 ## [Unreleased]
 
+## [0.9.9] - 2026-09-20
+
+Ask the agent less, and tell it more.
+
+### Added
+
+- A `tm-conflict` rule: the translation memory already holds a different
+  translation of this exact source. On a real 6,426-entry submission it found
+  336 of them, including `Canonical URL` left in English, `Post` rendered
+  against the approved term, and `Greater Than` translated as "more" when it is
+  a comparison operator. Resolving the memory for the whole file costs 71ms.
+  - Always a suspicion, never proof, because either side can be the wrong one:
+    on that same file the memory offered `Yazı tipi` for *post type*, which in
+    Turkish means a font. The message quotes what the memory says so a human
+    can decide which is right.
+  - Differences of case, spacing and a trailing stop are not reported. They
+    were 138 of 474 on that file and would have buried the 336 that mattered.
+  - The context is part of the lookup key, since gettext lets the same English
+    string mean two different things.
+  - Universal rather than Turkish, because the memory is per locale and says
+    nothing about a language's orthography.
+
+### Changed
+
+- Every entry now states the glossary terms its source contains, with their
+  approved translations, instead of inviting the model to look each one up.
+  Measured across eight batches, `glossary_lookup` was 30% of every tool call
+  the agent made. One matcher now serves both the glossary rule and the prompt,
+  so the two cannot disagree about which terms apply.
+- The timeout is a property of the agent. Claude keeps five minutes; antigravity
+  gets twenty. Claude issues its tool calls concurrently, while antigravity
+  issues one per planner turn, so a shared ceiling cut its slower batches off
+  mid-question: the batches that finished took two to three and a half minutes,
+  and every failure needed more than about 28 tool calls.
+- antigravity is given a deadline just inside the caller's, so it reports its
+  own timeout instead of being killed mid-sentence. Sharing a deadline meant
+  both fired at once and the process was signalled before it could write
+  anything, which is why every timeout arrived with an empty stderr. Its own
+  default is to wait forever, so the flag cannot simply be left off.
+- The review screen and `polyglots review` warn when the batch is too small for
+  antigravity. Shrinking a batch is the obvious response to a timeout and the
+  wrong one here: a 25-entry batch drew 11 tool calls where 10-entry batches
+  drew 22 to 31, so the smaller batch spent about six times as many round trips
+  per entry and still paid to read the tool schemas at the start of each one.
+
+### Note for existing databases
+
+The guidance and the rule set both changed, so `configHash` moves and the next
+run prunes every cached verdict for the locale. Back up `jobs.db` first if the
+cached work is worth keeping.
+
 ## [0.9.8] - 2026-09-20
 
 ### Fixed

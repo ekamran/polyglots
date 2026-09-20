@@ -31,6 +31,7 @@ import {
 import { createProgressReporter, createReviewProgressReporter } from './cli/progress.js'
 import { loadPo } from './po/po-file.js'
 import { buildReport } from './review/message.js'
+import { batchAdvice } from './agent/providers.js'
 import type { RunTuiOptions } from './tui/index.js'
 import type { Locale, PolyglotsConfig } from './types.js'
 import { VERSION } from './version.js'
@@ -407,6 +408,10 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
       const [target] = expandFileArgs([raw])
       const config = cli.config()
       const locale = parseLocaleArg(flags.locale ?? config.defaultLocale)
+      const batchSize =
+        flags.batchSize === undefined ? config.batchSize : parsePositiveInt('--batch-size', flags.batchSize)
+      const advice = batchAdvice(config.reviewProvider, batchSize)
+      if (advice) cli.err(advice)
       const report = createReviewProgressReporter(cli.streams.stderr)
       // Only binds on a terminal. A piped or scheduled run has nobody to press
       // anything, and raw mode on a pipe would break it.
@@ -427,8 +432,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
         locale,
         ...(flags.outDir ? { outDir: flags.outDir } : {}),
         ...(flags.ai === false ? { noAi: true } : {}),
-        batchSize:
-          flags.batchSize === undefined ? config.batchSize : parsePositiveInt('--batch-size', flags.batchSize),
+        batchSize,
         ...(flags.fresh ? { fresh: true } : {}),
         bin: process.env.POLYGLOTS_AGENT_BIN || process.env.POLYGLOTS_CLAUDE_BIN || undefined,
         onProgress: report,

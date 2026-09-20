@@ -177,6 +177,48 @@ describe('auditEntries', () => {
    * because every other test here injects an adjudicator and never looks at
    * what it was handed.
    */
+  /**
+   * An agent that issues tool calls one at a time spends most of a batch on
+   * them: a 10-entry batch made 30 sequential MCP calls and never reached an
+   * answer inside five minutes. The glossary terms a source contains are known
+   * before the prompt is built, so stating them costs nothing and removes the
+   * commonest reason to call a tool.
+   */
+  it('states the binding glossary terms in the prompt', async () => {
+    const prompts: string[] = []
+    const adjudicate = vi.fn(async (batch: { id: number }[], _opts: unknown, ) => {
+      return batch.map((c) => ({ id: c.id, problem: false, categories: [] as never[], reason: 'ok' }))
+    })
+    let built = ''
+    await auditEntries({
+      entries: [entry('a', 'Open the sidebar', 'Kenar çubuğunu aç')],
+      ...base(),
+      adjudicate: async (batch, opts) => {
+        built = buildAuditPrompt(batch, 'tr', 2)
+        prompts.push(built)
+        return adjudicate(batch, opts)
+      },
+    })
+    // The payload key, not the guidance, which now also mentions the word.
+    expect(built).toContain('"glossary":')
+    expect(built).toContain('sidebar')
+    expect(built).toContain('kenar çubuğu')
+  })
+
+  // A source touching no glossary term must not gain an empty field.
+  it('leaves the field out when the source touches no term', async () => {
+    let built = ''
+    await auditEntries({
+      entries: [entry('a', 'Zzzz qqqq', 'Zzzz qqqq')],
+      ...base(),
+      adjudicate: async (batch) => {
+        built = buildAuditPrompt(batch, 'tr', 2)
+        return batch.map((c) => ({ id: c.id, problem: false, categories: [] as never[], reason: 'ok' }))
+      },
+    })
+    expect(built).not.toContain('"glossary":')
+  })
+
   it('tells the adjudicator which agent to drive', async () => {
     const seen: Array<Record<string, unknown>> = []
     const adjudicate = vi.fn(async (batch: { id: number }[], opts: { provider?: string }) => {

@@ -71,10 +71,28 @@ describe('antigravity arguments', () => {
     expect(args).not.toContain('--dangerously-skip-permissions')
   })
 
-  // Its own default is five minutes and would otherwise cut a batch short of
-  // the caller's limit, reporting a failure the caller did not set.
-  it('hands it the caller timeout rather than letting its own default win', () => {
-    expect(args[args.indexOf('--print-timeout') + 1]).toBe('90s')
+  /**
+   * Its limit sits just inside the caller's so that it, not the kill, decides a
+   * timeout and gets to explain it. Given the same deadline both fired at once
+   * and the process was signalled before it could write anything, so every
+   * timeout arrived with an empty stderr. Its own default is 0, wait forever,
+   * so the flag cannot simply be left off either.
+   */
+  it('takes a limit just inside the caller own, so it reports the timeout', () => {
+    expect(args[args.indexOf('--print-timeout') + 1]).toBe('60s')
+  })
+
+  it('never asks for a nonsensical limit when the caller allows very little', () => {
+    const tight = buildAgentArgs(SCHEMA, { ...base, provider: 'antigravity', timeoutMs: 5_000 })
+    expect(tight[tight.indexOf('--print-timeout') + 1]).toBe('30s')
+  })
+
+  // Without a caller limit it still needs one, because waiting forever is its
+  // own default and a stuck batch would never be reported.
+  it('falls back to its own generous default rather than waiting forever', () => {
+    const bare = buildAgentArgs(SCHEMA, { ...base, provider: 'antigravity' })
+    expect(bare).toContain('--print-timeout')
+    expect(providerSpec('antigravity').defaultTimeoutMs).toBeGreaterThan(providerSpec('claude').defaultTimeoutMs)
   })
 
   it('writes the schema out and passes the path', () => {

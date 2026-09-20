@@ -7,7 +7,7 @@ import type { AuditEntry, Finding, GlossaryEntry, Locale } from '../types.js'
 import { buildAuditPrompt, type AuditCandidate } from './prompt.js'
 import { judgeFix, repairMechanically } from './repair.js'
 import { auditBatchJsonSchema, mapAuditResults, type AuditResult } from './schema.js'
-import { buildRuleContext, runRules, type RuleContext } from './rules/index.js'
+import { buildRuleContext, glossaryMatches as glossaryFor, runRules, type RuleContext } from './rules/index.js'
 
 export interface Verdict {
   key: string
@@ -57,6 +57,9 @@ export interface AuditOptions extends Partial<AgentRunOptions> {
   nplurals: number
   glossary: GlossaryEntry[]
   properNouns?: string[]
+  // What the memory holds for these sources, resolved by the caller. The rules
+  // read no database, and the caller already has one open.
+  tm?: Map<string, string>
   noAi?: boolean
   batchSize?: number
   // Lets a caller park or end the run at a batch boundary. A subscription that
@@ -117,6 +120,7 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
     nplurals: opts.nplurals,
     entries: opts.entries,
     ...(opts.properNouns ? { properNouns: opts.properNouns } : {}),
+    ...(opts.tm ? { tm: opts.tm } : {}),
   })
 
   const verdicts = new Map<string, Verdict>()
@@ -154,6 +158,9 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
       })
       continue
     }
+    // Resolved once per entry, from the same matcher the glossary rule uses, so
+    // the prompt states the binding terms instead of making the model ask.
+    const terms = glossaryFor(entry.msgid, ctx)
     candidates.push({
       id: 0,
       key: entry.key,
@@ -164,6 +171,7 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
       comments: entry.comments,
       references: entry.references,
       hints: findings,
+      ...(terms.length > 0 ? { glossary: terms } : {}),
       ...(errors.length > 0 ? { condemned: findings } : {}),
       ...(repaired ? { repaired: { text: repaired, repairedBy: 'rules' as const } } : {}),
     })

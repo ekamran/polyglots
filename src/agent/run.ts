@@ -20,7 +20,6 @@ export {
 } from './providers.js'
 
 const STDERR_EXCERPT = 500
-const DEFAULT_TIMEOUT_MS = 300_000
 const DEFAULT_KILL_GRACE_MS = 2_000
 
 export function buildAgentArgs(jsonSchema: unknown, opts: AgentRunOptions): string[] {
@@ -55,7 +54,7 @@ export interface AgentOutput {
 export function spawnAgent(argv: string[], prompt: string, opts: AgentRunOptions): Promise<AgentOutput> {
   const spec: ProviderSpec = providerSpec(opts.provider)
   const command = opts.bin ?? spec.bin
-  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS
+  const timeoutMs = opts.timeoutMs ?? spec.defaultTimeoutMs
   const killGraceMs = opts.killGraceMs ?? DEFAULT_KILL_GRACE_MS
   return new Promise((resolve, reject) => {
     const child = spawn(command, argv, {

@@ -13,6 +13,10 @@ export const MCP_TOOLS = [
   'mcp__polyglots__tm_lookup',
 ] as const
 
+// Enough for the agent to notice its own deadline and report it before the
+// caller's timer gives up on it.
+const GRACE_SECONDS = 30
+
 export const PROVIDERS: readonly ReviewProvider[] = ['claude', 'antigravity']
 
 // Claude stays the default. It is the faster of the two and the more
@@ -58,6 +62,15 @@ export interface ProviderSpec {
    * audit schema is the larger of the two constants.
    */
   schemaAs: 'inline' | 'file'
+  /**
+   * How long one batch may take, when the caller names no limit.
+   *
+   * A property of the agent, not of the work. Claude issues its tool calls
+   * concurrently; antigravity issues one per planner turn, so the same batch
+   * costs it twenty-odd sequential round trips and a shared 300s ceiling cut
+   * its slower batches off mid-question.
+   */
+  defaultTimeoutMs: number
   buildArgs(schema: string, opts: AgentRunOptions): string[]
   /** The provider's own envelope, reduced to the object the schema asked for. */
   readEnvelope(stdout: string): unknown
@@ -88,6 +101,7 @@ const claude: ProviderSpec = {
   name: 'claude',
   bin: 'claude',
   schemaAs: 'inline',
+  defaultTimeoutMs: 300_000,
   // The prompt is sent on stdin, never as argv: --allowedTools and --mcp-config
   // are variadic on the real CLI and would swallow a trailing positional, and
   // a batch with long .po comments can exceed ARG_MAX. Each variadic flag is
@@ -136,6 +150,10 @@ const antigravity: ProviderSpec = {
   name: 'antigravity',
   bin: 'agy',
   schemaAs: 'file',
+  // Measured: batches that finished took two to three and a half minutes, and
+  // every one that needed more than about 28 tool calls hit the old 300s
+  // ceiling. Twenty minutes is room for the tail rather than an expectation.
+  defaultTimeoutMs: 1_200_000,
   /**
    * No `-p`. Its `-p` requires its value inline, which would put a whole batch
    * of source strings and comments into argv; omitting it makes the CLI read
@@ -149,9 +167,13 @@ const antigravity: ProviderSpec = {
    */
   buildArgs(schema, opts) {
     const args = ['--output-format', 'json', '--json-schema', schema]
-    // Its own timeout defaults to five minutes and would otherwise cut a batch
-    // short of the caller's limit, reporting a failure the caller did not set.
-    if (opts.timeoutMs) args.push('--print-timeout', `${Math.ceil(opts.timeoutMs / 1000)}s`)
+    // Its own limit is set just inside ours so that it, not the kill, decides a
+    // timeout and gets to say why. Given the same deadline both fire at once,
+    // the process is signalled before it can write anything, and every timeout
+    // was reported with an empty stderr. Its own default is 0, meaning wait
+    // forever, so leaving the flag off would put the whole burden on the kill.
+    const budget = opts.timeoutMs ?? antigravity.defaultTimeoutMs
+    args.push('--print-timeout', `${Math.max(30, Math.floor(budget / 1000) - GRACE_SECONDS)}s`)
     if (opts.model) args.push('--model', opts.model)
     return args
   },
@@ -199,3 +221,22 @@ export function schemaArgument(spec: ProviderSpec, jsonSchema: unknown): string 
   schemaFiles.set(digest, path)
   return path
 }
+
+/**
+ * A warning about a batch size that will cost more than it saves, or undefined.
+ *
+ * Shrinking a batch is the obvious response to a timeout and it is the wrong
+ * one here. Measured on real runs: a 25-entry batch drew 11 tool calls, while
+ * 10-entry batches drew 22 to 31, so the smaller batch spent roughly six times
+ * as many round trips per entry and still paid the same fixed cost of reading
+ * the tool schemas at the start of each one. The agent grows more thorough as
+ * it is given less to do.
+ */
+export function batchAdvice(provider: ReviewProvider | undefined, batchSize: number): string | undefined {
+  if ((provider ?? DEFAULT_PROVIDER) !== 'antigravity') return undefined
+  if (batchSize >= ANTIGRAVITY_MIN_BATCH) return undefined
+  return `antigravity asks its tools one at a time, so a batch of ${batchSize} costs more round trips per entry than a batch of ${ANTIGRAVITY_MIN_BATCH}, not fewer. Raise the batch size rather than lowering it.`
+}
+
+// Below this, the per-entry cost climbs instead of falling.
+export const ANTIGRAVITY_MIN_BATCH = 25

@@ -4,6 +4,7 @@ import { Box, Text, useInput } from 'ink'
 import TextInput from 'ink-text-input'
 import { normalizeLocale } from '../../tmx/parse.js'
 import type { ReviewEvent, ReviewSummary } from '../../types.js'
+import { batchAdvice } from '../../agent/providers.js'
 import { useCommands, useConfig } from '../commands.js'
 import { poEntryCount } from '../../po/count.js'
 import { FilePicker } from '../components/FilePicker.js'
@@ -170,6 +171,11 @@ export function Review({ cwd, onBack }: ReviewProps) {
           <Text dimColor={noAi}>
             {marker(FIELD_BATCH)}Batch size:      {batchSize} entries per AI call
           </Text>
+          {/* Where the size is chosen, because shrinking the batch is the
+              obvious response to a timeout and the wrong one on this agent. */}
+          {batchAdvice(config.reviewProvider, batchSize) && (
+            <Text color="yellow">{batchAdvice(config.reviewProvider, batchSize)}</Text>
+          )}
           <Text>
             {marker(FIELD_NO_AI)}Skip AI checks:  {noAi ? 'yes (rules only, fast)' : 'no (rules, then AI review)'}
           </Text>

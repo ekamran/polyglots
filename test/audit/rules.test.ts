@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AuditEntry, GlossaryEntry } from '../../src/types.js'
-import { buildRuleContext, runRules } from '../../src/audit/rules/index.js'
+import { buildRuleContext, runRules, tmKey } from '../../src/audit/rules/index.js'
 import { profileFor } from '../../src/audit/rules/profiles.js'
 
 const GLOSSARY: GlossaryEntry[] = [
@@ -373,5 +373,66 @@ describe('runRules', () => {
     const found = check(entry('Save All %s Changes', 'Tüm Değişiklikleri Kaydet'))
     expect(found.map((f) => f.rule).sort()).toEqual(['placeholder', 'title-case'])
     for (const f of found) expect(f.message.length).toBeGreaterThan(0)
+  })
+})
+
+describe('tm-conflict rule', () => {
+  const withTm = (e: AuditEntry, pairs: Array<[string, string]>) => {
+    const tm = new Map<string, string>(pairs.map(([msgid, target]) => [tmKey(msgid), target]))
+    const ctx = buildRuleContext({ locale: 'tr', glossary: GLOSSARY, nplurals: 2, entries: [e], tm })
+    return runRules(e, ctx)
+  }
+
+  /**
+   * Real examples from a submission: the memory disagreeing is strong evidence
+   * and not a verdict, because either side can be the wrong one.
+   */
+  it('reports a source the memory translates differently', () => {
+    const e = entry('Post', 'Gönderi')
+    const found = withTm(e, [['Post', 'Yazı']])
+    expect(found.map((f) => f.rule)).toContain('tm-conflict')
+    expect(found.find((f) => f.rule === 'tm-conflict')?.message).toContain('Yazı')
+  })
+
+  it('is only ever a suspicion, never proof', () => {
+    const found = withTm(entry('Post', 'Gönderi'), [['Post', 'Yazı']])
+    expect(found.find((f) => f.rule === 'tm-conflict')?.severity).toBe('suspect')
+  })
+
+  it('says nothing when the memory agrees', () => {
+    expect(withTm(entry('Post', 'Yazı'), [['Post', 'Yazı']]).map((f) => f.rule)).not.toContain('tm-conflict')
+  })
+
+  // 138 of 474 differences on a real file were only these. Reporting them would
+  // have buried the 336 that mattered.
+  it('ignores a difference of case, spacing or a trailing stop', () => {
+    for (const [submitted, approved] of [
+      ['Değer girin', 'değer girin'],
+      ['Değer  girin', 'Değer girin'],
+      ['Değer girin.', 'Değer girin'],
+      ['Değer girin:', 'Değer girin'],
+    ]) {
+      expect(withTm(entry('Enter value', submitted), [['Enter value', approved]]).map((f) => f.rule)).not.toContain(
+        'tm-conflict',
+      )
+    }
+  })
+
+  it('says nothing about a source the memory has never seen', () => {
+    expect(withTm(entry('Zzz qqq', 'Bir şey'), [['Other', 'Başka']]).map((f) => f.rule)).not.toContain('tm-conflict')
+  })
+
+  // A caller that never looked is not the same as an empty memory, and the rule
+  // must not report on the difference.
+  it('says nothing when no memory was resolved at all', () => {
+    expect(rules(entry('Post', 'Gönderi'))).not.toContain('tm-conflict')
+  })
+
+  // gettext lets the same English mean two things, so context is part of the key.
+  it('does not answer for a different context', () => {
+    const e = { ...entry('Post', 'Gönderi'), msgctxt: 'verb', key: 'verbPost' }
+    const tm = new Map([[tmKey('Post'), 'Yazı']])
+    const ctx = buildRuleContext({ locale: 'tr', glossary: GLOSSARY, nplurals: 2, entries: [e], tm })
+    expect(runRules(e, ctx).map((f) => f.rule)).not.toContain('tm-conflict')
   })
 })
