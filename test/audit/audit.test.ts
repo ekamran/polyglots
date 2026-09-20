@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AuditEntry, GlossaryEntry } from '../../src/types.js'
-import { buildAgentArgs } from '../../src/agent/run.js'
+import { AgentError, buildAgentArgs } from '../../src/agent/run.js'
 import { tmKey } from '../../src/audit/rules/index.js'
 import { auditEntries } from '../../src/audit/audit.js'
 import { createRunControl } from '../../src/run-control.js'
@@ -617,6 +617,20 @@ describe('auditEntries when the model keeps failing', () => {
     expect(adjudicate).toHaveBeenCalledTimes(11)
   })
 
+  /**
+   * The soft-denial is the agent's own decision about the prompt it was given,
+   * so the identical prompt produces the identical refusal. Both attempts at
+   * the lost batch died the same way a minute apart, which is a second full
+   * batch of metered time bought for nothing.
+   */
+  it('does not replay a batch the agent refused rather than failed to finish', async () => {
+    const adjudicate = vi.fn().mockRejectedValue(new AgentError('produced no structured output', { retryable: false }))
+    await auditEntries({ entries: ten(), ...base({ batchSize: 1 }), adjudicate })
+
+    // Three batches before the streak stops it, attempted once each. Not six.
+    expect(adjudicate).toHaveBeenCalledTimes(3)
+  })
+
   it('says which batch to resume after, so the failures are re-attempted', async () => {
     let batches = 0
     const adjudicate = vi.fn().mockImplementation(async (batch: { id: number }[]) => {
@@ -670,6 +684,19 @@ describe('buildAuditPrompt', () => {
     expect(prompt).toContain('"id":1')
     expect(prompt).toContain('"id":2')
     expect(prompt).toContain('Yan menü')
+  })
+
+  /**
+   * A real batch of 100 was lost to this. antigravity pasted all 32KB of it
+   * into a python heredoc whose entire body was len(lines), asked for a shell
+   * it is not permitted to have, was soft-denied, and produced nothing at all.
+   * It had to count because the prompt never told it the number. Saying it
+   * costs one line and removes the reason to reach for a tool.
+   */
+  it('states how many entries there are, so nothing has to count them', () => {
+    const prompt = buildAuditPrompt(candidates, 'tr', 2)
+    expect(prompt).toContain('2 entries')
+    expect(prompt).toMatch(/no shell/i)
   })
 
   it('passes rule hints through so the model can adjudicate them', () => {

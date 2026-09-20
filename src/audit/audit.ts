@@ -1,6 +1,6 @@
 import { chunk } from '../batch.js'
 import type { RunControl } from '../run-control.js'
-import { runAgent, type AgentRunOptions } from '../agent/run.js'
+import { AgentError, runAgent, type AgentRunOptions } from '../agent/run.js'
 import { auditSrcHash } from '../jobs/hash.js'
 import type { CachedVerdict, VerdictKey } from '../jobs/verdicts.js'
 import type { AuditEntry, Finding, GlossaryEntry, Locale } from '../types.js'
@@ -359,6 +359,13 @@ async function runBatch(
       return { results: await adjudicate(batch, agentOpts) }
     } catch (err) {
       failed = err instanceof Error ? err.message : String(err)
+      // Some failures are answers. An agent that ran to completion and refused
+      // to produce anything usable was not unlucky, it decided, and the retry
+      // hands it the identical prompt and buys the identical decision: the
+      // batch lost to a denied shell was attempted twice a minute apart and
+      // reached for python both times. A batch is minutes of metered time, so
+      // the second attempt has to be worth something.
+      if (err instanceof AgentError && !err.retryable) break
     }
   }
   return { failed }

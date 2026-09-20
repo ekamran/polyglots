@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
-import { writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ReviewProvider } from '../types.js'
 
@@ -30,10 +30,26 @@ export function isReviewProvider(value: string): value is ReviewProvider {
 export class AgentError extends Error {
   override readonly name: string = 'AgentError'
   readonly stderr: string
+  /**
+   * Whether running the identical batch again could end differently.
+   *
+   * A property of the failure rather than of the caller, because only the
+   * place that read the envelope knows which kind it was. An agent that ran
+   * out of time or exited non-zero may well have been unlucky. An agent that
+   * ran to completion and chose to produce nothing usable made a decision
+   * about the prompt it was given, and it will make the same one again: the
+   * batch lost to a denied shell was attempted twice, a minute apart, and both
+   * attempts reached for python to count the entries.
+   *
+   * Defaults to true so that a failure nobody has classified keeps the
+   * behaviour every earlier build had.
+   */
+  readonly retryable: boolean
 
-  constructor(message: string, details: { stderr?: string } = {}) {
+  constructor(message: string, details: { stderr?: string; retryable?: boolean } = {}) {
     super(message)
     this.stderr = details.stderr ?? ''
+    this.retryable = details.retryable ?? true
   }
 }
 
@@ -139,10 +155,10 @@ const claude: ProviderSpec = {
       try {
         return JSON.parse(env.result)
       } catch {
-        throw new AgentError(`claude result field is not JSON: ${env.result.slice(0, 200)}`)
+        throw new AgentError(`claude result field is not JSON: ${env.result.slice(0, 200)}`, { retryable: false })
       }
     }
-    throw new AgentError('claude envelope has neither structured_output nor a string result')
+    throw new AgentError('claude envelope has neither structured_output nor a string result', { retryable: false })
   },
 }
 
@@ -192,14 +208,51 @@ const antigravity: ProviderSpec = {
       try {
         return JSON.parse(env.response)
       } catch {
-        throw new AgentError(`antigravity response field is not JSON: ${env.response.slice(0, 200)}`)
+        throw new AgentError(`antigravity response field is not JSON: ${env.response.slice(0, 200)}`, {
+          retryable: false,
+        })
       }
     }
-    throw new AgentError('antigravity produced no structured output; a tool it needed was most likely denied')
+    throw new AgentError('antigravity produced no structured output; a tool it needed was most likely denied', {
+      retryable: false,
+    })
   },
 }
 
 const SPECS: Record<ReviewProvider, ProviderSpec> = { claude, antigravity }
+
+/**
+ * The model a provider will actually use, when the choice is not ours.
+ *
+ * antigravity reads its model from its own settings file and polyglots passes
+ * no --model, so every verdict it has ever formed was recorded under a bare
+ * `antigravity` whatever was behind it. Changing that setting from Flash to
+ * Pro would then serve one engine's opinions as the other's, which is exactly
+ * the failure that made every `antigravity` row before 0.9.8 Claude's work
+ * under another name. An engine id has one job: to name the engine.
+ *
+ * Read rather than passed on to the CLI. Handing the name back as --model
+ * would mean betting a run on our spelling of it matching theirs, and the
+ * value is wanted for the key, not for the invocation.
+ *
+ * Reasoning effort rides along inside the name, as "Gemini 3.8 Flash
+ * (Medium)", so this one field covers both and a change to either is visible.
+ *
+ * Fails open, the way the build guard does. A missing, unreadable or
+ * surprising settings file yields undefined and the run is recorded under the
+ * bare provider name, which is what every row written before this already
+ * uses. A review must not stop because another tool's configuration moved.
+ */
+export function configuredModel(provider: ReviewProvider, home: string = homedir()): string | undefined {
+  if (provider !== 'antigravity') return undefined
+  try {
+    const raw = readFileSync(join(home, '.gemini', 'antigravity-cli', 'settings.json'), 'utf8')
+    const model: unknown = (JSON.parse(raw) as { model?: unknown }).model
+    return typeof model === 'string' && model.trim().length > 0 ? model : undefined
+  } catch {
+    return undefined
+  }
+}
 
 export function providerSpec(name: ReviewProvider = DEFAULT_PROVIDER): ProviderSpec {
   return SPECS[name]

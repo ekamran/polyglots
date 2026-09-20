@@ -41,6 +41,25 @@ function languageName(locale: Locale): string {
   }
 }
 
+/**
+ * The prompt for one batch.
+ *
+ * The entry count is stated rather than left to be counted, which is a line of
+ * text bought with a lost batch of a hundred: antigravity pasted all 32KB of
+ * one into a python heredoc whose entire body was len(lines), asked for a
+ * shell headless mode cannot grant, was soft-denied and produced nothing at
+ * all. It happened at batch size 50 as well, where the same instinct reached
+ * for a scratch file to validate its own output, so it is not a property of
+ * large batches. An agent told the number has no reason to derive it.
+ *
+ * The count differs between batches while the per-entry cache key does not,
+ * which is deliberate and matches batchSize being left out of the review
+ * fingerprint: how many entries sit beside an entry cannot change whether that
+ * entry's own translation is wrong. What this wording does change is the
+ * configuration hash, through fingerprintReview, so editing it prunes the
+ * cached verdicts for the locale. That is the intended cost of changing the
+ * question.
+ */
 export function buildAuditPrompt(candidates: AuditCandidate[], locale: Locale, nplurals: number): string {
   const language = languageName(locale)
   // Orthography guidance follows the locale's profile, not its name. Telling a
@@ -105,7 +124,7 @@ Categories: ${AUDIT_CATEGORIES.join(', ')}. Use an empty array when problem is f
 - If you are not confident what the entry should say, leave "fix" out entirely. An honest "I do not know" is worth more than a confident wrong translation, which a human then has to catch.
 - An entry marked "condemned" has been proved wrong by a deterministic check, so it is already known to be broken whatever you think of it. Do not argue about whether it is wrong; return the fix.
 
-Return exactly one result per id below.
+There are ${candidates.length} entries below, with ids 1 to ${candidates.length}. Return exactly that many results, one per id. The count is stated so that nothing has to work it out: this prompt and the three lookup tools are everything you have. There is no shell and no filesystem, and reaching for one ends the batch with no output at all.
 
 ${entries}`
 }

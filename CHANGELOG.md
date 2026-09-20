@@ -10,6 +10,43 @@ Run `polyglots --version` to see which build you have; the TUI shows it beside i
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-20
+
+### Fixed
+
+- A batch now states how many entries it contains. antigravity was counting
+  them itself, and on one run of a hundred it did so by pasting the whole 32KB
+  batch into a `python3 -c` heredoc whose entire body was `len(lines)`. Headless
+  mode cannot prompt for the shell permission that needs, so the call was
+  auto-denied and the batch ended with no output at all. It is not a symptom of
+  large batches: the same instinct asked to write a validation script during a
+  run of fifty. The prompt now gives the count and says there is no shell and no
+  filesystem, which leaves nothing to derive. Stating it moves the
+  configuration hash, so cached verdicts for the locale are pruned once.
+- A batch the agent refused is no longer attempted twice. A refusal is a
+  decision about the prompt, not bad luck, and the replay sends the identical
+  prompt: both attempts at that lost batch reached for python, a minute apart,
+  for a second batch of metered time. Failures that may genuinely differ on a
+  second attempt, a timeout or a non-zero exit, are retried as before.
+
+### Changed
+
+- A review driven by antigravity now records which model formed its verdicts.
+  antigravity takes its model from its own settings file and polyglots passes
+  no `--model`, so every verdict it had ever formed was filed under a bare
+  `antigravity` whatever was behind it, and switching from Flash to Pro would
+  have served one engine's opinions as the other's. The reasoning effort rides
+  along inside the name, so `antigravity:Gemini 3.8 Flash (Medium)` says both.
+  An unreadable settings file records the bare provider name, as before.
+
+### Cached verdicts are re-reviewed once
+
+Both changes above move the key a verdict is stored under: the prompt wording
+feeds the configuration hash, and the engine id now names antigravity's model.
+The first run after upgrading prunes the cached verdicts for the locale and
+asks again. Nothing in a `.po` is lost, and a run interrupted afterwards
+resumes as usual.
+
 ## [0.11.0] - 2026-09-20
 
 ### Changed

@@ -2,7 +2,7 @@ import { mkdir, rm } from 'node:fs/promises'
 import { basename, dirname, extname, join } from 'node:path'
 import type Database from 'better-sqlite3'
 import { groupFor, OTHER_GROUP } from '../review/message.js'
-import type { AgentRunOptions } from '../agent/run.js'
+import { configuredModel, type AgentRunOptions } from '../agent/run.js'
 import {
   auditEntries,
   DEFAULT_BATCH_SIZE,
@@ -154,6 +154,13 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
   // Read once, at the top: a run must not change agent part way because the
   // setting moved underneath it, and every verdict it caches is keyed by this.
   const provider = opts.provider ?? loadConfig().reviewProvider
+  // What the engine id records. An explicit --model settles it; otherwise ask
+  // the provider what it is configured to run, because antigravity chooses its
+  // own from its own settings file and a verdict Flash formed must not be
+  // served as Pro's. Undefined for claude, and for an antigravity whose
+  // settings cannot be read, which records the bare provider name exactly as
+  // every row written before this did.
+  const engineModel = opts.model ?? configuredModel(provider)
   const glossary = readGlossary(opts.locale, opts.db)
   if (glossary.length === 0) {
     throw new Error(
@@ -228,7 +235,7 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
       // --no-ai reaches no model, so nothing in this run was judged by one.
       // History cannot be backfilled, and a per-engine quality breakdown built
       // on it later would be reading rule findings as Claude's opinions.
-      engine: opts.noAi ? 'rules' : engineId(opts.model, provider),
+      engine: opts.noAi ? 'rules' : engineId(engineModel, provider),
     })
     recordEntries(
       jobs,
@@ -302,7 +309,7 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
       properNouns,
       mcpConfigPath,
       batchSize,
-      engine: engineId(opts.model, provider),
+      engine: engineId(engineModel, provider),
       configHash: config,
       ...(opts.noAi === undefined ? {} : { noAi: opts.noAi }),
       ...(store ? { store } : {}),

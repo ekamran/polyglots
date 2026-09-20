@@ -9,6 +9,7 @@ import {
 
 export {
   AgentError,
+  configuredModel,
   MCP_TOOLS,
   PROVIDERS,
   DEFAULT_PROVIDER,
@@ -128,8 +129,13 @@ export function readAgentOutput(output: AgentOutput, opts: AgentRunOptions): unk
     return spec.readEnvelope(output.stdout)
   } catch (err) {
     if (err instanceof AgentError && output.stderr.trim()) {
+      // The replacement carries the original's verdict on whether a retry is
+      // worth anything. Rebuilding the error here is what attaches the only
+      // account of a denied tool there is, and it must not cost the caller the
+      // knowledge that the same prompt will be denied again.
       throw new AgentError(`${err.message}; stderr: ${output.stderr.slice(0, STDERR_EXCERPT).trim()}`, {
         stderr: output.stderr,
+        retryable: err.retryable,
       })
     }
     throw err
