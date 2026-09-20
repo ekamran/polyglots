@@ -10,6 +10,65 @@ Run `polyglots --version` to see which build you have; the TUI shows it beside i
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-09-20
+
+### Fixed
+
+- A batch the agent refuses is attempted twice again, undoing the change made
+  in 0.12.0 an hour before it cost a hundred entries. That change read one
+  batch that reached for a shell on both of its attempts and concluded an
+  identical prompt buys an identical refusal. It was the wrong lesson from the
+  right observation: that batch was provoked by its own content, wanting to
+  count its entries, and the prompt now states the count. What is left is an
+  agent that asks for a shell on its first turn, before it has read an entry,
+  on roughly one batch in seven, and nothing about the prompt decides it. A
+  retry is not a replay either, since each attempt spawns the CLI afresh and is
+  sampled again, and a refusal costs four seconds against the minutes a real
+  batch takes. `AgentError` has lost the notion of a failure not worth
+  retrying rather than keeping one that classifies nothing.
+- A refused batch says it produced no output, instead of reporting the empty
+  string as malformed JSON. The message read "response field is not JSON: "
+  with nothing after the colon, naming the one thing that was not wrong. The
+  account of what happened is the stderr that follows it.
+- Pressing p or q says so immediately, on every surface. Both are acted on at
+  the next batch boundary, which on a hundred-entry batch is minutes away, and
+  until it arrived the screen was indistinguishable from one that had dropped
+  the key: q printed nothing whatsoever, and p announced the run parked while
+  it was still spending calls on the batch in flight. The progress line now
+  says "will stop after this batch" or "will pause after this batch" while that
+  batch runs, and reports the pause only once it has actually happened. It
+  takes the place of the remaining-time estimate, which is no longer the plan
+  and which the reducers now drop, so the line does not grow and wrap.
+- Translate's progress reducer never had a case for pause or resume at all, so
+  its screen had said nothing about either since the day it got a pause key.
+  Both surfaces share the account now.
+
+### Added
+
+- The requester message links to the translations it is talking about, instead
+  of carrying an empty `href` for the reviewer to fill in by hand. The link was
+  left empty on the reasoning that only the reviewer knows which page they
+  mean; they do, and so does the run. GlotPress names its exports after the
+  project path, so `wp-plugins-netro-ads-dev-tr.po` already says the project,
+  the branch and the locale, and the reviewer's own wp.org login is a standing
+  setting. Set it once:
+
+  ```
+  polyglots config set wporgUsername <your wp.org login>
+  ```
+
+  Without it the `href` stays empty, because an unfiltered page would show the
+  whole project's translations and the sentence would be claiming them. The
+  run's own locale is what tells a slug from the locale in a name where both
+  may hold hyphens, which is why `ReviewSummary` now carries it.
+
+  Plugin and theme exports are read from their names. A core project shares no
+  shape with them, so those are a table of pages someone has opened in a
+  browser, and it currently holds one: patterns. Anything this has not been
+  shown keeps the empty `href` rather than being sent a guess, since the cost
+  of being wrong is a contributor following a 404 in a message signed by the
+  reviewer.
+
 ## [0.12.0] - 2026-09-20
 
 ### Fixed

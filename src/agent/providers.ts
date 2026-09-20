@@ -27,29 +27,21 @@ export function isReviewProvider(value: string): value is ReviewProvider {
   return (PROVIDERS as readonly string[]).includes(value)
 }
 
+/**
+ * A failure from the agent CLI, carrying whatever account of itself it gave.
+ *
+ * Deliberately without a notion of which failures are worth retrying. 0.12.0
+ * added one, marking a refused batch settled so the retry would not replay it,
+ * and it was wrong: see the retry loop in audit.ts for what that cost and why
+ * every failure here is worth a second attempt.
+ */
 export class AgentError extends Error {
   override readonly name: string = 'AgentError'
   readonly stderr: string
-  /**
-   * Whether running the identical batch again could end differently.
-   *
-   * A property of the failure rather than of the caller, because only the
-   * place that read the envelope knows which kind it was. An agent that ran
-   * out of time or exited non-zero may well have been unlucky. An agent that
-   * ran to completion and chose to produce nothing usable made a decision
-   * about the prompt it was given, and it will make the same one again: the
-   * batch lost to a denied shell was attempted twice, a minute apart, and both
-   * attempts reached for python to count the entries.
-   *
-   * Defaults to true so that a failure nobody has classified keeps the
-   * behaviour every earlier build had.
-   */
-  readonly retryable: boolean
 
-  constructor(message: string, details: { stderr?: string; retryable?: boolean } = {}) {
+  constructor(message: string, details: { stderr?: string } = {}) {
     super(message)
     this.stderr = details.stderr ?? ''
-    this.retryable = details.retryable ?? true
   }
 }
 
@@ -155,10 +147,10 @@ const claude: ProviderSpec = {
       try {
         return JSON.parse(env.result)
       } catch {
-        throw new AgentError(`claude result field is not JSON: ${env.result.slice(0, 200)}`, { retryable: false })
+        throw new AgentError(`claude result field is not JSON: ${env.result.slice(0, 200)}`)
       }
     }
-    throw new AgentError('claude envelope has neither structured_output nor a string result', { retryable: false })
+    throw new AgentError('claude envelope has neither structured_output nor a string result')
   },
 }
 
@@ -202,20 +194,19 @@ const antigravity: ProviderSpec = {
     }
     const output = structuredOutput(env)
     if (output !== undefined) return output
-    // A soft-denied tool exits zero with a null structured_output and says why
-    // on stderr, so the caller attaches that rather than leaving this bare.
-    if (typeof env.response === 'string') {
+    if (typeof env.response === 'string' && env.response.trim().length > 0) {
       try {
         return JSON.parse(env.response)
       } catch {
-        throw new AgentError(`antigravity response field is not JSON: ${env.response.slice(0, 200)}`, {
-          retryable: false,
-        })
+        throw new AgentError(`antigravity response field is not JSON: ${env.response.slice(0, 200)}`)
       }
     }
-    throw new AgentError('antigravity produced no structured output; a tool it needed was most likely denied', {
-      retryable: false,
-    })
+    // A soft-denied tool exits zero with a null structured_output and an empty
+    // response string, and says why only on stderr, which the caller appends.
+    // Reporting the empty string as malformed JSON printed a colon with
+    // nothing after it and named the one thing that was not wrong: there is no
+    // JSON here because there is no answer here.
+    throw new AgentError('antigravity produced no output; a tool it needed was most likely denied')
   },
 }
 

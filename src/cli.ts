@@ -264,6 +264,16 @@ function coerceConfigValue(key: keyof PolyglotsConfig, raw: string): PolyglotsCo
       return parseReviewProvider(raw)
     case 'defaultLocale':
       return parseLocaleArg(raw)
+    // Validated here as well as in the schema, so a typo is refused at the
+    // moment it is typed rather than at the next review, where it would be
+    // welded into a link posted under the reviewer's name.
+    case 'wporgUsername': {
+      const name = raw.trim()
+      if (name !== '' && !/^[A-Za-z0-9_-]+$/.test(name)) {
+        throw new UsageError(`${key} may only hold letters, digits, hyphens and underscores, got "${raw}"`)
+      }
+      return name
+    }
     case 'properNouns':
       throw new UsageError('properNouns is a per-locale list; add entries with: polyglots config add-name <name>')
     case 'ollama':
@@ -425,6 +435,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
       const unsubscribe = control.subscribe((state: RunState) => {
         if (state === 'paused') report({ type: 'paused', at: Date.now() })
         if (state === 'running') report({ type: 'resumed', at: Date.now() })
+        if (state === 'stopping') report({ type: 'stopping', at: Date.now() })
       })
       const summary = await cli.reviewFile({
         control,
@@ -467,7 +478,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
       // The line to post back to whoever submitted the translation. Printed
       // rather than copied: a CLI run may be in a pipe or a script, where
       // reaching for the clipboard would be a side effect nobody asked for.
-      const requesterMessage = buildReport(summary)
+      const requesterMessage = buildReport(summary, cli.config().wporgUsername)
       if (requesterMessage) {
         cli.out('')
         cli.out('Message for the requester:')

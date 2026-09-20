@@ -1,6 +1,6 @@
 import { chunk } from '../batch.js'
 import type { RunControl } from '../run-control.js'
-import { AgentError, runAgent, type AgentRunOptions } from '../agent/run.js'
+import { runAgent, type AgentRunOptions } from '../agent/run.js'
 import { auditSrcHash } from '../jobs/hash.js'
 import type { CachedVerdict, VerdictKey } from '../jobs/verdicts.js'
 import type { AuditEntry, Finding, GlossaryEntry, Locale } from '../types.js'
@@ -354,18 +354,26 @@ async function runBatch(
     ...(opts.cwd ? { cwd: opts.cwd } : {}),
   }
   let failed = 'unknown error'
+  // Every failure gets the second attempt, including one where the agent ran
+  // to completion and refused to answer. 0.12.0 skipped that one on the
+  // reasoning that an identical prompt buys an identical refusal, and lost a
+  // hundred entries to it within the hour.
+  //
+  // The reasoning generalised from a single batch that reached for a shell on
+  // both attempts, and that batch was provoked by its own content: it wanted
+  // to count its entries, which the prompt now states. What is left is an
+  // agent that asks for a shell on its first turn, before it has read an
+  // entry, on roughly one batch in seven. Nothing about the prompt decides it.
+  //
+  // A retry is not a replay. Each attempt spawns the CLI afresh, so the second
+  // is a new conversation sampled again, and a refusal costs four seconds
+  // rather than the minutes a real batch takes. The expensive mistake is
+  // skipping it.
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       return { results: await adjudicate(batch, agentOpts) }
     } catch (err) {
       failed = err instanceof Error ? err.message : String(err)
-      // Some failures are answers. An agent that ran to completion and refused
-      // to produce anything usable was not unlucky, it decided, and the retry
-      // hands it the identical prompt and buys the identical decision: the
-      // batch lost to a denied shell was attempted twice a minute apart and
-      // reached for python both times. A batch is minutes of metered time, so
-      // the second attempt has to be worth something.
-      if (err instanceof AgentError && !err.retryable) break
     }
   }
   return { failed }

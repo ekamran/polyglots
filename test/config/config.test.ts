@@ -49,6 +49,9 @@ describe('loadConfig', () => {
       defaultLocale: 'tr',
       defaultDraftEngine: 'deepl',
       reviewProvider: 'claude',
+      // Empty by default: until a reviewer says who they are on wp.org, the
+      // requester message cannot honestly link to "their" translations.
+      wporgUsername: '',
       ollama: { baseUrl: 'http://localhost:11434', model: 'qwen3.8:27b-mlx' },
       batchSize: 25,
       consistencyTtlDays: 30,

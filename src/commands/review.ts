@@ -375,6 +375,7 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
 
     summary = {
       file: opts.file,
+      locale: opts.locale,
       total: all.length,
       skipped: all.length - reviewable.length,
       reviewed: reviewable.length,

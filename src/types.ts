@@ -80,6 +80,10 @@ export interface Finding {
 
 export interface ReviewSummary {
   file: string
+  // The locale the run judged against. Carried so the requester message can
+  // tell a project's slug from the locale in the export's file name, which is
+  // otherwise ambiguous for any slug holding a hyphen.
+  locale: Locale
   total: number
   skipped: number
   reviewed: number
@@ -133,8 +137,14 @@ export type ReviewEvent =
   | { type: 'marker-ignored'; file: string }
   // Emitted by whichever surface owns the keyboard, not by the run itself, so a
   // progress line can say it is parked rather than wedged.
+  //
+  // All three are intents rather than facts. The run acts on them only at a
+  // batch boundary, so between the keypress and the boundary the batch in
+  // flight carries on and the bar does not move. On a hundred-entry batch that
+  // is minutes of a screen that looks identical to one that dropped the key.
   | { type: 'paused'; at: number }
   | { type: 'resumed'; at: number }
+  | { type: 'stopping'; at: number }
   | { type: 'done'; summary: ReviewSummary }
 
 export type ConsistencyScope = 'core' | 'all'
@@ -159,6 +169,11 @@ export interface PolyglotsConfig {
   // Which agent CLI judges translations. `antigravity` needs the polyglots MCP
   // server registered with it first; docs/antigravity.md has the setup.
   reviewProvider: ReviewProvider
+  // The reviewer's own login on translate.wordpress.org. Only used to build the
+  // link in the requester message, which points at their translations in the
+  // project they just reviewed. Empty means no link is built: an unfiltered
+  // page would show everybody's work and the message would be claiming it.
+  wporgUsername: string
   // Where the local runner lives and which model to load. Only read when the
   // chosen engine is `qwen`.
   ollama: { baseUrl: string; model: string }

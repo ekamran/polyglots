@@ -73,6 +73,10 @@ export function Review({ cwd, onBack }: ReviewProps) {
     const unsubscribe = run.subscribe((state) => {
       if (state === 'paused') setEvents((prev) => [...prev, { type: 'paused', at: Date.now() }])
       if (state === 'running') setEvents((prev) => [...prev, { type: 'resumed', at: Date.now() }])
+      // Without this, q registered silently and the screen went on looking
+      // exactly like a run that had not heard it, for however long the batch in
+      // flight still had to run.
+      if (state === 'stopping') setEvents((prev) => [...prev, { type: 'stopping', at: Date.now() }])
     })
     task.run(() =>
       commands.reviewFile({
@@ -192,7 +196,7 @@ export function Review({ cwd, onBack }: ReviewProps) {
 
       {(stage === 'running' || stage === 'done') && (
         <>
-          <ReviewProgress events={events} />
+          <ReviewProgress events={events} wporgUsername={config.wporgUsername} />
           {stage === 'running' && <Hint>p pause · r resume · q stop and keep what is done</Hint>}
           {task.state.status === 'error' && <Text color="red">Review failed: {task.state.message}</Text>}
           {stage === 'done' && <Hint>{DONE_HINT}</Hint>}

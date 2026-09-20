@@ -66,6 +66,10 @@ export function Translate({ cwd, onBack }: TranslateProps) {
     const unsubscribe = run.subscribe((state) => {
       if (state === 'paused') setEvents((prev) => [...prev, { type: 'paused', at: Date.now() }])
       if (state === 'running') setEvents((prev) => [...prev, { type: 'resumed', at: Date.now() }])
+      // Without this, q registered silently and the screen went on looking
+      // exactly like a run that had not heard it, for however long the batch in
+      // flight still had to run.
+      if (state === 'stopping') setEvents((prev) => [...prev, { type: 'stopping', at: Date.now() }])
     })
     task.run(() =>
       commands.translateFile({

@@ -19,7 +19,9 @@ export interface ProgressState {
   batchDurations: number[]
   batchesDone: number
   batchSize: number
-  paused: boolean
+  // What the operator asked for and the run has not reached yet. See the review
+  // reporter below, which keeps the same distinction for the same reason.
+  intent?: 'pause' | 'stop'
 }
 
 export const initialProgress: ProgressState = {
@@ -32,7 +34,6 @@ export const initialProgress: ProgressState = {
   batchDurations: [],
   batchesDone: 0,
   batchSize: 0,
-  paused: false,
 }
 
 const BAR_WIDTH = 10
@@ -78,11 +79,15 @@ export function applyEvent(state: ProgressState, event: TranslateEvent): Progres
       }
     case 'batch-phase':
       return { ...state, phase: { name: event.phase, since: event.at } }
-    // A parked run has no phase running, so the elapsed clock stops with it.
+    // Only the intent. The run parks at the next batch boundary, and until it
+    // gets there the batch in flight is still running, so neither the phase nor
+    // the clock belonging to it may be cleared here.
     case 'paused':
-      return { ...state, paused: true, phase: undefined }
+      return { ...state, intent: 'pause' }
+    case 'stopping':
+      return { ...state, intent: 'stop' }
     case 'resumed':
-      return { ...state, paused: false }
+      return { ...state, intent: undefined }
     case 'batch-done':
       return {
         ...state,
@@ -114,10 +119,15 @@ export function formatProgress(state: ProgressState, now: number = Date.now()): 
   if (state.phase) {
     parts.push(`${state.phase.name} ${Math.max(0, Math.round((now - state.phase.since) / 1000))}s`)
   }
-  // A finish time computed through an indefinite hold is fiction, so a parked run
-  // says so instead of guessing.
-  if (state.paused) {
-    parts.push('paused, r to resume, q to stop')
+  // A finish time computed through an indefinite hold is fiction, and one
+  // computed for work that has been called off is worse, so neither guesses.
+  if (state.intent !== undefined) {
+    // Inside the batch it waits for, the run is neither parked nor gone yet.
+    if (state.batchStartedAt !== undefined) {
+      parts.push(state.intent === 'stop' ? 'will stop after this batch' : 'will pause after this batch')
+    } else {
+      parts.push(state.intent === 'stop' ? 'stopping' : 'paused, r to resume, q to stop')
+    }
     return parts.join('  ')
   }
   const remaining = estimateRemainingMs(state.batchDurations, (state.batch?.of ?? 0) - state.batchesDone, state.batchSize)
@@ -284,7 +294,12 @@ export function createReviewProgressReporter(stream: ProgressStream): ReviewProg
   let inFlightSince: number | undefined
   let ticker: NodeJS.Timeout | undefined
   let batchSize = 0
-  let paused = false
+  // What the operator asked for and the run has not reached yet, kept apart
+  // from having reached it. p and q are acted on at the next batch boundary,
+  // so between the key and the boundary the batch in flight is still running:
+  // saying "Paused." there claims something untrue, and saying nothing for q
+  // left no way to tell a registered key from a dropped one.
+  let intent: 'pause' | 'stop' | undefined
   const durations: number[] = []
   const tty = stream.isTTY === true
 
@@ -330,8 +345,14 @@ export function createReviewProgressReporter(stream: ProgressStream): ReviewProg
     if (inFlightSince !== undefined) {
       parts.push(`reviewing ${Math.max(0, Math.round((now - inFlightSince) / 1000))}s`)
     }
-    if (paused) {
-      parts.push('paused')
+    if (intent !== undefined) {
+      // Still inside the batch it is waiting for, so the run is neither parked
+      // nor gone, and the remaining-time estimate below is no longer the plan.
+      if (inFlightSince !== undefined) {
+        parts.push(intent === 'stop' ? 'will stop after this batch' : 'will pause after this batch')
+      } else {
+        parts.push(intent === 'stop' ? 'stopping' : 'paused')
+      }
       return parts.join('  ')
     }
     const remaining = estimateRemainingMs(durations, of - done, batchSize)
@@ -372,12 +393,15 @@ export function createReviewProgressReporter(stream: ProgressStream): ReviewProg
         notice = `Ignoring the unfinished review in ${event.file}: it was written by an earlier version. Reviewing from the top.`
         break
       case 'paused':
-        paused = true
-        inFlightSince = undefined
-        notice = 'Paused. r to resume, q to stop and keep what is done.'
+        intent = 'pause'
+        notice = 'Pausing after this batch. r to resume, q to stop and keep what is done.'
+        break
+      case 'stopping':
+        intent = 'stop'
+        notice = 'Stopping after this batch. Everything already judged is kept.'
         break
       case 'resumed':
-        paused = false
+        intent = undefined
         notice = 'Resumed.'
         break
       default:
@@ -394,7 +418,7 @@ export function createReviewProgressReporter(stream: ProgressStream): ReviewProg
       return
     }
     if (notice) stream.write(`${CLEAR_LINE}${notice}\n`)
-    if (notice || event.type === 'batch-start' || event.type === 'batch-done' || event.type === 'paused') {
+    if (notice || event.type === 'batch-start' || event.type === 'batch-done') {
       stream.write(`${CLEAR_LINE}${line()}`)
       liveLine = true
     }

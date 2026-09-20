@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AuditEntry, GlossaryEntry } from '../../src/types.js'
-import { AgentError, buildAgentArgs } from '../../src/agent/run.js'
+import { AgentError, buildAgentArgs, readAgentOutput } from '../../src/agent/run.js'
 import { tmKey } from '../../src/audit/rules/index.js'
 import { auditEntries } from '../../src/audit/audit.js'
 import { createRunControl } from '../../src/run-control.js'
@@ -618,17 +618,40 @@ describe('auditEntries when the model keeps failing', () => {
   })
 
   /**
-   * The soft-denial is the agent's own decision about the prompt it was given,
-   * so the identical prompt produces the identical refusal. Both attempts at
-   * the lost batch died the same way a minute apart, which is a second full
-   * batch of metered time bought for nothing.
+   * A refusal is retried like anything else, and 0.12.0 was wrong to single it
+   * out. The reasoning then was that an agent asked the identical question
+   * gives the identical answer, drawn from one batch that reached for a shell
+   * on both attempts. It was the wrong lesson from the right observation: that
+   * batch wanted to count its entries, which its own content provoked, and the
+   * prompt now states the count. What is left is an agent that reaches for a
+   * shell on its first turn, before it has read a single entry, on roughly one
+   * batch in seven. Nothing about the prompt decides it.
+   *
+   * Each attempt spawns the CLI afresh, so a retry is a new conversation
+   * sampled again rather than a replay, and a refusal costs four seconds
+   * before it fails. Skipping the second attempt threw away a hundred entries
+   * that the next spawn would most likely have judged.
    */
-  it('does not replay a batch the agent refused rather than failed to finish', async () => {
-    const adjudicate = vi.fn().mockRejectedValue(new AgentError('produced no structured output', { retryable: false }))
+  it('retries a refusal, because the next spawn is a new conversation', async () => {
+    // Built by reading a real denial rather than by hand, so that classifying
+    // one again anywhere in the provider fails here rather than passing on a
+    // default nobody set.
+    let denial: unknown
+    try {
+      readAgentOutput(
+        { stdout: JSON.stringify({ status: 'SUCCESS', structured_output: null, response: '' }), stderr: 'jetski: no output produced — a tool required the "command" permission' },
+        { mcpConfigPath: '', provider: 'antigravity' },
+      )
+    } catch (err) {
+      denial = err
+    }
+    expect(denial).toBeInstanceOf(AgentError)
+
+    const adjudicate = vi.fn().mockRejectedValue(denial)
     await auditEntries({ entries: ten(), ...base({ batchSize: 1 }), adjudicate })
 
-    // Three batches before the streak stops it, attempted once each. Not six.
-    expect(adjudicate).toHaveBeenCalledTimes(3)
+    // Three batches before the streak stops it, each attempted twice.
+    expect(adjudicate).toHaveBeenCalledTimes(6)
   })
 
   it('says which batch to resume after, so the failures are re-attempted', async () => {

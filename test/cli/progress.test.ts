@@ -283,6 +283,48 @@ describe('createReviewProgressReporter', () => {
     expect(out.text).toMatch(/earlier version/i)
   })
 
+  /**
+   * The same keypress-versus-boundary gap the TUI had. The run acts on p or q
+   * only when the batch in flight ends, so announcing "Paused." at the
+   * keypress claims something that has not happened yet, and announcing
+   * nothing at all for q leaves the operator unable to tell a registered key
+   * from a dropped one.
+   */
+  it('says a pause is coming rather than claiming it has already happened', () => {
+    const out = sink()
+    const report = createReviewProgressReporter(out)
+    report({ type: 'start', file: 'a.po', total: 120, reviewable: 116 })
+    report({ type: 'batch-start', index: 1, of: 5, size: 25, at: 1000 })
+    report({ type: 'paused', at: 2000 })
+    report.finish()
+
+    expect(out.text).toMatch(/pausing after this batch/i)
+    expect(out.text).not.toMatch(/^Paused\./m)
+  })
+
+  it('says a stop is coming, which it used to say nothing at all about', () => {
+    const out = sink()
+    const report = createReviewProgressReporter(out)
+    report({ type: 'start', file: 'a.po', total: 120, reviewable: 116 })
+    report({ type: 'batch-start', index: 1, of: 5, size: 25, at: 1000 })
+    report({ type: 'stopping', at: 2000 })
+    report.finish()
+
+    expect(out.text).toMatch(/stopping after this batch/i)
+  })
+
+  it('reports the pause as done once the batch it waited for ends', () => {
+    const out = sink()
+    const report = createReviewProgressReporter(out)
+    report({ type: 'start', file: 'a.po', total: 120, reviewable: 116 })
+    report({ type: 'batch-start', index: 1, of: 5, size: 25, at: 1000 })
+    report({ type: 'paused', at: 2000 })
+    report({ type: 'batch-done', index: 1, problems: 3, at: 5000 })
+    report.finish()
+
+    expect(out.text).toMatch(/paused/i)
+  })
+
   it('reports the start line and a bar per batch on a non-tty', () => {
     const out = sink()
     const report = createReviewProgressReporter(out)

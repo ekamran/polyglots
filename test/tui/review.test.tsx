@@ -461,6 +461,42 @@ describe('Review screen', () => {
     })
   })
 
+  /**
+   * The reducer could always describe a pending stop; nothing ever told it one
+   * had been asked for. Pressing q set the run control to stopping and the
+   * screen subscribed to paused and resumed only, so the key registered in
+   * silence and the display went on looking exactly like a run that had not
+   * heard it until the batch in flight ended, minutes later.
+   */
+  it('says a stop is coming the moment q is pressed', async () => {
+    const reviewFile = vi.fn<ReviewFile>(async (opts) => {
+      opts.onProgress?.({ type: 'start', file: opts.file, total: 200, reviewable: 200 })
+      opts.onProgress?.({ type: 'batch-start', index: 1, of: 2, size: 100, at: Date.now() })
+      // Never resolves: the point is what the screen says while a batch that
+      // has not finished is still being judged.
+      return new Promise<never>(() => {})
+    })
+    const view = await openReview(fakeCommands({ reviewFile }))
+    await pickFile(view)
+    const { lastFrame, stdin } = view
+
+    stdin.write(keys.down)
+    await tick()
+    stdin.write(keys.down)
+    await tick()
+    stdin.write(keys.down)
+    await tick()
+    stdin.write(keys.down)
+    await tick()
+    stdin.write(keys.enter)
+    await waitFor(() => reviewFile.mock.calls.length > 0)
+
+    stdin.write('q')
+    await waitForText(lastFrame, /will stop after this batch/)
+    // The run is leaving, so it must not also read as parked.
+    expect(flat(lastFrame())).not.toMatch(/paused after batch/)
+  })
+
   it('defaults the batch size from the config', async () => {
     await mkdir(join(home.path, 'config'), { recursive: true })
     await writeFile(join(home.path, 'config', 'config.json'), JSON.stringify({ batchSize: 50 }))

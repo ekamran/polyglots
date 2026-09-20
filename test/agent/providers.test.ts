@@ -161,39 +161,20 @@ describe('reading an antigravity envelope', () => {
   })
 
   /**
-   * Whether a failure is worth a second attempt is a property of the failure,
-   * not of the caller. An agent that answered and chose to produce nothing
-   * usable will choose the same again given the same prompt; an agent that ran
-   * out of time or exited non-zero may not.
+   * A denied tool leaves `response` an empty string rather than absent, so the
+   * error read "response field is not JSON: " with nothing after the colon,
+   * which says the one thing that is not the problem. There is no malformed
+   * JSON here; there is no output at all, and the account of why is the stderr
+   * the caller appends next.
    */
-  it('marks an answer it will give again as not worth a retry', () => {
-    const denied = JSON.stringify({ status: 'SUCCESS', structured_output: null })
-    expect(() => read(denied)).toThrow(AgentError)
-    try {
-      read(denied)
-    } catch (err) {
-      expect((err as AgentError).retryable).toBe(false)
-    }
+  it('says there was no output rather than blaming the JSON for being absent', () => {
+    const denied = JSON.stringify({ status: 'SUCCESS', structured_output: null, response: '' })
+    expect(() => read(denied)).toThrow(/no output/)
+    expect(() => read(denied)).not.toThrow(/not JSON/)
   })
 
-  // stderr is folded into a fresh error, which must not quietly lose the flag.
-  it('keeps the flag when the stderr excerpt is folded in', () => {
-    try {
-      read(JSON.stringify({ status: 'SUCCESS', structured_output: null }), 'a tool required the "command" permission')
-    } catch (err) {
-      expect((err as AgentError).message).toMatch(/command/)
-      expect((err as AgentError).retryable).toBe(false)
-    }
-  })
-
-  // A status the CLI itself reports can be load or a model being briefly
-  // unavailable, which is exactly what a retry is for.
-  it('leaves a failure the CLI reported worth retrying', () => {
-    try {
-      read(JSON.stringify({ status: 'ERROR', error: 'model unavailable' }))
-    } catch (err) {
-      expect((err as AgentError).retryable).toBe(true)
-    }
+  it('still blames the JSON when there really is malformed JSON', () => {
+    expect(() => read(JSON.stringify({ status: 'SUCCESS', response: '{oops' }))).toThrow(/not JSON.*oops/)
   })
 })
 

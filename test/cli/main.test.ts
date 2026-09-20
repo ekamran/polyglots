@@ -449,6 +449,7 @@ describe('review', () => {
   function summary(overrides = {}) {
     return {
       file: 'plugin-tr.po',
+      locale: 'tr',
       total: 120,
       skipped: 4,
       reviewed: 116,

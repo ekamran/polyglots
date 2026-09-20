@@ -10,6 +10,7 @@ export const DEFAULT_CONFIG: PolyglotsConfig = {
   defaultLocale: 'tr',
   defaultDraftEngine: 'deepl',
   reviewProvider: 'claude',
+  wporgUsername: '',
   ollama: { baseUrl: DEFAULT_QWEN_BASE_URL, model: DEFAULT_QWEN_MODEL },
   batchSize: 25,
   consistencyTtlDays: 30,
@@ -23,6 +24,18 @@ const configSchema = z.object({
   // second provider still parses, and keeps the provider its verdicts were
   // formed under.
   reviewProvider: z.enum(['claude', 'antigravity']).default('claude'),
+  // Defaulted rather than required, so a config written before the requester
+  // message had a link still parses. Trimmed, because a stray space would be
+  // pasted straight into a URL.
+  wporgUsername: z
+    .string()
+    .trim()
+    .default('')
+    // A wp.org login is letters, digits, hyphens and underscores. Anything else
+    // is a mistake this must not weld into a public link.
+    .refine((v) => v === '' || /^[A-Za-z0-9_-]+$/.test(v), {
+      message: 'wporgUsername may only hold letters, digits, hyphens and underscores',
+    }),
   // Defaulted rather than required, so a config written before the local
   // engine existed still parses.
   ollama: z

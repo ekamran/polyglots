@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import React from 'react'
 import type { TranslateEvent } from '../../src/commands/translate.js'
+import type { ReviewEvent } from '../../src/types.js'
 import { Progress, reduceProgress } from '../../src/tui/components/Progress.js'
 import { barDone, barTotal, ReviewProgress, reduceReviewProgress } from '../../src/tui/components/ReviewProgress.js'
-import { render, tick } from './helpers.js'
+import { flat, render, tick } from './helpers.js'
 import { openInDefaultApp } from '../../src/tui/open-file.js'
 
 // The real one launches a GUI application. A test run must not open PoEdit on
@@ -320,5 +321,116 @@ describe('ReviewProgress resuming', () => {
     ])
     expect(barDone(state)).toBe(2)
     expect(barTotal(state)).toBe(2)
+  })
+})
+
+/**
+ * Pressing p or q registers the intent immediately, but the run only acts on it
+ * at the next batch boundary, which on a hundred-entry batch is minutes away.
+ * Until then the screen said nothing at all about a stop, and claimed outright
+ * that a pause had already happened while the batch was still being judged.
+ * Both left the person who pressed the key watching a bar that had not moved,
+ * unable to tell a registered keypress from a dropped one.
+ */
+describe('ReviewProgress while a stop or a pause is waiting for the batch', () => {
+  const midBatch: ReviewEvent[] = [
+    { type: 'start', file: '/tmp/a.po', total: 20, reviewable: 20 },
+    { type: 'batch-start', index: 1, of: 2, size: 10, at: 0 },
+    { type: 'batch-done', index: 1, problems: 1, at: 60_000 },
+    { type: 'batch-start', index: 2, of: 2, size: 10, at: 60_000 },
+  ]
+
+  it('says a stop is coming, and does not pretend it has happened', () => {
+    const state = reduceReviewProgress([...midBatch, { type: 'stopping', at: 61_000 }])
+    expect(state.intent).toBe('stop')
+    // The batch it is waiting for is still running, so the clock still belongs
+    // to it and the bar has not moved.
+    expect(state.inFlight).toBe(true)
+    expect(state.paused).toBe(false)
+  })
+
+  it('says a pause is coming rather than claiming the run is already parked', () => {
+    const state = reduceReviewProgress([...midBatch, { type: 'paused', at: 61_000 }])
+    expect(state.intent).toBe('pause')
+    expect(state.inFlight).toBe(true)
+    expect(state.paused).toBe(false)
+  })
+
+  it('reports the pause as done once the batch it was waiting for ends', () => {
+    const state = reduceReviewProgress([
+      ...midBatch,
+      { type: 'paused', at: 61_000 },
+      { type: 'batch-done', index: 2, problems: 0, at: 120_000 },
+    ])
+    expect(state.paused).toBe(true)
+    expect(state.inFlight).toBe(false)
+  })
+
+  it('forgets a pending pause when the run is resumed', () => {
+    const state = reduceReviewProgress([...midBatch, { type: 'paused', at: 61_000 }, { type: 'resumed', at: 62_000 }])
+    expect(state.intent).toBeUndefined()
+    expect(state.paused).toBe(false)
+  })
+
+  // A stop asked for after a pause is still a stop: the run is leaving.
+  it('lets a stop overrule a pause that has not taken effect', () => {
+    const state = reduceReviewProgress([
+      ...midBatch,
+      { type: 'paused', at: 61_000 },
+      { type: 'stopping', at: 62_000 },
+    ])
+    expect(state.intent).toBe('stop')
+  })
+
+  // Estimating an hour of work left is noise once you have said to stop.
+  it('drops the remaining-time estimate, which is no longer the plan', () => {
+    const state = reduceReviewProgress([...midBatch, { type: 'stopping', at: 61_000 }])
+    expect(state.remainingMs).toBeUndefined()
+  })
+
+  it('paints the notice rather than only holding it in state', async () => {
+    const { lastFrame } = render(<ReviewProgress events={[...midBatch, { type: 'stopping', at: 61_000 }]} />)
+    await tick()
+    expect(flat(lastFrame())).toContain('will stop after this batch')
+  })
+
+  it('paints the pending pause too', async () => {
+    const { lastFrame } = render(<ReviewProgress events={[...midBatch, { type: 'paused', at: 61_000 }]} />)
+    await tick()
+    expect(flat(lastFrame())).toContain('will pause after this batch')
+  })
+})
+
+/**
+ * Translate emitted paused and resumed from the day it had a pause key, and
+ * its reducer has never had a case for either, so the events fell through the
+ * switch and the screen never said a word. It needs the same account of an
+ * intent that is waiting for a boundary.
+ */
+describe('Progress while a stop or a pause is waiting for the batch', () => {
+  const midBatch: TranslateEvent[] = [
+    { type: 'start', file: FILE, total: 20, pending: 20 },
+    { type: 'batch-start', index: 1, of: 2, size: 10, at: 0 },
+    { type: 'batch-done', index: 1, translated: 10, fuzzy: 0, at: 60_000 },
+    { type: 'batch-start', index: 2, of: 2, size: 10, at: 60_000 },
+  ]
+
+  it('says a stop is coming', async () => {
+    const { lastFrame } = render(<Progress events={[...midBatch, { type: 'stopping', at: 61_000 }]} />)
+    await tick()
+    expect(flat(lastFrame())).toContain('will stop after this batch')
+  })
+
+  it('says a pause is coming, and reports it done at the boundary', async () => {
+    const { lastFrame } = render(<Progress events={[...midBatch, { type: 'paused', at: 61_000 }]} />)
+    await tick()
+    expect(flat(lastFrame())).toContain('will pause after this batch')
+
+    const parked = reduceProgress([
+      ...midBatch,
+      { type: 'paused', at: 61_000 },
+      { type: 'batch-done', index: 2, translated: 10, fuzzy: 0, at: 120_000 },
+    ])
+    expect(parked.paused).toBe(true)
   })
 })

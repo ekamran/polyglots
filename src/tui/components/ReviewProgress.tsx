@@ -30,6 +30,17 @@ export interface ReviewProgressState {
   batchIndex: number
   batchDurations: number[]
   remainingMs?: number
+  /**
+   * What the operator has asked for and the run has not reached yet.
+   *
+   * Separate from `paused` because the two answer different questions. This is
+   * the keypress, acknowledged the instant it lands; `paused` is the run
+   * actually parked, which cannot be true until the batch in flight has
+   * finished and saved. Collapsing them told somebody who pressed p that the
+   * run was parked while it was still spending metered calls, and pressing q
+   * said nothing whatsoever for minutes.
+   */
+  intent?: 'pause' | 'stop'
   paused: boolean
   failures: string[]
   written: string[]
@@ -115,13 +126,17 @@ export function reduceReviewProgress(events: ReviewEvent[]): ReviewProgressState
       case 'marker-ignored':
         state.markerIgnored = e.file
         break
-      // The clock stops with the run: a parked batch is not a slow one.
+      // Only the intent is recorded here. The clock stops when the batch it is
+      // waiting for closes, because until then the batch really is running and
+      // a stopped clock would understate what it cost.
       case 'paused':
-        state.paused = true
-        state.inFlight = false
+        state.intent = 'pause'
+        break
+      case 'stopping':
+        state.intent = 'stop'
         break
       case 'resumed':
-        state.paused = false
+        state.intent = undefined
         break
       case 'done':
         state.summary = e.summary
@@ -131,7 +146,13 @@ export function reduceReviewProgress(events: ReviewEvent[]): ReviewProgressState
 
   state.remainingMs = estimateRemainingMs(state.batchDurations, state.batchesTotal - state.batchesDone, batchSize)
 
-  if (state.paused) state.remainingMs = undefined
+  // Parked is the intent having arrived, which it has not while the batch it
+  // waits for is still open. A stop never reads as parked: that run is leaving.
+  state.paused = state.intent === 'pause' && !state.inFlight
+
+  // An estimate of the hour still to run is noise once the answer is that it
+  // is not going to run it.
+  if (state.intent) state.remainingMs = undefined
 
   if (state.summary) {
     state.inFlight = false
@@ -164,12 +185,17 @@ export function barTotal(state: ReviewProgressState): number {
   return state.skippedBatches + state.batchesTotal
 }
 
-export function ReviewProgress({ events }: { events: ReviewEvent[] }) {
+/**
+ * `wporgUsername` is threaded in as a prop rather than read from the config
+ * here, so this stays a component of its inputs and the tests that render it
+ * with a handful of events keep working without a config on disk.
+ */
+export function ReviewProgress({ events, wporgUsername = '' }: { events: ReviewEvent[]; wporgUsername?: string }) {
   const state = reduceReviewProgress(events)
   const elapsed = useElapsed(state.inFlight, state.batchIndex)
   const [copied, setCopied] = useState<'yes' | 'no' | undefined>(undefined)
   const [opened, setOpened] = useState(false)
-  const report = state.summary === undefined ? undefined : buildReport(state.summary)
+  const report = state.summary === undefined ? undefined : buildReport(state.summary, wporgUsername)
   // The repaired file, which is the thing worth opening: the submission itself is
   // unchanged on disk and reviewing it again would show none of this run's work.
   const repairedFile = state.summary?.problemsFile
@@ -199,6 +225,15 @@ export function ReviewProgress({ events }: { events: ReviewEvent[] }) {
           : state.inFlight
             ? `batch ${state.skippedBatches + state.batchIndex}/${barTotal(state)} · reviewing ${elapsed}s`
             : `${barDone(state)}/${barTotal(state)} batches`}
+        {/* Said on the same line as the counter rather than below it, where a
+            person watching a bar that has not moved is already looking. It
+            takes the place of the remaining-time estimate, which the reducer
+            drops for the same reason, so the line does not grow and wrap. */}
+        {state.intent && state.inFlight
+          ? state.intent === 'stop'
+            ? ' · will stop after this batch'
+            : ' · will pause after this batch'
+          : ''}
         {state.remainingMs === undefined
           ? ''
           : ` · ~${formatDuration(state.remainingMs)} left, done by ${formatFinishTime(state.remainingMs)}`}{' '}

@@ -159,6 +159,7 @@ export function scriptedTranslate(events: (file: string) => TranslateEvent[]): T
 export function reviewSummaryOf(file: string, patch: Partial<ReviewSummary> = {}): ReviewSummary {
   return {
     file,
+    locale: 'tr',
     total: 10,
     skipped: 2,
     reviewed: 8,

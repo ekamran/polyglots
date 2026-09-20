@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildReport, groupFor, OTHER_GROUP, REPORT_GROUPS, roundCount } from '../../src/review/message.js'
+import { buildReport, groupFor, OTHER_GROUP, REPORT_GROUPS, roundCount, translationsUrl } from '../../src/review/message.js'
 
 describe('groupFor', () => {
   it('folds a rule and the model category that means the same thing together', () => {
@@ -120,5 +120,92 @@ describe('buildReport', () => {
   it('leaves the href empty so the link can be pasted in', () => {
     const report = buildReport({ repaired: 2, byGroup: { glossary: 2 } }) ?? ''
     expect(report).toContain('<a href="">here</a>')
+  })
+})
+
+/**
+ * The link used to be left empty on the reasoning that only the reviewer knows
+ * which page they mean. They do, but so does the run: GlotPress names its own
+ * exports after the project path, so the file already carries the project, the
+ * branch and the locale, and the reviewer's own wp.org login is a standing
+ * setting rather than a per-run choice. The one real URL this was checked
+ * against is the netro-ads case below, copied from the browser.
+ */
+describe('translationsUrl', () => {
+  const EXPECTED =
+    'https://translate.wordpress.org/projects/wp-plugins/netro-ads/dev/tr/default/' +
+    '?filters[translated]=yes&filters[status]=current_or_waiting_or_fuzzy_or_untranslated&filters[user_login]=emre'
+
+  it('rebuilds the page a reviewer would have opened by hand', () => {
+    expect(translationsUrl('/Users/x/Downloads/wp-plugins-netro-ads-dev-tr.po', 'tr', 'emre')).toBe(EXPECTED)
+  })
+
+  it('keeps the branch the export was taken from', () => {
+    expect(translationsUrl('wp-plugins-bit-pi-stable-tr.po', 'tr', 'emre')).toContain('/bit-pi/stable/tr/default/')
+  })
+
+  // A slug with a hyphen in it is the normal case, not the exception.
+  it('does not mistake a hyphen in the slug for a boundary', () => {
+    expect(translationsUrl('wp-plugins-stocktake-for-woocommerce-dev-tr.po', 'tr', 'emre')).toContain(
+      '/stocktake-for-woocommerce/dev/tr/',
+    )
+  })
+
+  // A theme export carries no branch, and its slug cannot be told from the
+  // locale by shape alone: twenty-twenty-four-pt-br could split either way.
+  // Knowing the run's locale is what makes it unambiguous.
+  it('handles a theme, which has no branch', () => {
+    expect(translationsUrl('wp-themes-twenty-twenty-four-tr.po', 'tr', 'emre')).toContain(
+      '/projects/wp-themes/twenty-twenty-four/tr/default/',
+    )
+  })
+
+  // Both are this tool's own doing: review writes -repaired, split writes the
+  // numbered parts. Neither is part of the project's name.
+  it('sees past the suffixes this tool adds itself', () => {
+    expect(translationsUrl('wp-plugins-netro-ads-dev-tr-repaired.po', 'tr', 'emre')).toBe(EXPECTED)
+    expect(translationsUrl('wp-plugins-netro-ads-dev-tr-01.po', 'tr', 'emre')).toBe(EXPECTED)
+    expect(translationsUrl('wp-plugins-netro-ads-dev-tr-part-31.po', 'tr', 'emre')).toBe(EXPECTED)
+  })
+
+  /**
+   * A core project is neither a plugin nor a theme and does not follow their
+   * shape, so it is a named path rather than a parse. Checked against the real
+   * page: translate.wordpress.org/projects/patterns/core/tr/default/.
+   */
+  it('knows the core projects it has been shown', () => {
+    expect(translationsUrl('patterns-core-tr.po', 'tr', 'emre')).toBe(
+      'https://translate.wordpress.org/projects/patterns/core/tr/default/' +
+        '?filters[translated]=yes&filters[status]=current_or_waiting_or_fuzzy_or_untranslated&filters[user_login]=emre',
+    )
+  })
+
+  // Guessing a URL into a message bound for a public forum is the one thing
+  // this must not do, so anything it cannot read gets no link at all.
+  it('declines rather than guesses', () => {
+    expect(translationsUrl('wp-plugins-netro-ads-dev-tr.po', 'tr', '')).toBeUndefined()
+    // A core project nobody has shown it the page for. Inventing wp/dev from
+    // the shape of patterns-core is exactly the guess this must not make.
+    expect(translationsUrl('wp-dev-tr.po', 'tr', 'emre')).toBeUndefined()
+    expect(translationsUrl('some-export.po', 'tr', 'emre')).toBeUndefined()
+    // The locale the run used has to be the one the file names, or the name
+    // has not been understood and neither has the slug.
+    expect(translationsUrl('wp-plugins-netro-ads-dev-tr.po', 'de', 'emre')).toBeUndefined()
+  })
+})
+
+describe('buildReport with a link it can build', () => {
+  const summary = { repaired: 24, byGroup: { glossary: 24 }, file: 'wp-plugins-netro-ads-dev-tr.po', locale: 'tr' }
+
+  it('points the link at the reviewer own translations', () => {
+    expect(buildReport(summary, 'emre')).toContain('href="https://translate.wordpress.org/projects/wp-plugins/netro-ads/dev/tr/default/')
+    expect(buildReport(summary, 'emre')).toContain('filters[user_login]=emre')
+  })
+
+  // Unchanged from before there was a URL to build: the sentence still stands
+  // and the reviewer pastes a link in by hand, as they always have.
+  it('leaves the href empty when it cannot be built', () => {
+    expect(buildReport({ ...summary, file: 'mystery.po' }, 'emre')).toContain('<a href="">here</a>')
+    expect(buildReport(summary, '')).toContain('<a href="">here</a>')
   })
 })

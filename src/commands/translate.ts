@@ -51,8 +51,11 @@ export type TranslateEvent =
   | { type: 'batch-skipped'; index: number; size: number; reason: string; at: number }
   | { type: 'warning'; message: string }
   | { type: 'saved' }
+  // Intents, not facts: acted on at the next batch boundary. See the review
+  // events, which carry the same three for the same reason.
   | { type: 'paused'; at: number }
   | { type: 'resumed'; at: number }
+  | { type: 'stopping'; at: number }
   | { type: 'done'; summary: TranslateSummary }
 
 export interface TranslateSummary {

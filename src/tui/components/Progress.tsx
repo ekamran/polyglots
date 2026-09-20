@@ -23,7 +23,22 @@ export interface ProgressState {
   // built from those.
   batchDurations: number[]
   batchesDone: number
+  // A batch has started and not yet finished. `phase` is not a substitute: it
+  // is set by the event between the batch's two long calls, so it is undefined
+  // for the whole first call of every batch.
+  inFlight: boolean
   remainingMs?: number
+  /**
+   * What the operator has asked for and the run has not reached yet.
+   *
+   * See the review reducer, which carries the same field for the same reason:
+   * a keypress is acted on at the next batch boundary, and the minutes in
+   * between used to look exactly like a run that had ignored it. This screen
+   * had it worse, since it emitted paused and resumed from the day it had a
+   * pause key and the switch below has never had a case for either.
+   */
+  intent?: 'pause' | 'stop'
+  paused: boolean
   warnings: string[]
   summary?: TranslateSummary
 }
@@ -40,6 +55,8 @@ export function reduceProgress(events: TranslateEvent[]): ProgressState {
     done: 0,
     batchDurations: [],
     batchesDone: 0,
+    inFlight: false,
+    paused: false,
     warnings: [],
   }
 
@@ -53,6 +70,7 @@ export function reduceProgress(events: TranslateEvent[]): ProgressState {
     if (typeof openedAt === 'number' && typeof at === 'number') state.batchDurations.push(at - openedAt)
     openedAt = undefined
     state.phase = undefined
+    state.inFlight = false
   }
 
   for (const e of events) {
@@ -69,6 +87,7 @@ export function reduceProgress(events: TranslateEvent[]): ProgressState {
       case 'batch-start':
         state.batch = { index: e.index, of: e.of }
         state.phase = undefined
+        state.inFlight = true
         openedAt = typeof e.at === 'number' ? e.at : undefined
         batchSize = e.size
         break
@@ -92,6 +111,17 @@ export function reduceProgress(events: TranslateEvent[]): ProgressState {
         break
       case 'saved':
         break
+      // Only the intent. The run acts on it at the next batch boundary, and
+      // the batch in flight goes on costing what it costs until then.
+      case 'paused':
+        state.intent = 'pause'
+        break
+      case 'stopping':
+        state.intent = 'stop'
+        break
+      case 'resumed':
+        state.intent = undefined
+        break
       case 'done':
         state.summary = e.summary
         break
@@ -102,6 +132,11 @@ export function reduceProgress(events: TranslateEvent[]): ProgressState {
     (state.batch?.of ?? 0) - state.batchesDone,
     batchSize,
   )
+
+  // Parked is the intent having arrived, which it has not while the batch it
+  // waits for is still open. A stop never reads as parked: that run is leaving.
+  state.paused = state.intent === 'pause' && !state.inFlight
+  if (state.intent) state.remainingMs = undefined
 
   if (state.summary) {
     state.phase = undefined
@@ -150,6 +185,14 @@ export function Progress({ events }: { events: TranslateEvent[] }) {
         {renderBar(state.done, state.pending)} {state.done}/{state.pending}
         {batch}  fuzzy {state.fuzzy}
         {state.phase ? ` · ${state.phase.name} ${elapsed}s` : ''}
+        {/* Takes the place of the remaining-time estimate, which the reducer
+            drops once a stop is pending, so the line does not grow and wrap. */}
+        {state.paused ? ` · paused after batch ${state.batchesDone}` : ''}
+        {state.intent && state.inFlight
+          ? state.intent === 'stop'
+            ? ' · will stop after this batch'
+            : ' · will pause after this batch'
+          : ''}
         {state.remainingMs === undefined
           ? ''
           : ` · ~${formatDuration(state.remainingMs)} left, done by ${formatFinishTime(state.remainingMs)}`}
