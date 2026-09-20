@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AuditEntry, GlossaryEntry } from '../../src/types.js'
+import { buildAgentArgs } from '../../src/agent/run.js'
 import { auditEntries } from '../../src/audit/audit.js'
 import { createRunControl } from '../../src/run-control.js'
 import { buildAuditPrompt } from '../../src/audit/prompt.js'
@@ -168,6 +169,40 @@ describe('auditEntries', () => {
 
   // The UI showed "0 flagged by rules" forever because nothing reported the rule
   // pass, and 0/0 because a batch only announced itself once it had finished.
+  /**
+   * The options handed to the adjudicator are assembled field by field, and
+   * `provider` was left out of that list. Every review that recorded
+   * `antigravity` therefore spawned `claude`, cached Claude's verdicts under
+   * antigravity's key, and spent the wrong subscription. Nothing caught it
+   * because every other test here injects an adjudicator and never looks at
+   * what it was handed.
+   */
+  it('tells the adjudicator which agent to drive', async () => {
+    const seen: Array<Record<string, unknown>> = []
+    const adjudicate = vi.fn(async (batch: { id: number }[], opts: { provider?: string }) => {
+      seen.push(opts as Record<string, unknown>)
+      return batch.map((c) => ({ id: c.id, problem: false, categories: [] as never[], reason: 'ok' }))
+    })
+    await auditEntries({ entries: [clean], ...base(), provider: 'antigravity', adjudicate })
+
+    expect(seen).toHaveLength(1)
+    expect(seen[0]!.provider).toBe('antigravity')
+    // The argv the runner would build from those options is the proof that
+    // matters: the name alone could still be read as the default.
+    expect(buildAgentArgs({}, seen[0]! as never)).not.toContain('--mcp-config')
+  })
+
+  it('leaves the agent unnamed when the caller named none', async () => {
+    const seen: Array<Record<string, unknown>> = []
+    const adjudicate = vi.fn(async (batch: { id: number }[], opts: { provider?: string }) => {
+      seen.push(opts as Record<string, unknown>)
+      return batch.map((c) => ({ id: c.id, problem: false, categories: [] as never[], reason: 'ok' }))
+    })
+    await auditEntries({ entries: [clean], ...base(), adjudicate })
+    expect(seen[0]!.provider).toBeUndefined()
+    expect(buildAgentArgs({}, seen[0]! as never)).toContain('--mcp-config')
+  })
+
   it('reports what the rules decided before any AI call', async () => {
     const seen: unknown[] = []
     const adjudicate = vi

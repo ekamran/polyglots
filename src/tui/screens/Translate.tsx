@@ -132,6 +132,11 @@ export function Translate({ cwd, onBack }: TranslateProps) {
     <Box flexDirection="column">
       <Text bold>Translate {stage === 'pick' ? 'a .po file' : name}</Text>
       {configError && <Text color="yellow">Config error, using defaults: {configError}</Text>}
+      {/* Named on every screen that runs or reports a job, so which
+          subscription is being spent is never a guess. Not switchable here:
+          the choice belongs to the menu, and changing it mid-file would split
+          one submission's verdicts across two agents. */}
+      {stage !== 'pick' && <Text dimColor>Provider: {config.reviewProvider}</Text>}
 
       {stage === 'pick' && (
         <>

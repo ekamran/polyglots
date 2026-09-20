@@ -134,6 +134,11 @@ export function Review({ cwd, onBack }: ReviewProps) {
     <Box flexDirection="column">
       <Text bold>Review {stage === 'pick' ? 'a submitted .po file' : basename(file)}</Text>
       {configError && <Text color="yellow">Config error, using defaults: {configError}</Text>}
+      {/* Named on every screen that runs or reports a job, so which
+          subscription is being spent is never a guess. Not switchable here:
+          the choice belongs to the menu, and changing it mid-file would split
+          one submission's verdicts across two agents. */}
+      {stage !== 'pick' && <Text dimColor>Provider: {config.reviewProvider}</Text>}
 
       {stage === 'pick' && (
         <>

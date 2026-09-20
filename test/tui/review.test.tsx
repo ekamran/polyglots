@@ -7,6 +7,7 @@ import type { ReviewEvent } from '../../src/types.js'
 import { App } from '../../src/tui/App.js'
 import { ReviewProgress, reduceReviewProgress } from '../../src/tui/components/ReviewProgress.js'
 import { batchSizeChoices } from '../../src/tui/screens/Review.js'
+import { DEFAULT_CONFIG } from '../../src/config.js'
 import { copyToClipboard } from '../../src/tui/clipboard.js'
 import { openInDefaultApp } from '../../src/tui/open-file.js'
 
@@ -656,5 +657,48 @@ describe('ReviewProgress opening the repaired file', () => {
     await tick()
     expect(vi.mocked(openInDefaultApp)).not.toHaveBeenCalled()
     expect(lastFrame() ?? '').not.toContain('o to open')
+  })
+})
+
+describe('the review screen names its provider', () => {
+  /**
+   * A review that recorded `antigravity` spent Claude's subscription for an
+   * entire night without anything on screen to contradict it. Naming the agent
+   * on the screens that start and report a job is what makes that visible.
+   */
+  const withProvider = (reviewProvider: 'claude' | 'antigravity') =>
+    fakeCommands({ loadConfig: () => ({ ...DEFAULT_CONFIG, reviewProvider }) })
+
+  const open = async (reviewProvider: 'claude' | 'antigravity') => {
+    const view = render(<App commands={withProvider(reviewProvider)} cwd={cwd} />)
+    await tick()
+    view.stdin.write(keys.down)
+    await tick()
+    view.stdin.write(keys.enter)
+    await waitForText(view.lastFrame, 'Review a submitted')
+    return view
+  }
+
+  it('says nothing while a file is still being picked', async () => {
+    const view = await open('antigravity')
+    expect(view.lastFrame() ?? '').not.toContain('Provider:')
+  })
+
+  it('names the agent on the options screen, where the job starts', async () => {
+    const view = await open('antigravity')
+    view.stdin.write(keys.down)
+    await tick()
+    view.stdin.write(keys.enter)
+    await waitForText(view.lastFrame, 'Provider:')
+    expect((view.lastFrame() ?? '').replace(/\s+/g, ' ')).toContain('Provider: antigravity')
+  })
+
+  it('names claude when that is what is configured', async () => {
+    const view = await open('claude')
+    view.stdin.write(keys.down)
+    await tick()
+    view.stdin.write(keys.enter)
+    await waitForText(view.lastFrame, 'Provider:')
+    expect((view.lastFrame() ?? '').replace(/\s+/g, ' ')).toContain('Provider: claude')
   })
 })

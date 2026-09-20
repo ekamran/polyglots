@@ -58,7 +58,7 @@ export function Menu({ onSelect, onQuit, provider, onProvider, providerError }: 
         polyglots <Text dimColor>v{VERSION}</Text>
       </Text>
       <Text dimColor>
-        Reviewing with {provider} · p to switch
+        Provider: {provider} · p to switch
       </Text>
       {providerError && <Text color="yellow">Could not save that: {providerError}</Text>}
       <SelectInput items={MENU_ITEMS} onSelect={(item) => onSelect(item.value)} />

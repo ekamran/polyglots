@@ -321,10 +321,16 @@ async function runBatch(
   batch: AuditCandidate[],
   opts: AuditOptions,
 ): Promise<{ results?: AuditResult[]; failed?: string }> {
-  const claudeOpts = {
+  // Assembled field by field rather than spread, so that an option meant for
+  // the audit never leaks into an agent invocation. The cost is that a new
+  // option is silently dropped until it is added here: `provider` was, and
+  // every review that recorded `antigravity` spawned `claude`, cached its
+  // verdicts under the other agent's key and spent the wrong subscription.
+  const agentOpts = {
     locale: opts.locale,
     nplurals: opts.nplurals,
     mcpConfigPath: opts.mcpConfigPath ?? '',
+    ...(opts.provider ? { provider: opts.provider } : {}),
     ...(opts.bin ? { bin: opts.bin } : {}),
     ...(opts.model ? { model: opts.model } : {}),
     ...(opts.timeoutMs ? { timeoutMs: opts.timeoutMs } : {}),
@@ -333,7 +339,7 @@ async function runBatch(
   let failed = 'unknown error'
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      return { results: await adjudicate(batch, claudeOpts) }
+      return { results: await adjudicate(batch, agentOpts) }
     } catch (err) {
       failed = err instanceof Error ? err.message : String(err)
     }

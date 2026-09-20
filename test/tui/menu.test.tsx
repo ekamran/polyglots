@@ -148,7 +148,7 @@ describe('switching the review provider', () => {
     })
     const { lastFrame } = render(<App commands={commands} cwd={cwd} />)
     await tick()
-    expect(lastFrame() ?? '').toContain('Reviewing with antigravity')
+    expect(lastFrame() ?? '').toContain('Provider: antigravity')
   })
 
   it('cycles with p and saves the choice', async () => {
@@ -162,17 +162,17 @@ describe('switching the review provider', () => {
     })
     const { lastFrame, stdin } = render(<App commands={commands} cwd={cwd} />)
     await tick()
-    expect(lastFrame() ?? '').toContain('Reviewing with claude')
+    expect(lastFrame() ?? '').toContain('Provider: claude')
 
     stdin.write('p')
     await tick()
     expect(saved).toEqual([{ reviewProvider: 'antigravity' }])
-    expect(lastFrame() ?? '').toContain('Reviewing with antigravity')
+    expect(lastFrame() ?? '').toContain('Provider: antigravity')
 
     // Wraps, so one key reaches every provider however many there are.
     stdin.write('p')
     await tick()
-    expect(lastFrame() ?? '').toContain('Reviewing with claude')
+    expect(lastFrame() ?? '').toContain('Provider: claude')
   })
 
   // A run reads the saved config, so moving the display on a failed save would
@@ -189,7 +189,7 @@ describe('switching the review provider', () => {
     stdin.write('p')
     await tick()
     const frame = lastFrame() ?? ''
-    expect(frame).toContain('Reviewing with claude')
+    expect(frame).toContain('Provider: claude')
     expect(frame).toMatch(/EACCES/)
   })
 })

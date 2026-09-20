@@ -10,6 +10,39 @@ Run `polyglots --version` to see which build you have; the TUI shows it beside i
 
 ## [Unreleased]
 
+## [0.9.8] - 2026-09-20
+
+### Fixed
+
+- A review that named `antigravity` spawned `claude`. The options handed to the
+  adjudicator are assembled field by field, and `provider` was never added to
+  that list, so the runner fell back to its default. Every review since the
+  provider landed drove the wrong agent: it spent the wrong subscription, and
+  it cached Claude's verdicts under antigravity's key, which is the
+  cross-agent mixing the engine id exists to prevent.
+  - Nothing caught it because every test injected an adjudicator and none
+    looked at what it was handed. The new ones assert both the name and the
+    argv built from it, since the name alone could still be read as a default.
+  - A database written before this holds Claude's verdicts filed under
+    `antigravity`. They are worth keeping, and they belong to Claude:
+    `UPDATE OR REPLACE audit_verdict SET engine = 'claude' WHERE engine =
+    'antigravity'`, and the same for the review rows in `run`. Relabelling
+    rather than deleting keeps the work reusable and stops a genuinely
+    antigravity run from inheriting opinions it never formed.
+  - The comparison in `docs/antigravity.md` was measured through this bug, so
+    the antigravity row is Claude. It is left in place until a real run
+    replaces it, with a note saying so.
+
+### Changed
+
+- Every screen that starts or reports a job names the agent it will use. The
+  menu reads `Provider: antigravity · p to switch`; the review and translate
+  screens read `Provider: antigravity` and do not offer the switch, because
+  changing agent mid-file would split one submission's verdicts between two of
+  them. Nothing is shown while a file is still being picked, since no job
+  exists yet to attribute. A night of reviews spent the wrong subscription with
+  nothing on screen to contradict the name in the run log.
+
 ## [0.9.7] - 2026-09-20
 
 ### Changed
