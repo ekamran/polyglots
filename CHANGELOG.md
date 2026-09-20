@@ -10,6 +10,30 @@ Run `polyglots --version` to see which build you have; the TUI shows it beside i
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-20
+
+A version number, corrected.
+
+0.9.9 was cut as a patch and should not have been. It added the `tm-conflict`
+rule, changed what the review prompt says, and moved `configHash`, so anyone
+picking it up gets findings they did not have before and a verdict cache that
+prunes itself on the next run. That is a minor by any reading, and the number
+said otherwise. The work is unchanged and still described under 0.9.9; this
+release carries the number it should have had.
+
+### Changed
+
+- `/release` chooses the bump size when the caller does not name one. The rule
+  it applies asks what a release does to somebody already using the tool rather
+  than how much code moved: a new way in, a change to what a run produces, a
+  default that shifts on its own, or work the user has to redo all make it a
+  minor, and everything else is a patch. Adding a rule is seven files and a
+  minor; correcting a table across the docs touches as much and is a patch.
+  - Anything that moves `configHash` or an engine id is called out by name,
+    because it prunes the verdict cache on the next run and that is the
+    consequence easiest to ship without noticing. It belongs in the changelog
+    under its own heading whatever size the release ends up being.
+
 ## [0.9.9] - 2026-09-20
 
 Ask the agent less, and tell it more.
