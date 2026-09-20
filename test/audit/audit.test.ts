@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AuditEntry, GlossaryEntry } from '../../src/types.js'
 import { buildAgentArgs } from '../../src/agent/run.js'
+import { tmKey } from '../../src/audit/rules/index.js'
 import { auditEntries } from '../../src/audit/audit.js'
 import { createRunControl } from '../../src/run-control.js'
 import { buildAuditPrompt } from '../../src/audit/prompt.js'
@@ -217,6 +218,39 @@ describe('auditEntries', () => {
       },
     })
     expect(built).not.toContain('"glossary":')
+  })
+
+  /**
+   * tm_lookup was 44% of every tool call an agent made on a real run, and the
+   * answer for an exact source is known before the prompt is built.
+   */
+  it('states what the memory holds for an exact source', async () => {
+    let built = ''
+    await auditEntries({
+      entries: [entry('a', 'Post', 'Gönderi')],
+      ...base(),
+      tm: new Map([[tmKey('Post'), 'Yazı']]),
+      adjudicate: async (batch) => {
+        built = buildAuditPrompt(batch, 'tr', 2)
+        return batch.map((c) => ({ id: c.id, problem: false, categories: [] as never[], reason: 'ok' }))
+      },
+    })
+    expect(built).toContain('"memory":"Yazı"')
+  })
+
+  it('says nothing about a source the memory has never seen', async () => {
+    let built = ''
+    await auditEntries({
+      entries: [entry('a', 'Post', 'Gönderi')],
+      ...base(),
+      tm: new Map([[tmKey('Other'), 'Başka']]),
+      adjudicate: async (batch) => {
+        built = buildAuditPrompt(batch, 'tr', 2)
+        return batch.map((c) => ({ id: c.id, problem: false, categories: [] as never[], reason: 'ok' }))
+      },
+    })
+    // The payload key, not the guidance, which names the field too.
+    expect(built).not.toContain('"memory":')
   })
 
   it('tells the adjudicator which agent to drive', async () => {

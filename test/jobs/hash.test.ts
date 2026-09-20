@@ -221,6 +221,30 @@ describe('draftHash', () => {
   })
 })
 
+describe('auditSrcHash and the memory', () => {
+  const entry = { msgid: 'Post', msgstr: ['Gönderi'] }
+  const ctx = { references: [], comments: [], hints: [], nplurals: 2, repaired: false }
+
+  /**
+   * The prompt states what the memory holds for a source, and the memory is
+   * not part of configHash, so nothing else in the key would notice a TMX
+   * import changing what the model was told.
+   */
+  it('separates two entries the memory answers differently', () => {
+    expect(auditSrcHash(entry, { ...ctx, memory: 'Yazı' })).not.toBe(
+      auditSrcHash(entry, { ...ctx, memory: 'Gönderi' }),
+    )
+  })
+
+  it('separates an entry the memory knows from one it does not', () => {
+    expect(auditSrcHash(entry, { ...ctx, memory: 'Yazı' })).not.toBe(auditSrcHash(entry, ctx))
+  })
+
+  it('is stable when the memory says the same thing', () => {
+    expect(auditSrcHash(entry, { ...ctx, memory: 'Yazı' })).toBe(auditSrcHash(entry, { ...ctx, memory: 'Yazı' }))
+  })
+})
+
 describe('engineId', () => {
   it('is plain claude when no model was named', () => {
     expect(engineId()).toBe('claude')

@@ -57,6 +57,10 @@ export interface AuditContext {
   // entry in the same file, so the same string can fire a rule in one
   // submission and not in another.
   hints: string[]
+  // What the memory already holds for this exact source, as the prompt states
+  // it. The memory is not part of the configuration hash, so nothing else in
+  // this key would notice a TMX import changing what the model was told.
+  memory?: string
   nplurals: number
   // Whether a mechanical repair was applied before the model was asked. The
   // prompt says so, and the hash is taken after the repair, so without this an
@@ -85,6 +89,7 @@ export function auditSrcHash(entry: SourceText, context: AuditContext): string {
     context.references.join(FIELD),
     context.comments.join(FIELD),
     [...context.hints].sort().join(FIELD),
+    context.memory ?? '',
     String(context.nplurals),
     // The prompt tells the model when the text it is judging was already
     // repaired mechanically. Without this, an entry whose whitespace was fixed

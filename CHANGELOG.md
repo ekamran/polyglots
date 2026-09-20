@@ -10,6 +10,31 @@ Run `polyglots --version` to see which build you have; the TUI shows it beside i
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-09-20
+
+### Changed
+
+- An entry now states how its exact source was translated and approved before,
+  instead of leaving the model to ask. On a real run `tm_lookup` was 44% of
+  every tool call the agent made, and the answer was already on disk: 908 of
+  6,426 entries in that submission have an exact match. The guidance no longer
+  invites the lookup for an entry that carries a `memory`, only for near
+  matches to one that does not.
+  - The prompt grows by about 3%: a 50-entry batch went from 18.8KB to 19.4KB.
+  - This is the same treatment the glossary got in 0.9.9, which took its share
+    of tool calls from 30% to 12%.
+- The memory is part of the verdict key. It is not part of `configHash`, so
+  nothing else in the key would have noticed a TMX import changing what the
+  model was told, and a verdict formed under the old wording would have been
+  served for the new.
+
+### Note for existing databases
+
+The guidance moved again, so `configHash` moves with it and the next run prunes
+every cached verdict for the locale. The entry key changed too. Anything worth
+keeping should be reviewed on the previous build first, or split out of the
+file before upgrading.
+
 ## [0.10.0] - 2026-09-20
 
 A version number, corrected.

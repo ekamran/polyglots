@@ -7,7 +7,13 @@ import type { AuditEntry, Finding, GlossaryEntry, Locale } from '../types.js'
 import { buildAuditPrompt, type AuditCandidate } from './prompt.js'
 import { judgeFix, repairMechanically } from './repair.js'
 import { auditBatchJsonSchema, mapAuditResults, type AuditResult } from './schema.js'
-import { buildRuleContext, glossaryMatches as glossaryFor, runRules, type RuleContext } from './rules/index.js'
+import {
+  buildRuleContext,
+  glossaryMatches as glossaryFor,
+  runRules,
+  tmKey,
+  type RuleContext,
+} from './rules/index.js'
 
 export interface Verdict {
   key: string
@@ -161,6 +167,7 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
     // Resolved once per entry, from the same matcher the glossary rule uses, so
     // the prompt states the binding terms instead of making the model ask.
     const terms = glossaryFor(entry.msgid, ctx)
+    const memory = opts.tm?.get(tmKey(entry.msgid, entry.msgctxt))
     candidates.push({
       id: 0,
       key: entry.key,
@@ -172,6 +179,7 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
       references: entry.references,
       hints: findings,
       ...(terms.length > 0 ? { glossary: terms } : {}),
+      ...(memory ? { memory } : {}),
       ...(errors.length > 0 ? { condemned: findings } : {}),
       ...(repaired ? { repaired: { text: repaired, repairedBy: 'rules' as const } } : {}),
     })
@@ -216,6 +224,7 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
         references: candidate.references,
         comments: candidate.comments,
         hints: candidate.hints.filter((f) => f.rule !== 'repaired').map((f) => `${f.rule}: ${f.message}`),
+        ...(candidate.memory ? { memory: candidate.memory } : {}),
         nplurals: opts.nplurals,
         repaired: candidate.repaired !== undefined,
       },
