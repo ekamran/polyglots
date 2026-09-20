@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import React from 'react'
 import type { TranslateEvent } from '../../src/commands/translate.js'
 import { Progress, reduceProgress } from '../../src/tui/components/Progress.js'
-import { ReviewProgress, reduceReviewProgress } from '../../src/tui/components/ReviewProgress.js'
+import { barDone, barTotal, ReviewProgress, reduceReviewProgress } from '../../src/tui/components/ReviewProgress.js'
 import { render, tick } from './helpers.js'
 import { openInDefaultApp } from '../../src/tui/open-file.js'
 
@@ -259,5 +259,66 @@ describe('ReviewProgress rule counts', () => {
     const { lastFrame } = render(<ReviewProgress events={rulesRun(0, 0)} />)
     expect(reduceReviewProgress(rulesRun(0, 0)).suspects).toBe(0)
     expect(lastFrame() ?? '').toContain('reviewable')
+  })
+})
+
+describe('ReviewProgress resuming', () => {
+  /**
+   * A resumed run used to be indistinguishable from a cold one: the same
+   * header, and a bar counting from zero out of however many batches were
+   * left. On a 9,826-entry file with 2,300 entries already judged, the only
+   * difference on screen was 302 where a first run said 394.
+   */
+  const resumed = [
+    { type: 'start' as const, file: FILE, total: 9826, reviewable: 9826 },
+    { type: 'cached' as const, entries: 2300, batches: 92 },
+    { type: 'batch-start' as const, index: 1, of: 302, size: 25, at: T },
+  ]
+
+  it('counts the inherited batches as done, and into the total', () => {
+    const state = reduceReviewProgress(resumed)
+    expect(state.skippedBatches).toBe(92)
+    expect(state.cachedEntries).toBe(2300)
+    expect(barDone(state)).toBe(92)
+    expect(barTotal(state)).toBe(394)
+  })
+
+  it('shows the inherited work in the counter rather than starting at zero', () => {
+    const { lastFrame } = render(<ReviewProgress events={resumed} />)
+    const frame = (lastFrame() ?? '').replace(/\s+/g, ' ')
+    expect(frame).toContain('batch 93/394')
+    expect(frame).toContain('2300 already judged')
+  })
+
+  it('keeps counting from the inherited point as batches finish', () => {
+    const state = reduceReviewProgress([
+      ...resumed,
+      { type: 'batch-done' as const, index: 1, problems: 2, at: T + 1000 },
+    ])
+    expect(barDone(state)).toBe(93)
+    expect(barTotal(state)).toBe(394)
+  })
+
+  // A cold run must not grow a "0 already judged" line or a shifted counter.
+  it('is unchanged when nothing was inherited', () => {
+    const cold = [
+      { type: 'start' as const, file: FILE, total: 100, reviewable: 100 },
+      { type: 'batch-start' as const, index: 1, of: 4, size: 25, at: T },
+    ]
+    const state = reduceReviewProgress(cold)
+    expect(barDone(state)).toBe(0)
+    expect(barTotal(state)).toBe(4)
+    expect((render(<ReviewProgress events={cold} />).lastFrame() ?? '')).not.toContain('already judged')
+  })
+
+  // Everything already judged: no batch ever starts, so the total is whatever
+  // was inherited and the bar is full rather than empty.
+  it('reads as finished when the cache covered the whole file', () => {
+    const state = reduceReviewProgress([
+      { type: 'start' as const, file: FILE, total: 50, reviewable: 50 },
+      { type: 'cached' as const, entries: 50, batches: 2 },
+    ])
+    expect(barDone(state)).toBe(2)
+    expect(barTotal(state)).toBe(2)
   })
 })

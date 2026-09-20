@@ -112,10 +112,14 @@ export interface ReviewSummary {
 }
 
 export type ReviewEvent =
-  // Resume is per entry and lives in the job store, so a resumed run simply has
-  // fewer entries to batch. There is no count of inherited batches to carry: the
-  // bar counts from zero out of however many batches are left.
   | { type: 'start'; file: string; total: number; reviewable: number }
+  // What a previous run already judged, inherited from the job store before the
+  // first batch. Resume is per entry, so without this a resumed run looks
+  // exactly like a cold one: the same header, and a bar counting from zero out
+  // of however many batches are left. `batches` is what those entries would
+  // have cost at this run's batch size, which is what makes them comparable
+  // with the batches still to run.
+  | { type: 'cached'; entries: number; batches: number }
   | { type: 'rules-done'; flagged: number; suspects: number }
   // `at` lets a pure reducer measure how long each batch took, which is what the
   // remaining-time estimate is built from.

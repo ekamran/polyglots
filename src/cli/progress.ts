@@ -276,6 +276,10 @@ export function createReviewProgressReporter(stream: ProgressStream): ReviewProg
   let of = 0
   let index = 0
   let flagged = 0
+  // Batches a previous run already paid for, inherited from the job store.
+  // Added to both ends of the bar so a resumed run opens part way along one the
+  // length a first run would have had, rather than restarting the count.
+  let skipped = 0
   let liveLine = false
   let inFlightSince: number | undefined
   let ticker: NodeJS.Timeout | undefined
@@ -317,10 +321,11 @@ export function createReviewProgressReporter(stream: ProgressStream): ReviewProg
   }
 
   const line = (now: number = Date.now()): string => {
-    const done = inFlightSince === undefined ? index : index - 1
-    // `of || 1` because of === 0 means no batch has started yet, which is an
-    // empty bar; renderBar reads a total of zero as nothing to do, so full.
-    const base = `${renderBar(done, of || 1, BAR_WIDTH)} batch ${index}/${of}  flagged ${flagged}`
+    const done = skipped + (inFlightSince === undefined ? index : index - 1)
+    const total = skipped + of
+    // `total || 1` because a total of zero means no batch has started yet,
+    // which is an empty bar; renderBar reads zero as nothing to do, so full.
+    const base = `${renderBar(done, total || 1, BAR_WIDTH)} batch ${skipped + index}/${total}  flagged ${flagged}`
     const parts = [base]
     if (inFlightSince !== undefined) {
       parts.push(`reviewing ${Math.max(0, Math.round((now - inFlightSince) / 1000))}s`)
@@ -341,6 +346,10 @@ export function createReviewProgressReporter(stream: ProgressStream): ReviewProg
     switch (event.type) {
       case 'start':
         notice = `Reviewing ${event.file}: ${event.reviewable} of ${event.total} entries submitted`
+        break
+      case 'cached':
+        skipped = event.batches
+        notice = `Resuming: ${event.entries} entries already judged by an earlier run.`
         break
       case 'batch-start':
         of = event.of

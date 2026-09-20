@@ -302,6 +302,7 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
       // from the first write, not only in the last one, or a run interrupted
       // part way through a resume would write a file that had lost them.
       onCached: async (cached) => {
+        emit({ type: 'cached', entries: cached.length, batches: Math.ceil(cached.length / batchSize) })
         decided.push(...cached)
         await persist()
       },

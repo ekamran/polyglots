@@ -19,6 +19,11 @@ export interface ReviewProgressState {
   unreviewed: number
   batchesDone: number
   batchesTotal: number
+  // Work a previous run did, inherited from the job store before this one
+  // started. Counted apart from `batchesDone` so the reducer never has to
+  // pretend a batch ran that did not.
+  skippedBatches: number
+  cachedEntries: number
   // A batch has started and not yet finished. The bar cannot move while that is
   // true, so it is what the elapsed clock hangs off.
   inFlight: boolean
@@ -46,6 +51,8 @@ export function reduceReviewProgress(events: ReviewEvent[]): ReviewProgressState
     unreviewed: 0,
     batchesDone: 0,
     batchesTotal: 0,
+    skippedBatches: 0,
+    cachedEntries: 0,
     inFlight: false,
     batchIndex: 0,
     batchDurations: [],
@@ -72,6 +79,10 @@ export function reduceReviewProgress(events: ReviewEvent[]): ReviewProgressState
         state.file = e.file
         state.total = e.total
         state.reviewable = e.reviewable
+        break
+      case 'cached':
+        state.skippedBatches = e.batches
+        state.cachedEntries = e.entries
         break
       case 'rules-done':
         state.ruleFlagged = e.flagged
@@ -137,6 +148,22 @@ function ruleBreakdown(byRule: Record<string, number>): string[] {
     .map(([rule, n]) => `${rule} ${n}`)
 }
 
+/**
+ * Where the bar sits, counting the work a previous run already did.
+ *
+ * Inherited batches are added to both ends rather than left out, so a resumed
+ * run opens part way along a bar the same length a first run would have had.
+ * Counting from zero out of what is left is accurate and reads as a restart,
+ * which is the whole complaint this answers.
+ */
+export function barDone(state: ReviewProgressState): number {
+  return state.skippedBatches + state.batchesDone
+}
+
+export function barTotal(state: ReviewProgressState): number {
+  return state.skippedBatches + state.batchesTotal
+}
+
 export function ReviewProgress({ events }: { events: ReviewEvent[] }) {
   const state = reduceReviewProgress(events)
   const elapsed = useElapsed(state.inFlight, state.batchIndex)
@@ -166,12 +193,12 @@ export function ReviewProgress({ events }: { events: ReviewEvent[] }) {
           counter: which batch is running, or how many are finished. Showing both
           reads as a contradiction (2/8 next to batch 3/8). */}
       <Text>
-        {renderBar(state.batchesDone, state.batchesTotal || 1)}{' '}
+        {renderBar(barDone(state), barTotal(state) || 1)}{' '}
         {state.paused
-          ? `paused after batch ${state.batchesDone}/${state.batchesTotal}`
+          ? `paused after batch ${barDone(state)}/${barTotal(state)}`
           : state.inFlight
-            ? `batch ${state.batchIndex}/${state.batchesTotal} · reviewing ${elapsed}s`
-            : `${state.batchesDone}/${state.batchesTotal} batches`}
+            ? `batch ${state.skippedBatches + state.batchIndex}/${barTotal(state)} · reviewing ${elapsed}s`
+            : `${barDone(state)}/${barTotal(state)} batches`}
         {state.remainingMs === undefined
           ? ''
           : ` · ~${formatDuration(state.remainingMs)} left, done by ${formatFinishTime(state.remainingMs)}`}{' '}
@@ -188,6 +215,13 @@ export function ReviewProgress({ events }: { events: ReviewEvent[] }) {
         {state.file} · {state.total} entries, {state.reviewable} reviewable · rules: {state.ruleFlagged} wrong,{' '}
         {state.suspects} suspect
       </Text>
+      {/* Only when something was inherited. A cold run saying "0 already
+          judged" would be noise on every first review. */}
+      {state.cachedEntries > 0 && (
+        <Text color="green">
+          Resuming: {state.cachedEntries} already judged, {state.batchesTotal} batches left.
+        </Text>
+      )}
 
       {state.markerIgnored && (
         <Text color="yellow">

@@ -10,6 +10,27 @@ Run `polyglots --version` to see which build you have; the TUI shows it beside i
 
 ## [Unreleased]
 
+## [0.9.7] - 2026-09-20
+
+### Changed
+
+- A resumed review says so. Resume is per entry and lives in the job store, so
+  a run that inherited most of its work looked exactly like a cold one: the
+  same header, and a bar counting from zero out of however many batches were
+  left. On a 9,826-entry file with 2,300 entries already judged, the only
+  difference on screen was 302 where a first run said 394, which is not a
+  difference anyone notices at two in the morning.
+  - The batches a previous run paid for are counted into both ends of the bar,
+    so it opens a quarter of the way along one the length a first run would
+    have had: `batch 93/394`, not `batch 1/302`. A green line underneath says
+    what was inherited and what is left.
+  - The count of inherited batches is kept apart from the batches this run
+    actually ran, so the reducer never claims a batch happened that did not.
+  - A cold run is unchanged: no line, and the count still starts at zero.
+  - A file the cache covers entirely reads as finished rather than empty,
+    because no batch ever starts and the total is whatever was inherited.
+  - `polyglots review` prints the same thing on one line before the bar.
+
 ## [0.9.6] - 2026-09-19
 
 ### Added
