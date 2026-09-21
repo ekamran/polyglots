@@ -14,6 +14,7 @@ import {
   tmKey,
   type RuleContext,
 } from './rules/index.js'
+import { decideFromMemory } from './memory.js'
 
 export interface Verdict {
   key: string
@@ -26,7 +27,7 @@ export interface Verdict {
   // side made it. The rules repair what is computable; the model repairs the
   // rest.
   text?: string[]
-  repairedBy?: 'rules' | 'model'
+  repairedBy?: 'rules' | 'model' | 'memory'
 }
 
 export type Adjudicator = (
@@ -66,6 +67,11 @@ export interface AuditOptions extends Partial<AgentRunOptions> {
   // What the memory holds for these sources, resolved by the caller. The rules
   // read no database, and the caller already has one open.
   tm?: Map<string, string>
+  // The keys in `tm` whose match was found under the entry's own context
+  // rather than by falling back to a row without one. `tm` keeps the fallback
+  // matches because they are a fair hint in a prompt; only these may settle an
+  // entry without a model. Absent means none may.
+  memoryExact?: ReadonlySet<string>
   noAi?: boolean
   batchSize?: number
   // Lets a caller park or end the run at a batch boundary. A subscription that
@@ -73,7 +79,9 @@ export interface AuditOptions extends Partial<AgentRunOptions> {
   // abandon a call it has already paid for.
   control?: RunControl
   adjudicate?: Adjudicator
-  onRules?: (summary: { flagged: number; suspects: number }) => void
+  // memoryApproved and memoryRepaired count what the memory settled without a
+  // model, so a run that sends fewer batches than its size suggests says why.
+  onRules?: (summary: { flagged: number; suspects: number; memoryApproved: number; memoryRepaired: number }) => void
   onBatchStart?: (batch: BatchStart) => void
   // Awaited, so a caller writing to disk finishes before the next batch starts.
   onBatch?: (progress: BatchProgress) => void | Promise<void>
@@ -131,6 +139,8 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
 
   const verdicts = new Map<string, Verdict>()
   const candidates: AuditCandidate[] = []
+  let memoryApproved = 0
+  let memoryRepaired = 0
 
   for (const original of opts.entries) {
     // Repair what needs no judgment first, then let the rules judge the result.
@@ -145,6 +155,49 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
 
     const findings = [...mechanical, ...runRules(entry, ctx)]
     const errors = findings.filter((f) => f.severity === 'error')
+
+    // Before the model and before --no-ai, because what the memory settles is
+    // as decided on a rules-only run as on any other. Not cached with the
+    // model's verdicts: it is recomputed from the memory on every run, so a
+    // TMX import that changes an answer is seen at once, and nothing about it
+    // can go stale in the verdict cache or needs the configuration hash to move.
+    const key = tmKey(entry.msgid, entry.msgctxt)
+    const decision = decideFromMemory(entry, opts.tm?.get(key), opts.memoryExact?.has(key) ?? false)
+    // An approved translation outranks a suspect rule. On the file this was
+    // measured on, every title-case and untranslated hit on an identical match
+    // was a label or a brand the locale had approved exactly as written. It
+    // does not outrank an error, which is a rule having proved the text broken.
+    if (decision?.kind === 'approve' && errors.length === 0) {
+      verdicts.set(entry.key, {
+        key: entry.key,
+        problem: false,
+        findings: [],
+        reason: 'identical to a translation the locale already approved',
+        ...base,
+      })
+      memoryApproved += 1
+      continue
+    }
+    if (decision?.kind === 'repair') {
+      // The approved text is judged like any repair before it is accepted, so
+      // a memory row that has itself gone wrong cannot be written in unseen.
+      const after = runRules({ ...entry, msgstr: decision.text }, ctx)
+      if (!after.some((f) => f.severity === 'error')) {
+        verdicts.set(entry.key, {
+          key: entry.key,
+          problem: true,
+          findings: [
+            ...findings.filter((f) => f.rule !== 'untranslated' && f.rule !== 'repaired'),
+            { rule: 'untranslated', severity: 'error', message: 'left in English; replaced with the approved translation' },
+          ],
+          reason: 'left in English; the locale already approved a translation of this string',
+          text: decision.text,
+          repairedBy: 'memory',
+        })
+        memoryRepaired += 1
+        continue
+      }
+    }
 
     if (errors.length > 0 && opts.noAi) {
       verdicts.set(entry.key, { key: entry.key, problem: true, findings, reason: ruleReason(findings), ...base })
@@ -167,7 +220,7 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
     // Resolved once per entry, from the same matcher the glossary rule uses, so
     // the prompt states the binding terms instead of making the model ask.
     const terms = glossaryFor(entry.msgid, ctx)
-    const memory = opts.tm?.get(tmKey(entry.msgid, entry.msgctxt))
+    const memory = opts.tm?.get(key)
     candidates.push({
       id: 0,
       key: entry.key,
@@ -197,6 +250,8 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
     suspects:
       candidates.filter((c) => !c.condemned && c.hints.some((f) => f.rule !== 'repaired')).length +
       [...verdicts.values()].filter((v) => v.needsReview).length,
+    memoryApproved,
+    memoryRepaired,
   })
 
   const adjudicate = opts.adjudicate ?? adjudicateWithAgent

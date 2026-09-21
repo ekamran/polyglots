@@ -434,3 +434,70 @@ describe('Progress while a stop or a pause is waiting for the batch', () => {
     expect(parked.paused).toBe(true)
   })
 })
+
+/**
+ * The resume line said "1 batches left", and the plural was the smallest of
+ * three things wrong with it. The count was the batches this run started
+ * with, so it never went down: ten batches in it still claimed all twelve.
+ * And between inheriting the cached verdicts and starting the first batch,
+ * which on a large file is the whole rules pass, no batch count was known yet
+ * and it said "0 batches left" to a run with all its work ahead of it.
+ */
+describe('ReviewProgress resume line', () => {
+  const resumed = (...more: ReviewEvent[]): ReviewEvent[] => [
+    { type: 'start', file: '/tmp/a.po', total: 5_900, reviewable: 5_900 },
+    { type: 'cached', entries: 5_797, batches: 58 },
+    ...more,
+  ]
+  const frame = async (events: ReviewEvent[]) => {
+    const { lastFrame } = render(<ReviewProgress events={events} />)
+    await tick()
+    return flat(lastFrame())
+  }
+
+  it('says one batch, not one batches', async () => {
+    const text = await frame(resumed({ type: 'batch-start', index: 1, of: 1, size: 100, at: 0 }))
+    expect(text).toContain('5797 already judged, 1 batch left.')
+  })
+
+  it('keeps the plural for more than one', async () => {
+    const text = await frame(resumed({ type: 'batch-start', index: 1, of: 3, size: 100, at: 0 }))
+    expect(text).toContain('3 batches left.')
+  })
+
+  it('counts down as batches finish', async () => {
+    const text = await frame(
+      resumed(
+        { type: 'batch-start', index: 1, of: 3, size: 100, at: 0 },
+        { type: 'batch-done', index: 1, problems: 0, at: 1_000 },
+        { type: 'batch-start', index: 2, of: 3, size: 100, at: 1_000 },
+      ),
+    )
+    expect(text).toContain('2 batches left.')
+  })
+
+  it('does not claim nothing is left before any batch has been counted', async () => {
+    const text = await frame(resumed())
+    expect(text).toContain('Resuming: 5797 already judged.')
+    expect(text).not.toMatch(/0 batch/)
+  })
+})
+
+describe('ReviewProgress and what the memory settled', () => {
+  const events = (approved: number, repaired: number): ReviewEvent[] => [
+    { type: 'start', file: '/tmp/a.po', total: 1359, reviewable: 1359 },
+    { type: 'rules-done', flagged: 200, suspects: 600, memoryApproved: approved, memoryRepaired: repaired },
+  ]
+
+  it('says how many entries never went to the model', async () => {
+    const { lastFrame } = render(<ReviewProgress events={events(71, 173)} />)
+    await tick()
+    expect(flat(lastFrame())).toContain('memory: 71 approved, 173 repaired')
+  })
+
+  it('keeps quiet when the memory settled nothing', async () => {
+    const { lastFrame } = render(<ReviewProgress events={events(0, 0)} />)
+    await tick()
+    expect(flat(lastFrame())).not.toContain('memory:')
+  })
+})

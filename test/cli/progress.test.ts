@@ -325,6 +325,38 @@ describe('createReviewProgressReporter', () => {
     expect(out.text).toMatch(/paused/i)
   })
 
+  it('says one entry, not one entries, when that is all a resume inherited', () => {
+    const out = sink()
+    const report = createReviewProgressReporter(out)
+    report({ type: 'start', file: 'a.po', total: 120, reviewable: 116 })
+    report({ type: 'cached', entries: 1, batches: 1 })
+    report.finish()
+
+    expect(out.text).toContain('Resuming: 1 entry already judged')
+  })
+
+  // Otherwise a run that sends a third fewer batches than its entry count
+  // suggests gives no hint why.
+  it('says how many entries the memory settled without the model', () => {
+    const out = sink()
+    const report = createReviewProgressReporter(out)
+    report({ type: 'start', file: 'a.po', total: 1359, reviewable: 1359 })
+    report({ type: 'rules-done', flagged: 200, suspects: 600, memoryApproved: 71, memoryRepaired: 173 })
+    report.finish()
+
+    expect(out.text).toMatch(/memory.*71 approved.*173 repaired/i)
+  })
+
+  it('says nothing about the memory when it settled nothing', () => {
+    const out = sink()
+    const report = createReviewProgressReporter(out)
+    report({ type: 'start', file: 'a.po', total: 10, reviewable: 10 })
+    report({ type: 'rules-done', flagged: 1, suspects: 2, memoryApproved: 0, memoryRepaired: 0 })
+    report.finish()
+
+    expect(out.text).not.toMatch(/memory/i)
+  })
+
   it('reports the start line and a bar per batch on a non-tty', () => {
     const out = sink()
     const report = createReviewProgressReporter(out)

@@ -3,7 +3,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type Database from 'better-sqlite3'
-import { openDb, replaceGlossary } from '../../../src/storage/index.js'
+import { openDb, replaceGlossary, upsertTm } from '../../../src/storage/index.js'
 import { loadPo } from '../../../src/po/po-file.js'
 import { reviewFile } from '../../../src/commands/review.js'
 import type { ReviewEvent } from '../../../src/types.js'
@@ -350,4 +350,82 @@ describe('reviewFile', () => {
     await run()
     expect(await readFile(file, 'utf8')).toBe(before)
   })
+})
+
+/**
+ * Through the real lookup, because the exact-context rule lives in how the
+ * caller reads the memory: an entry with a msgctxt whose only match is the
+ * row without context must still reach the model, while the same text with
+ * no msgctxt at all is settled.
+ */
+describe('reviewFile settling entries from the memory', () => {
+  const MEMORY_PO = `msgid ""
+msgstr ""
+"MIME-Version: 1.0\\n"
+"Content-Type: text/plain; charset=UTF-8\\n"
+"Language: tr\\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\\n"
+
+msgid "Font Size"
+msgstr "Yazı Tipi Boyutu"
+
+msgid "Large"
+msgstr "Large"
+
+msgctxt "button shape"
+msgid "Sharp"
+msgstr "Sharp"
+
+msgid "Hide Details"
+msgstr "Ayrıntıları Gizle"
+`
+  let home: string
+  let file: string
+  let db: Database.Database
+
+  beforeEach(async () => {
+    home = await mkdtemp(join(tmpdir(), 'polyglots-review-memory-'))
+    file = join(home, 'wp-themes-demo-tr.po')
+    await writeFile(file, MEMORY_PO, 'utf8')
+    db = openDb(join(home, 'polyglots.db'))
+    replaceGlossary(db, 'tr', [{ locale: 'tr', sourceTerm: 'sidebar', translation: 'kenar çubuğu', partOfSpeech: 'noun' }])
+    upsertTm(db, [
+      { source: 'Font Size', target: 'Yazı Tipi Boyutu', locale: 'tr' },
+      { source: 'Large', target: 'Geniş', locale: 'tr' },
+      // Only a row without context: the msgctxt entry may use it as a hint,
+      // never as a decision.
+      { source: 'Sharp', target: 'Keskin', locale: 'tr' },
+      { source: 'Hide Details', target: 'Ayrıntıları gizle', locale: 'tr' },
+    ])
+  })
+
+  afterEach(async () => {
+    db.close()
+    await rm(home, { recursive: true, force: true })
+  })
+
+  it('sends the model only what the memory could not settle', async () => {
+    const adjudicate = vi.fn(async (batch: { id: number; msgid: string }[]) =>
+      batch.map((c) => ({ id: c.id, problem: false, categories: [] as never[], reason: 'ok' })),
+    )
+    const events: ReviewEvent[] = []
+    await reviewFile({ file, locale: 'tr', db, adjudicate, onProgress: (e) => events.push(e) })
+
+    const sent = adjudicate.mock.calls.flatMap(([batch]) => batch.map((c) => c.msgid)).sort()
+    expect(sent).toEqual(['Sharp'])
+    expect(events).toContainEqual(expect.objectContaining({ type: 'rules-done', memoryApproved: 2, memoryRepaired: 1 }))
+  })
+
+  it('writes the approved translation into the repaired file', async () => {
+    const summary = await reviewFile({ file, locale: 'tr', db, adjudicate: clearAll(), noAi: false })
+    const repaired = await loadPo(summary.problemsFile!)
+    const large = repaired.auditEntries().find((e) => e.msgid === 'Large')
+    expect(large?.msgstr).toEqual(['Geniş'])
+  })
+
+  function clearAll() {
+    return vi.fn(async (batch: { id: number }[]) =>
+      batch.map((c) => ({ id: c.id, problem: false, categories: [] as never[], reason: 'ok' })),
+    )
+  }
 })

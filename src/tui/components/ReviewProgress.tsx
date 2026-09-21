@@ -15,6 +15,10 @@ export interface ReviewProgressState {
   reviewable: number
   ruleFlagged: number
   suspects: number
+  // Settled from the memory without a model. Shown beside the rule counts so a
+  // run that sends fewer batches than its size suggests says why.
+  memoryApproved: number
+  memoryRepaired: number
   problems: number
   unreviewed: number
   batchesDone: number
@@ -58,6 +62,8 @@ export function reduceReviewProgress(events: ReviewEvent[]): ReviewProgressState
     reviewable: 0,
     ruleFlagged: 0,
     suspects: 0,
+    memoryApproved: 0,
+    memoryRepaired: 0,
     problems: 0,
     unreviewed: 0,
     batchesDone: 0,
@@ -98,6 +104,8 @@ export function reduceReviewProgress(events: ReviewEvent[]): ReviewProgressState
       case 'rules-done':
         state.ruleFlagged = e.flagged
         state.suspects = e.suspects
+        state.memoryApproved = e.memoryApproved ?? 0
+        state.memoryRepaired = e.memoryRepaired ?? 0
         state.problems += e.flagged
         break
       case 'batch-start':
@@ -186,6 +194,24 @@ export function barTotal(state: ReviewProgressState): number {
 }
 
 /**
+ * What a resumed run says it inherited, and what it still has to do.
+ *
+ * The remaining count is worked out rather than read off the batch total,
+ * which is what this run started with and never goes down: ten batches in, it
+ * went on claiming all twelve. A failed batch counts as done here, since it is
+ * no longer this run's to attempt. And until the first batch has started there
+ * is no total to subtract from, the whole rules pass on a large file, so the
+ * clause is left off rather than reporting nothing left to a run with all its
+ * work ahead of it.
+ */
+function resumeLine(state: ReviewProgressState): string {
+  const judged = `Resuming: ${state.cachedEntries} already judged`
+  if (state.batchesTotal === 0) return `${judged}.`
+  const left = Math.max(0, state.batchesTotal - state.batchesDone)
+  return `${judged}, ${left} ${left === 1 ? 'batch' : 'batches'} left.`
+}
+
+/**
  * `wporgUsername` is threaded in as a prop rather than read from the config
  * here, so this stays a component of its inputs and the tests that render it
  * with a handful of events keep working without a config on disk.
@@ -249,14 +275,15 @@ export function ReviewProgress({ events, wporgUsername = '' }: { events: ReviewE
       <Text dimColor>
         {state.file} · {state.total} entries, {state.reviewable} reviewable · rules: {state.ruleFlagged} wrong,{' '}
         {state.suspects} suspect
+        {/* Only when it settled something, so a file the memory has never seen
+            does not carry a line of zeros. */}
+        {state.memoryApproved + state.memoryRepaired > 0
+          ? ` · memory: ${state.memoryApproved} approved, ${state.memoryRepaired} repaired`
+          : ''}
       </Text>
       {/* Only when something was inherited. A cold run saying "0 already
           judged" would be noise on every first review. */}
-      {state.cachedEntries > 0 && (
-        <Text color="green">
-          Resuming: {state.cachedEntries} already judged, {state.batchesTotal} batches left.
-        </Text>
-      )}
+      {state.cachedEntries > 0 && <Text color="green">{resumeLine(state)}</Text>}
 
       {state.markerIgnored && (
         <Text color="yellow">

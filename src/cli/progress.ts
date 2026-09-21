@@ -368,9 +368,20 @@ export function createReviewProgressReporter(stream: ProgressStream): ReviewProg
       case 'start':
         notice = `Reviewing ${event.file}: ${event.reviewable} of ${event.total} entries submitted`
         break
+      // Worth a line of its own: it is why a run sends fewer batches than its
+      // entry count suggests, and on a theme full of shared UI strings that can
+      // be a fifth of the file.
+      case 'rules-done': {
+        const approved = event.memoryApproved ?? 0
+        const repaired = event.memoryRepaired ?? 0
+        if (approved + repaired > 0) {
+          notice = `Settled from memory, not sent to the model: ${approved} approved, ${repaired} repaired.`
+        }
+        break
+      }
       case 'cached':
         skipped = event.batches
-        notice = `Resuming: ${event.entries} entries already judged by an earlier run.`
+        notice = `Resuming: ${event.entries} ${event.entries === 1 ? 'entry' : 'entries'} already judged by an earlier run.`
         break
       case 'batch-start':
         of = event.of

@@ -292,7 +292,7 @@ describe('auditEntries', () => {
       adjudicate,
       onRules: (r) => seen.push(r),
     })
-    expect(seen).toEqual([{ flagged: 1, suspects: 1 }])
+    expect(seen).toEqual([{ flagged: 1, suspects: 1, memoryApproved: 0, memoryRepaired: 0 }])
   })
 
   /**
@@ -312,7 +312,7 @@ describe('auditEntries', () => {
 
     const needing = verdicts.filter((v) => v.needsReview).length
     expect(needing).toBeGreaterThan(0)
-    expect(seen).toEqual([{ flagged: 1, suspects: needing }])
+    expect(seen).toEqual([{ flagged: 1, suspects: needing, memoryApproved: 0, memoryRepaired: 0 }])
   })
 
   // A whitespace repair is settled, not an open question, so it must not swell
@@ -330,7 +330,7 @@ describe('auditEntries', () => {
       adjudicate,
       onRules: (r) => seen.push(r),
     })
-    expect(seen).toEqual([{ flagged: 0, suspects: 0 }])
+    expect(seen).toEqual([{ flagged: 0, suspects: 0, memoryApproved: 0, memoryRepaired: 0 }])
   })
 
   it('announces a batch before running it, not after', async () => {
@@ -871,5 +871,120 @@ describe('mapAuditResults', () => {
   it('rejects a fix that is not an array of strings', () => {
     const payload = { results: [{ id: 1, problem: true, categories: [], reason: 'x', fix: 'just a string' }] }
     expect(() => mapAuditResults([{ id: 1, key: 'a' }], payload)).toThrow(/schema validation/)
+  })
+})
+
+/**
+ * The memory used to inform the model and never replace it: every entry went
+ * to a batch whatever the memory already said. On a real theme that sent the
+ * model 244 of 1,359 entries whose answer was sitting on disk, either
+ * approved word for word or approved in Turkish where the contributor had
+ * left English.
+ */
+describe('auditEntries deciding from the memory', () => {
+  const ok = (batch: { id: number }[]) => batch.map((c) => ({ id: c.id, problem: false, categories: [], reason: 'ok' }))
+  const memoryOf = (pairs: [string, string][]) => new Map(pairs.map(([s, t]) => [tmKey(s), t]))
+  const exactFor = (sources: string[]) => new Set(sources.map((s) => tmKey(s)))
+
+  it('never sends an entry identical to its approved translation to the model', async () => {
+    const adjudicate = vi.fn(async (batch: { id: number; key: string }[]) => ok(batch))
+    const verdicts = await auditEntries({
+      entries: [entry('a', 'Font Size', 'Yazı Tipi Boyutu'), entry('b', 'Save all changes', 'Tüm değişiklikleri kaydet')],
+      ...base(),
+      tm: memoryOf([['Font Size', 'Yazı Tipi Boyutu']]),
+      memoryExact: exactFor(['Font Size']),
+      adjudicate,
+    })
+
+    const sent = adjudicate.mock.calls.flatMap(([batch]) => batch.map((c) => c.key))
+    expect(sent).toEqual(['b'])
+    expect(verdicts.find((v) => v.key === 'a')).toMatchObject({ problem: false })
+  })
+
+  /**
+   * An approved translation outranks a suspect rule: the title-case and
+   * untranslated hits on an identical match were every one of them a label or
+   * a brand the locale had already approved as written. It does not outrank
+   * an error, which is a rule having proved the text broken.
+   */
+  it('lets the approval overrule a suspect rule, but not an error', async () => {
+    const adjudicate = vi.fn(async (batch: { id: number; key: string }[]) => ok(batch))
+    await auditEntries({
+      entries: [entry('label', 'Font Size', 'Yazı Tipi Boyutu'), entry('broken', '%s comments', 'yorumlar')],
+      ...base(),
+      tm: memoryOf([
+        ['Font Size', 'Yazı Tipi Boyutu'],
+        ['%s comments', 'yorumlar'],
+      ]),
+      memoryExact: exactFor(['Font Size', '%s comments']),
+      adjudicate,
+    })
+
+    const sent = adjudicate.mock.calls.flatMap(([batch]) => batch.map((c) => c.key))
+    expect(sent).toEqual(['broken'])
+  })
+
+  it('repairs an entry left in English without asking the model', async () => {
+    const adjudicate = vi.fn(async (batch: { id: number; key: string }[]) => ok(batch))
+    const verdicts = await auditEntries({
+      entries: [entry('a', 'Large', 'Large')],
+      ...base(),
+      tm: memoryOf([['Large', 'Geniş']]),
+      memoryExact: exactFor(['Large']),
+      adjudicate,
+    })
+
+    expect(adjudicate).not.toHaveBeenCalled()
+    expect(verdicts[0]).toMatchObject({ problem: true, text: ['Geniş'], repairedBy: 'memory' })
+  })
+
+  // Approved as written: the contributor's capitals are kept, not replaced
+  // with the memory's, because either is acceptable.
+  it('approves a difference of case as written, without the model', async () => {
+    const adjudicate = vi.fn(async (batch: { id: number; key: string }[]) => ok(batch))
+    const verdicts = await auditEntries({
+      entries: [entry('a', 'Hide Details', 'Ayrıntıları Gizle')],
+      ...base(),
+      tm: memoryOf([['Hide Details', 'Ayrıntıları gizle']]),
+      memoryExact: exactFor(['Hide Details']),
+      adjudicate,
+    })
+
+    expect(adjudicate).not.toHaveBeenCalled()
+    expect(verdicts[0]).toMatchObject({ problem: false })
+    expect(verdicts[0]!.text).toBeUndefined()
+  })
+
+  // The memory is still in the map for the prompt; only the decision needs
+  // the context to have matched.
+  it('decides nothing from a match that was not found under its own context', async () => {
+    const adjudicate = vi.fn(async (batch: { id: number; key: string }[]) => ok(batch))
+    await auditEntries({
+      entries: [entry('a', 'Font Size', 'Yazı Tipi Boyutu')],
+      ...base(),
+      tm: memoryOf([['Font Size', 'Yazı Tipi Boyutu']]),
+      memoryExact: new Set(),
+      adjudicate,
+    })
+
+    expect(adjudicate).toHaveBeenCalledTimes(1)
+  })
+
+  // Said where the rules report their own counts, so a run that sends fewer
+  // batches than its size suggests says why.
+  it('reports how many the memory settled', async () => {
+    const onRules = vi.fn()
+    await auditEntries({
+      entries: [entry('a', 'Font Size', 'Yazı Tipi Boyutu'), entry('b', 'Large', 'Large')],
+      ...base({ noAi: true }),
+      tm: memoryOf([
+        ['Font Size', 'Yazı Tipi Boyutu'],
+        ['Large', 'Geniş'],
+      ]),
+      memoryExact: exactFor(['Font Size', 'Large']),
+      onRules,
+    })
+
+    expect(onRules).toHaveBeenCalledWith(expect.objectContaining({ memoryApproved: 1, memoryRepaired: 1 }))
   })
 })

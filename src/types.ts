@@ -124,7 +124,11 @@ export type ReviewEvent =
   // have cost at this run's batch size, which is what makes them comparable
   // with the batches still to run.
   | { type: 'cached'; entries: number; batches: number }
-  | { type: 'rules-done'; flagged: number; suspects: number }
+  // memoryApproved and memoryRepaired are what the memory settled without a
+  // model: approved word for word, or left in English where it held the
+  // approved text. Optional so an event recorded before there was a count
+  // still reads.
+  | { type: 'rules-done'; flagged: number; suspects: number; memoryApproved?: number; memoryRepaired?: number }
   // `at` lets a pure reducer measure how long each batch took, which is what the
   // remaining-time estimate is built from.
   | { type: 'batch-start'; index: number; of: number; size: number; at: number }

@@ -81,15 +81,34 @@ function readGlossary(locale: Locale, injected?: Database.Database) {
  * them up, one round trip at a time, for the 45% of entries the memory has
  * nothing useful to say about.
  */
-function readMemory(entries: AuditEntry[], locale: Locale, injected?: Database.Database): Map<string, string> {
+/**
+ * What the memory holds for each entry, and which of those matches may settle
+ * an entry without a model.
+ *
+ * The lookup falls back to a row with no context when an entry's own msgctxt
+ * finds nothing. That fallback stays in `memory`, where it is only a hint in the
+ * prompt, and is kept out of `exact`, because a msgctxt exists exactly where a
+ * source is ambiguous and deciding from a row that ignored it would be deciding
+ * the ambiguous case blind. An entry with no msgctxt is only ever looked up
+ * without one, so its match is exact by construction.
+ */
+function readMemory(
+  entries: AuditEntry[],
+  locale: Locale,
+  injected?: Database.Database,
+): { memory: Map<string, string>; exact: Set<string> } {
   const db = injected ?? openDb()
   try {
-    const found = new Map<string, string>()
+    const memory = new Map<string, string>()
+    const exact = new Set<string>()
     for (const entry of entries) {
       const hit = findExactTm(db, entry.msgid, locale, entry.msgctxt)
-      if (hit) found.set(tmKey(entry.msgid, entry.msgctxt), hit.target)
+      if (!hit) continue
+      const key = tmKey(entry.msgid, entry.msgctxt)
+      memory.set(key, hit.target)
+      if (!entry.msgctxt || hit.context === entry.msgctxt) exact.add(key)
     }
-    return found
+    return { memory, exact }
   } finally {
     if (!injected) db.close()
   }
@@ -300,9 +319,11 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
       return annotations.size
     }
 
+    const remembered = readMemory(reviewable, opts.locale, opts.db)
     const verdicts = await auditEntries({
       entries: reviewable,
-      tm: readMemory(reviewable, opts.locale, opts.db),
+      tm: remembered.memory,
+      memoryExact: remembered.exact,
       locale: opts.locale,
       nplurals: po.nplurals,
       glossary,
@@ -327,7 +348,14 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
       ...(opts.bin ? { bin: opts.bin } : {}),
       provider,
       ...(opts.model ? { model: opts.model } : {}),
-      onRules: (r) => emit({ type: 'rules-done', flagged: r.flagged, suspects: r.suspects }),
+      onRules: (r) =>
+        emit({
+          type: 'rules-done',
+          flagged: r.flagged,
+          suspects: r.suspects,
+          memoryApproved: r.memoryApproved,
+          memoryRepaired: r.memoryRepaired,
+        }),
       onBatchStart: (b) => emit({ type: 'batch-start', index: b.index, of: b.of, size: b.size, at: Date.now() }),
       // Entries an earlier run already judged. They belong in the output file
       // from the first write, not only in the last one, or a run interrupted

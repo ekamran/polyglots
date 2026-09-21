@@ -10,6 +10,47 @@ Run `polyglots --version` to see which build you have; the TUI shows it beside i
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-09-21
+
+### Changed
+
+- Entries the memory can settle no longer go to the model. The memory has been
+  in the prompt since 0.11.0, so the model was being handed the answer and then
+  asked the question, and every entry went to a batch whatever the memory
+  already said. On `wp-themes-business-roy-tr.po`, against a 94,435-row memory,
+  265 of 1,359 entries are now settled before any batch is built, and the run
+  sends 11 batches of a hundred instead of 14. A submission identical to the
+  translation the locale approved for that exact source is approved, which
+  outranks a suspect rule (every title-case and untranslated hit on such a match
+  in that file was a label or a brand the locale had approved as written) but
+  not an error. A submission left in English where the memory holds the
+  approved text is repaired with it, and the rules re-check the repaired text
+  before it is accepted.
+
+  A submission that differs from the memory only in case is approved as
+  written, keeping the contributor's capitals: labels keep theirs by the locale
+  team's rule, the memory cannot tell a label from prose, and either casing is
+  acceptable. Case is compared the Turkish way, where I and İ lower to ı and i.
+  Any match found only by dropping the entry's context is left to the model,
+  since a msgctxt exists exactly where a source is ambiguous; on that file it
+  kept `Cover` under "Background Control" from being written in as `Kapak`. The progress line says how many the memory settled, so a run
+  that sends fewer batches than its size suggests says why.
+
+  Nothing is re-reviewed. What the memory decides is worked out afresh on every
+  run and never cached, so the prompt and the configuration hash are untouched
+  and a TMX import is felt on the next run without invalidating anything.
+
+### Fixed
+
+- The resume line says "1 batch left", and the plural was the least of what
+  was wrong with it. The count was the number of batches the run started with
+  and never went down, so ten batches in it still claimed all twelve; it is
+  worked out from what has finished now. Before the first batch starts, which
+  on a large file is the whole rules pass, there was no count at all and it
+  said "0 batches left" to a run with everything ahead of it, so that clause
+  now waits until there is a number to give. The CLI's own resume notice had
+  the same agreement slip, as "1 entries".
+
 ## [0.13.0] - 2026-09-20
 
 ### Fixed
