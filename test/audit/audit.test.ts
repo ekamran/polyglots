@@ -229,13 +229,13 @@ describe('auditEntries', () => {
     await auditEntries({
       entries: [entry('a', 'Post', 'Gönderi')],
       ...base(),
-      tm: new Map([[tmKey('Post'), 'Yazı']]),
+      tm: new Map([[tmKey('Post'), ['Yazı']]]),
       adjudicate: async (batch) => {
         built = buildAuditPrompt(batch, 'tr', 2)
         return batch.map((c) => ({ id: c.id, problem: false, categories: [] as never[], reason: 'ok' }))
       },
     })
-    expect(built).toContain('"memory":"Yazı"')
+    expect(built).toContain('"memory":["Yazı"]')
   })
 
   it('says nothing about a source the memory has never seen', async () => {
@@ -243,7 +243,7 @@ describe('auditEntries', () => {
     await auditEntries({
       entries: [entry('a', 'Post', 'Gönderi')],
       ...base(),
-      tm: new Map([[tmKey('Other'), 'Başka']]),
+      tm: new Map([[tmKey('Other'), ['Başka']]]),
       adjudicate: async (batch) => {
         built = buildAuditPrompt(batch, 'tr', 2)
         return batch.map((c) => ({ id: c.id, problem: false, categories: [] as never[], reason: 'ok' }))
@@ -883,7 +883,7 @@ describe('mapAuditResults', () => {
  */
 describe('auditEntries deciding from the memory', () => {
   const ok = (batch: { id: number }[]) => batch.map((c) => ({ id: c.id, problem: false, categories: [], reason: 'ok' }))
-  const memoryOf = (pairs: [string, string][]) => new Map(pairs.map(([s, t]) => [tmKey(s), t]))
+  const memoryOf = (pairs: [string, string][]) => new Map(pairs.map(([s, t]) => [tmKey(s), [t]]))
   const exactFor = (sources: string[]) => new Set(sources.map((s) => tmKey(s)))
 
   it('never sends an entry identical to its approved translation to the model', async () => {

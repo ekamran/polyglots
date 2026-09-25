@@ -64,9 +64,9 @@ export interface AuditOptions extends Partial<AgentRunOptions> {
   nplurals: number
   glossary: GlossaryEntry[]
   properNouns?: string[]
-  // What the memory holds for these sources, resolved by the caller. The rules
-  // read no database, and the caller already has one open.
-  tm?: Map<string, string>
+  // Every wording the memory holds for these sources, resolved by the caller.
+  // The rules read no database, and the caller already has one open.
+  tm?: Map<string, readonly string[]>
   // The keys in `tm` whose match was found under the entry's own context
   // rather than by falling back to a row without one. `tm` keeps the fallback
   // matches because they are a fair hint in a prompt; only these may settle an
@@ -162,7 +162,7 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
     // TMX import that changes an answer is seen at once, and nothing about it
     // can go stale in the verdict cache or needs the configuration hash to move.
     const key = tmKey(entry.msgid, entry.msgctxt)
-    const decision = decideFromMemory(entry, opts.tm?.get(key), opts.memoryExact?.has(key) ?? false)
+    const decision = decideFromMemory(entry, opts.tm?.get(key) ?? [], opts.memoryExact?.has(key) ?? false)
     // An approved translation outranks a suspect rule. On the file this was
     // measured on, every title-case and untranslated hit on an identical match
     // was a label or a brand the locale had approved exactly as written. It

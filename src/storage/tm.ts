@@ -21,8 +21,7 @@ export function upsertTm(db: Database.Database, entries: TmEntry[]): number {
   const stmt = db.prepare(`
     INSERT INTO tm (source, target, locale, context, project, updated_at)
     VALUES (@source, @target, @locale, @context, @project, @updatedAt)
-    ON CONFLICT (source, locale, context) DO UPDATE SET
-      target = excluded.target,
+    ON CONFLICT (source, locale, context, target) DO UPDATE SET
       project = excluded.project,
       updated_at = excluded.updated_at
   `)
@@ -43,21 +42,48 @@ export function upsertTm(db: Database.Database, entries: TmEntry[]): number {
   return run(entries)
 }
 
+/**
+ * Every translation the locale approved for this exact source, most recently
+ * updated first.
+ *
+ * The memory holds alternatives rather than one answer per source. A real
+ * export had 6,480 sources with more than one approved wording, most of them
+ * synonyms nobody should have to choose between, and collapsing them made
+ * whichever came last in a file the one that speaks for the source.
+ *
+ * A context's alternatives are its own: they are never mixed with the
+ * context-less ones, because a msgctxt exists exactly where a source means
+ * different things. The fallback to the context-less rows when the scoped
+ * context holds nothing is unchanged, and callers that act without a model
+ * still have to know which of the two they got.
+ */
+export function findMemory(db: Database.Database, source: string, locale: Locale, context?: string): TmEntry[] {
+  const stmt = db.prepare<[string, string, string], TmRow>(
+    `SELECT source, target, locale, context, project FROM tm
+     WHERE source = ? AND locale = ? AND context = ?
+     ORDER BY updated_at DESC, id DESC`,
+  )
+  if (context) {
+    const scoped = stmt.all(source, locale, context)
+    if (scoped.length > 0) return scoped.map(toEntry)
+  }
+  return stmt.all(source, locale, '').map(toEntry)
+}
+
+/**
+ * The one alternative to use where only one will do, such as filling an
+ * untranslated entry on a translate run. The most recently updated wins, which
+ * is a choice rather than a verdict: see `findMemory` for why there can be
+ * several, and mark the result for a human when it came from a source that has
+ * more than one.
+ */
 export function findExactTm(
   db: Database.Database,
   source: string,
   locale: Locale,
   context?: string,
 ): TmEntry | undefined {
-  const stmt = db.prepare<[string, string, string], TmRow>(
-    'SELECT source, target, locale, context, project FROM tm WHERE source = ? AND locale = ? AND context = ?',
-  )
-  if (context) {
-    const scoped = stmt.get(source, locale, context)
-    if (scoped) return toEntry(scoped)
-  }
-  const plain = stmt.get(source, locale, '')
-  return plain ? toEntry(plain) : undefined
+  return findMemory(db, source, locale, context)[0]
 }
 
 function tokens(text: string): string[] {

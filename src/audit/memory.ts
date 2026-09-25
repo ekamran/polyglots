@@ -14,6 +14,14 @@ export type MemoryDecision = { kind: 'approve' } | { kind: 'repair'; text: strin
  * Settles an entry from the memory, or returns undefined to leave it to the
  * model as before.
  *
+ * The memory holds every wording the locale approved for a source, so a
+ * submission matching any of them is approved. A real export had 6,480 sources
+ * with more than one, nearly all synonyms: "Tepeye kaydır" and "Yukarı kaydır"
+ * are both right and which one a contributor reached for is not a finding.
+ * Repairing is the exception, since it writes one wording into the file: with
+ * several to choose from there is nothing here to choose by, so the model
+ * decides with all of them in front of it.
+ *
  * Measured on wp-themes-business-roy-tr.po against a 94,435-row memory: 71 of
  * 1,359 submissions were identical to an approved translation and 173 had been
  * left in English where the memory held the approved text. Every one of them
@@ -41,12 +49,31 @@ export type MemoryDecision = { kind: 'approve' } | { kind: 'repair'; text: strin
  * A plural entry is never settled, since the memory holds one string per source
  * and nothing says which form it would be.
  */
-export function decideFromMemory(entry: AuditEntry, memory: string | undefined, exact: boolean): MemoryDecision | undefined {
-  if (memory === undefined || !exact) return undefined
+export function decideFromMemory(
+  entry: AuditEntry,
+  memory: readonly string[],
+  exact: boolean,
+): MemoryDecision | undefined {
+  if (memory.length === 0 || !exact) return undefined
   if (entry.msgidPlural !== undefined || entry.msgstr.length !== 1) return undefined
   const submitted = entry.msgstr[0]!
-  if (submitted === memory) return { kind: 'approve' }
-  if (submitted.toLocaleLowerCase('tr') === memory.toLocaleLowerCase('tr')) return { kind: 'approve' }
-  if (submitted === entry.msgid) return { kind: 'repair', text: [memory] }
+  const fold = (s: string) => s.toLocaleLowerCase('tr')
+
+  // A submission left in English is never approved from the memory, even when
+  // the memory holds the same English. The memory carries English for
+  // everything the locale keeps that way, brands, icon slugs, place names and
+  // Lorem ipsum, alongside a few leftovers nobody ever translated, and there is
+  // no telling them apart from here. Approving on that basis would approve a
+  // contributor for leaving the English exactly where the memory is weakest.
+  // It can still be repaired, because a memory that holds one Turkish wording
+  // for the source has answered the question. Measured at about 15 entries in
+  // 1,359 moved back into a batch.
+  if (submitted === entry.msgid) {
+    const wordings = new Set(memory.map(fold))
+    if (wordings.size !== 1 || wordings.has(fold(entry.msgid))) return undefined
+    return { kind: 'repair', text: [memory[0]!] }
+  }
+
+  if (memory.some((m) => m === submitted || fold(m) === fold(submitted))) return { kind: 'approve' }
   return undefined
 }

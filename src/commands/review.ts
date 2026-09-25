@@ -34,7 +34,7 @@ import { loadPo, type Annotation } from '../po/po-file.js'
 import type { RunControl } from '../run-control.js'
 import { loadConfig } from '../config.js'
 import { tmKey } from '../audit/rules/index.js'
-import { allGlossary, findExactTm, openDb } from '../storage/index.js'
+import { allGlossary, findMemory, openDb } from '../storage/index.js'
 import type { AuditEntry, Locale, ReviewEvent, ReviewSummary } from '../types.js'
 
 export interface ReviewOptions extends Partial<AgentRunOptions> {
@@ -96,17 +96,19 @@ function readMemory(
   entries: AuditEntry[],
   locale: Locale,
   injected?: Database.Database,
-): { memory: Map<string, string>; exact: Set<string> } {
+): { memory: Map<string, readonly string[]>; exact: Set<string> } {
   const db = injected ?? openDb()
   try {
-    const memory = new Map<string, string>()
+    const memory = new Map<string, readonly string[]>()
     const exact = new Set<string>()
     for (const entry of entries) {
-      const hit = findExactTm(db, entry.msgid, locale, entry.msgctxt)
-      if (!hit) continue
+      const hits = findMemory(db, entry.msgid, locale, entry.msgctxt)
+      if (hits.length === 0) continue
       const key = tmKey(entry.msgid, entry.msgctxt)
-      memory.set(key, hit.target)
-      if (!entry.msgctxt || hit.context === entry.msgctxt) exact.add(key)
+      memory.set(key, hits.map((h) => h.target))
+      // Every alternative comes from one lookup, so they share a context and
+      // the first answers for all of them.
+      if (!entry.msgctxt || hits[0]!.context === entry.msgctxt) exact.add(key)
     }
     return { memory, exact }
   } finally {

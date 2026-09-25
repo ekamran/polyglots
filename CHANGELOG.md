@@ -10,6 +10,43 @@ Run `polyglots --version` to see which build you have; the TUI shows it beside i
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-09-25
+
+### Changed
+
+- The memory holds every wording the locale approved for a source, instead of
+  one. Its table allowed a single translation per source and context, so an
+  import overwrote whatever was there and whichever alternative came last in a
+  TMX became the one that speaks for the source. That was arbitrary, and since
+  0.14.0 it is also what approves submissions without a model. A real export of
+  115,125 units had 6,480 sources carrying more than one approved wording,
+  nearly all of them synonyms: `Tepeye kaydır` and `Yukarı kaydır` are both
+  right, and which one a contributor reached for is not a finding.
+
+  A submission matching any approved wording is now approved. `tm-conflict`
+  fires only when a submission matches none of them, and names them all. The
+  prompt lists them, so the model chooses between settled options rather than
+  judging one. A repair from the memory still needs a single answer, so it
+  happens only where the alternatives agree; where they differ the model
+  decides with all of them in front of it. `translate` fills an entry from the
+  memory as before, but marks it fuzzy when there was more than one wording to
+  choose between, because nobody approved that choice for that string.
+
+  Opening a database written before this rebuilds the `tm` table and its full
+  text index. It is a widening, so no row is dropped, but take a copy first as
+  with any migration.
+
+### Fixed
+
+- A submission left in English is no longer approved because the memory holds
+  the same English. The memory carries English for everything the locale keeps
+  that way, brands, icon slugs, place names and Lorem ipsum, alongside a few
+  leftovers nobody ever translated, and it cannot tell them apart. Approving on
+  that basis approved a contributor for leaving the English exactly where the
+  memory is weakest. Such an entry goes to the model instead, which on a real
+  theme moved about 15 entries of 1,359 back into a batch. It is still repaired
+  outright where the memory holds a single Turkish wording for the source.
+
 ## [0.14.0] - 2026-09-21
 
 ### Changed

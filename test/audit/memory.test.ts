@@ -15,11 +15,11 @@ function entry(msgid: string, msgstr: string, extra: Partial<AuditEntry> = {}): 
  */
 describe('decideFromMemory', () => {
   it('approves a submission identical to the approved translation', () => {
-    expect(decideFromMemory(entry('Font Size', 'Yazı Tipi Boyutu'), 'Yazı Tipi Boyutu', true)).toEqual({ kind: 'approve' })
+    expect(decideFromMemory(entry('Font Size', 'Yazı Tipi Boyutu'), ['Yazı Tipi Boyutu'], true)).toEqual({ kind: 'approve' })
   })
 
   it('repairs a submission left in English with the approved translation', () => {
-    expect(decideFromMemory(entry('Large', 'Large'), 'Geniş', true)).toEqual({ kind: 'repair', text: ['Geniş'] })
+    expect(decideFromMemory(entry('Large', 'Large'), ['Geniş'], true)).toEqual({ kind: 'repair', text: ['Geniş'] })
   })
 
   /**
@@ -30,20 +30,20 @@ describe('decideFromMemory', () => {
    * than rewritten to the memory's casing or sent to be argued over.
    */
   it('approves a submission that differs from the memory only in case', () => {
-    expect(decideFromMemory(entry('Hide Details', 'Ayrıntıları Gizle'), 'Ayrıntıları gizle', true)).toEqual({ kind: 'approve' })
+    expect(decideFromMemory(entry('Hide Details', 'Ayrıntıları Gizle'), ['Ayrıntıları gizle'], true)).toEqual({ kind: 'approve' })
   })
 
   // Turkish has two i's, and a case comparison that ignores that would call
   // "Işık" and "Isik" the same word, or fail to match "İleri" to "ileri".
   it('compares case the Turkish way', () => {
-    expect(decideFromMemory(entry('Next', 'İleri'), 'ileri', true)).toEqual({ kind: 'approve' })
-    expect(decideFromMemory(entry('Light', 'IŞIK'), 'ışık', true)).toEqual({ kind: 'approve' })
-    expect(decideFromMemory(entry('Light', 'ISIK'), 'ışık', true)).toBeUndefined()
+    expect(decideFromMemory(entry('Next', 'İleri'), ['ileri'], true)).toEqual({ kind: 'approve' })
+    expect(decideFromMemory(entry('Light', 'IŞIK'), ['ışık'], true)).toEqual({ kind: 'approve' })
+    expect(decideFromMemory(entry('Light', 'ISIK'), ['ışık'], true)).toBeUndefined()
   })
 
   // Different wording is a judgement, and judgement is what the model is for.
   it('leaves different wording to the model', () => {
-    expect(decideFromMemory(entry('Posts navigation', 'Gönderi navigasyonu'), 'Yazı gezinmesi', true)).toBeUndefined()
+    expect(decideFromMemory(entry('Posts navigation', 'Gönderi navigasyonu'), ['Yazı gezinmesi'], true)).toBeUndefined()
   })
 
   /**
@@ -52,18 +52,87 @@ describe('decideFromMemory', () => {
    * fair hint for a prompt and no basis for deciding without one.
    */
   it('decides nothing from a match found only by dropping the context', () => {
-    expect(decideFromMemory(entry('Large', 'Large', { msgctxt: 'font size' }), 'Geniş', false)).toBeUndefined()
-    expect(decideFromMemory(entry('Font Size', 'Yazı Tipi Boyutu'), 'Yazı Tipi Boyutu', false)).toBeUndefined()
+    expect(decideFromMemory(entry('Large', 'Large', { msgctxt: 'font size' }), ['Geniş'], false)).toBeUndefined()
+    expect(decideFromMemory(entry('Font Size', 'Yazı Tipi Boyutu'), ['Yazı Tipi Boyutu'], false)).toBeUndefined()
   })
 
   it('decides nothing without a memory', () => {
-    expect(decideFromMemory(entry('Large', 'Large'), undefined, true)).toBeUndefined()
+    expect(decideFromMemory(entry('Large', 'Large'), [], true)).toBeUndefined()
   })
 
   // The memory holds one string per source. A plural entry has several forms
   // and nothing here says which one it would be.
   it('leaves plural entries alone', () => {
     const plural = entry('%d item', '%d öğe', { msgidPlural: '%d items', msgstr: ['%d öğe', '%d öğe'] })
-    expect(decideFromMemory(plural, '%d öğe', true)).toBeUndefined()
+    expect(decideFromMemory(plural, ['%d öğe'], true)).toBeUndefined()
+  })
+})
+
+/**
+ * The memory holds every wording the locale approved for a source, so a
+ * submission matching any of them is approved. On a real export 6,480 sources
+ * had more than one, nearly all synonyms: "Tepeye kaydır" and "Yukarı kaydır"
+ * are both right, and which one a contributor picked is not a finding.
+ */
+describe('decideFromMemory with several approved alternatives', () => {
+  const both = ['Tepeye kaydır', 'Yukarı kaydır']
+
+  it('approves a submission matching any approved alternative', () => {
+    expect(decideFromMemory(entry('Scroll to Top', 'Yukarı kaydır'), both, true)).toEqual({ kind: 'approve' })
+    expect(decideFromMemory(entry('Scroll to Top', 'Tepeye kaydır'), both, true)).toEqual({ kind: 'approve' })
+  })
+
+  it('approves one that matches an alternative but for its capitals', () => {
+    expect(decideFromMemory(entry('Scroll to Top', 'Yukarı Kaydır'), both, true)).toEqual({ kind: 'approve' })
+  })
+
+  it('leaves a wording the memory does not hold to the model', () => {
+    expect(decideFromMemory(entry('Scroll to Top', 'Başa dön'), both, true)).toBeUndefined()
+  })
+
+  /**
+   * Repairing means writing one wording into the file. With several approved
+   * there is nothing to say which, so the model decides with all of them in
+   * front of it rather than this picking one on a coin toss.
+   */
+  it('does not repair a left-in-English entry when the approved wordings differ', () => {
+    expect(decideFromMemory(entry('Scroll to Top', 'Scroll to Top'), both, true)).toBeUndefined()
+    expect(decideFromMemory(entry('Scroll to Top', 'Scroll to Top'), ['Yukarı kaydır'], true)).toEqual({
+      kind: 'repair',
+      text: ['Yukarı kaydır'],
+    })
+  })
+
+  // Alternatives that differ only in case say the same thing, so they still
+  // settle a repair.
+  it('repairs when the alternatives differ only in case', () => {
+    const decision = decideFromMemory(entry('Scroll to Top', 'Scroll to Top'), ['Yukarı kaydır', 'Yukarı Kaydır'], true)
+    expect(decision).toEqual({ kind: 'repair', text: ['Yukarı kaydır'] })
+  })
+})
+
+/**
+ * The memory holds English text for sources the locale keeps in English:
+ * brands, icon slugs, place names, Lorem ipsum. It also holds a few leftovers
+ * nobody ever translated. Approving a submission because it matches one of
+ * those would approve a contributor for leaving the English exactly where the
+ * memory is least trustworthy, so the model looks at it instead. On a real
+ * theme this moved about 15 entries of 1,359 back into a batch.
+ */
+describe('decideFromMemory when the memory holds the English itself', () => {
+  it('does not approve a submission left in English, even if the memory has it', () => {
+    expect(decideFromMemory(entry('Elementor', 'Elementor'), ['Elementor'], true)).toBeUndefined()
+    expect(decideFromMemory(entry('Lorem ipsum', 'Lorem ipsum'), ['Lorem ipsum'], true)).toBeUndefined()
+  })
+
+  // A real translation that happens to sit beside an untranslated copy is
+  // still a real translation.
+  it('still approves a translated submission when a copy is one of the alternatives', () => {
+    expect(decideFromMemory(entry('Flip', 'Çevir'), ['Çevir', 'Flip'], true)).toEqual({ kind: 'approve' })
+  })
+
+  // And a copy in the memory cannot be the text a repair writes in.
+  it('does not repair with an alternative that is the English source', () => {
+    expect(decideFromMemory(entry('Flip', 'Flip'), ['Flip'], true)).toBeUndefined()
   })
 })

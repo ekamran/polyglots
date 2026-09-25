@@ -25,7 +25,7 @@ import {
 import { MCP_ENV, writeMcpConfig } from '../mcp/config.js'
 import { loadPo, type ApplyResult, type PoFile } from '../po/po-file.js'
 import { reviewBatch } from '../review/draft-review.js'
-import { findExactTm, openDb } from '../storage/index.js'
+import { findMemory, openDb } from '../storage/index.js'
 import { normalizeLocale } from '../tmx/parse.js'
 import type {
   DraftEngine,
@@ -121,15 +121,35 @@ function resolveBatchSize(requested: number | undefined): number {
   return size
 }
 
+/**
+ * Whether the memory offers a genuine choice for this source.
+ *
+ * Wordings that differ only in capitals say the same thing, so they are not a
+ * choice; two different wordings are, and filling an entry has to pick one.
+ */
+function ambiguous(alternatives: readonly { target: string }[], locale: Locale): boolean {
+  return new Set(alternatives.map((a) => a.target.toLocaleLowerCase(locale))).size > 1
+}
+
 // A TM row per msgid/msgidPlural only maps onto exactly two plural forms; other counts go through the engine.
+//
+// The memory can hold several approved wordings. The most recently updated is
+// written, and the entry is marked fuzzy when there was more than one to choose
+// between: the locale approved each of them, but nobody approved this one for
+// this string, and a fuzzy entry is exactly the flag for a human to confirm.
 function tmLookup(db: Database.Database, unit: TranslationUnit, locale: Locale, nplurals: number): ApplyResult | undefined {
-  const singular = findExactTm(db, unit.msgid, locale, unit.msgctxt)
-  if (!singular) return undefined
-  if (unit.msgidPlural === undefined) return { key: unit.key, text: [singular.target], fuzzy: false }
+  const singular = findMemory(db, unit.msgid, locale, unit.msgctxt)
+  if (singular.length === 0) return undefined
+  const fuzzy = ambiguous(singular, locale)
+  if (unit.msgidPlural === undefined) return { key: unit.key, text: [singular[0]!.target], fuzzy }
   if (nplurals !== 2) return undefined
-  const plural = findExactTm(db, unit.msgidPlural, locale, unit.msgctxt)
-  if (!plural) return undefined
-  return { key: unit.key, text: [singular.target, plural.target], fuzzy: false }
+  const plural = findMemory(db, unit.msgidPlural, locale, unit.msgctxt)
+  if (plural.length === 0) return undefined
+  return {
+    key: unit.key,
+    text: [singular[0]!.target, plural[0]!.target],
+    fuzzy: fuzzy || ambiguous(plural, locale),
+  }
 }
 
 async function persist(po: PoFile, results: ApplyResult[], dryRun: boolean | undefined): Promise<boolean> {

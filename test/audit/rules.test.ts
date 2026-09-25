@@ -378,7 +378,7 @@ describe('runRules', () => {
 
 describe('tm-conflict rule', () => {
   const withTm = (e: AuditEntry, pairs: Array<[string, string]>) => {
-    const tm = new Map<string, string>(pairs.map(([msgid, target]) => [tmKey(msgid), target]))
+    const tm = new Map<string, readonly string[]>(pairs.map(([msgid, target]) => [tmKey(msgid), [target]]))
     const ctx = buildRuleContext({ locale: 'tr', glossary: GLOSSARY, nplurals: 2, entries: [e], tm })
     return runRules(e, ctx)
   }
@@ -431,8 +431,35 @@ describe('tm-conflict rule', () => {
   // gettext lets the same English mean two things, so context is part of the key.
   it('does not answer for a different context', () => {
     const e = { ...entry('Post', 'Gönderi'), msgctxt: 'verb', key: 'verbPost' }
-    const tm = new Map([[tmKey('Post'), 'Yazı']])
+    const tm = new Map([[tmKey('Post'), ['Yazı']]])
     const ctx = buildRuleContext({ locale: 'tr', glossary: GLOSSARY, nplurals: 2, entries: [e], tm })
     expect(runRules(e, ctx).map((f) => f.rule)).not.toContain('tm-conflict')
+  })
+})
+
+/**
+ * The memory can hold several approved wordings for one source. A submission
+ * that matches any of them agrees with the memory, so only one that matches
+ * none is a conflict worth reporting.
+ */
+describe('tm-conflict with alternatives', () => {
+  const ctxWith = (tm: Map<string, string[]>) =>
+    buildRuleContext({ locale: 'tr', glossary: [], nplurals: 2, entries: [], tm })
+  const entry = (msgid: string, msgstr: string) => ({
+    key: msgid, msgid, msgstr: [msgstr], comments: [], references: [], fuzzy: false,
+  })
+  const both = new Map([[tmKey('Scroll to Top'), ['Tepeye kaydır', 'Yukarı kaydır']]])
+
+  it('says nothing when the submission matches one of the approved wordings', () => {
+    const findings = runRules(entry('Scroll to Top', 'Yukarı kaydır'), ctxWith(both))
+    expect(findings.map((f) => f.rule)).not.toContain('tm-conflict')
+  })
+
+  it('reports a submission that matches none of them, and names them', () => {
+    const findings = runRules(entry('Scroll to Top', 'Başa dön'), ctxWith(both))
+    const conflict = findings.find((f) => f.rule === 'tm-conflict')
+    expect(conflict).toBeDefined()
+    expect(conflict!.message).toContain('Tepeye kaydır')
+    expect(conflict!.message).toContain('Yukarı kaydır')
   })
 })

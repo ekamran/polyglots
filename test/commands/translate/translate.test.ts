@@ -163,6 +163,33 @@ describe('translateFile: exact TM fast path', () => {
     ])
   })
 
+  /**
+   * The memory can hold several approved wordings for one source. Filling an
+   * entry means writing one of them, and nothing here says which, so the newest
+   * goes in marked fuzzy: a translation to confirm rather than an approval
+   * nobody made. With one wording, or several differing only in capitals, there
+   * is no choice to confirm and it stays approved as before.
+   */
+  it('marks a TM fill fuzzy when the memory holds more than one approved wording', async () => {
+    const db = openDb(join(ws.home, 'tm.db'))
+    upsertTm(db, [{ source: 'Save Changes', target: 'Değişiklikleri Kaydet', locale: 'tr' }])
+    upsertTm(db, [{ source: 'Save Changes', target: 'Değişiklikleri kaydet', locale: 'tr' }])
+    upsertTm(db, [{ source: 'Thank you for installing %s.', target: '%s kurduğunuz için teşekkürler.', locale: 'tr' }])
+    upsertTm(db, [{ source: 'Thank you for installing %s.', target: '%s yüklediğiniz için teşekkürler.', locale: 'tr' }])
+
+    await translateFile(base({ db, engine: fakeEngine(), review: fakeReview() }))
+    db.close()
+
+    const after = await parseFile(ws.file)
+    // Two wordings: filled with the newest, flagged for a human.
+    expect(entryOf(after, 'Thank you for installing %s.').msgstr).toEqual(['%s yüklediğiniz için teşekkürler.'])
+    // The entry already carries php-format, so the flag list gains fuzzy.
+    expect(entryOf(after, 'Thank you for installing %s.').comments?.flag).toContain('fuzzy')
+    // Same wording, different capitals: still settled.
+    expect(entryOf(after, 'Save Changes').msgstr).toEqual(['Değişiklikleri kaydet'])
+    expect(entryOf(after, 'Save Changes').comments?.flag).toBeUndefined()
+  })
+
   it('falls through to the engine when only one plural form is in the TM', async () => {
     const db = openDb(join(ws.home, 'tm.db'))
     upsertTm(db, [{ source: 'One submission was deleted.', target: 'Bir gönderim silindi.', locale: 'tr' }])

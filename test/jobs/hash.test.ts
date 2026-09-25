@@ -231,17 +231,17 @@ describe('auditSrcHash and the memory', () => {
    * import changing what the model was told.
    */
   it('separates two entries the memory answers differently', () => {
-    expect(auditSrcHash(entry, { ...ctx, memory: 'Yazı' })).not.toBe(
-      auditSrcHash(entry, { ...ctx, memory: 'Gönderi' }),
+    expect(auditSrcHash(entry, { ...ctx, memory: ['Yazı'] })).not.toBe(
+      auditSrcHash(entry, { ...ctx, memory: ['Gönderi'] }),
     )
   })
 
   it('separates an entry the memory knows from one it does not', () => {
-    expect(auditSrcHash(entry, { ...ctx, memory: 'Yazı' })).not.toBe(auditSrcHash(entry, ctx))
+    expect(auditSrcHash(entry, { ...ctx, memory: ['Yazı'] })).not.toBe(auditSrcHash(entry, ctx))
   })
 
   it('is stable when the memory says the same thing', () => {
-    expect(auditSrcHash(entry, { ...ctx, memory: 'Yazı' })).toBe(auditSrcHash(entry, { ...ctx, memory: 'Yazı' }))
+    expect(auditSrcHash(entry, { ...ctx, memory: ['Yazı'] })).toBe(auditSrcHash(entry, { ...ctx, memory: ['Yazı'] }))
   })
 })
 

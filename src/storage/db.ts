@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS tm (
   context TEXT NOT NULL DEFAULT '',
   project TEXT,
   updated_at TEXT NOT NULL,
-  UNIQUE (source, locale, context)
+  UNIQUE (source, locale, context, target)
 );
 
 CREATE VIRTUAL TABLE IF NOT EXISTS tm_fts USING fts5(
@@ -65,11 +65,53 @@ function dropPreScopeCache(db: Database.Database): void {
   }
 }
 
+/**
+ * Rebuilds a `tm` written before the memory kept alternatives.
+ *
+ * Its unique constraint covers only source, locale and context, so a second
+ * approved wording for a source could not be stored and an import overwrote
+ * whatever was there. SQLite cannot drop a constraint, so the table is rebuilt
+ * with the rows carried over, and the full text index is rebuilt after it
+ * because it is content-backed by the table that was just replaced. The
+ * triggers go with the old table and are recreated by the migrations below.
+ */
+function needsWidening(db: Database.Database): boolean {
+  const row = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'tm'").get() as
+    | { sql: string }
+    | undefined
+  return row !== undefined && /UNIQUE\s*\(\s*source\s*,\s*locale\s*,\s*context\s*\)/i.test(row.sql)
+}
+
+function widenTmUniqueness(db: Database.Database): void {
+  db.exec(`
+    BEGIN;
+    CREATE TABLE tm_widened (
+      id INTEGER PRIMARY KEY,
+      source TEXT NOT NULL,
+      target TEXT NOT NULL,
+      locale TEXT NOT NULL,
+      context TEXT NOT NULL DEFAULT '',
+      project TEXT,
+      updated_at TEXT NOT NULL,
+      UNIQUE (source, locale, context, target)
+    );
+    INSERT INTO tm_widened (id, source, target, locale, context, project, updated_at)
+      SELECT id, source, target, locale, context, project, updated_at FROM tm;
+    DROP TABLE tm;
+    ALTER TABLE tm_widened RENAME TO tm;
+    COMMIT;
+  `)
+}
+
 export function openDb(path: string = dbFile()): Database.Database {
   mkdirSync(dirname(path), { recursive: true })
   const db = new Database(path)
   db.pragma('journal_mode = WAL')
   dropPreScopeCache(db)
+  const widened = needsWidening(db)
+  if (widened) widenTmUniqueness(db)
   db.exec(MIGRATIONS)
+  // After the triggers exist again, so the index and the table agree.
+  if (widened) db.exec("INSERT INTO tm_fts(tm_fts) VALUES('rebuild');")
   return db
 }

@@ -20,10 +20,12 @@ export interface AuditCandidate {
   // the alternative is a tool call per term, and an agent that issues those one
   // at a time spends most of a batch on them.
   glossary?: GlossaryMatch[]
-  // How this exact source was translated and approved before, from the local
-  // memory. Carried inline for the same reason the glossary terms are: asking
-  // costs a round trip, and tm_lookup was 44% of every tool call an agent made.
-  memory?: string
+  // Every wording this exact source has been translated and approved as, from
+  // the local memory. Carried inline for the same reason the glossary terms
+  // are: asking costs a round trip, and tm_lookup was 44% of every tool call an
+  // agent made. More than one means the locale has approved each of them, so
+  // the model is choosing between settled options rather than judging one.
+  memory?: readonly string[]
   // Carries a rules-side mechanical repair through the batch round trip, since
   // toVerdict and unreviewed build a fresh Verdict per candidate and would
   // otherwise lose it.
@@ -91,7 +93,7 @@ export function buildAuditPrompt(candidates: AuditCandidate[], locale: Locale, n
       if (c.glossary && c.glossary.length > 0) {
         payload.glossary = Object.fromEntries(c.glossary.slice(0, GLOSSARY_LIMIT).map((g) => [g.term, g.translations]))
       }
-      if (c.memory) payload.memory = c.memory
+      if (c.memory && c.memory.length > 0) payload.memory = c.memory
       if (c.repaired) payload.alreadyRepaired = true
       // Carried as a field rather than named as a list of rules in the guidance
       // below, so adding an error rule keeps the instruction true on its own.
@@ -110,7 +112,7 @@ The locale team's standards:
 ${capitalization}- Each entry's "references" are the source file and line the string comes from, and they are the best clue to its role: a path like admin-menu.php or help.php points at a label or a heading, while one like actions.php, or a translation in the imperative, points at a command.
 - Placeholders (%s, %1$s, %d, {x}), HTML tags, and leading/trailing whitespace must match the source exactly.
 - Use the formal, neutral register standard in WordPress ${language}. No slang, no over-familiar address.
-- An entry's "memory" is how this exact source was translated and approved before. Prefer it unless the source means something different here, or it breaks one of the standards above. You do not need tm_lookup for an entry that has one; call it only for near matches to an entry that has none. Call consistency_lookup to see how WordPress core already translates a string. Prefer established usage over a fresh invention.
+- An entry's "memory" lists how this exact source has been translated and approved before, and every wording in it is already approved. Prefer one of them unless the source means something different here, or it breaks one of the standards above; where there are several, they are alternatives the locale accepts and any of them is a correct answer. You do not need tm_lookup for an entry that has one; call it only for near matches to an entry that has none. Call consistency_lookup to see how WordPress core already translates a string. Prefer established usage over a fresh invention.
 
 Some entries carry an "automatedChecks" list: findings from deterministic checks that could not be decided mechanically. ${language} may inflect a glossary term so it no longer matches the dictionary form exactly, and a check may be wrong on that basis. Adjudicate each one: confirm it only if it is a real problem, and clear it otherwise. Entries with no automatedChecks still need your own judgment on meaning, register and fluency.
 

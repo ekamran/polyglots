@@ -2,9 +2,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import DatabaseCtor from 'better-sqlite3'
 import type Database from 'better-sqlite3'
 import { openDb } from '../../src/storage/db.js'
-import { findExactTm, searchTm, upsertTm } from '../../src/storage/tm.js'
+import { findExactTm, findMemory, searchTm, upsertTm } from '../../src/storage/tm.js'
 
 describe('tm', () => {
   let home: string
@@ -20,7 +21,53 @@ describe('tm', () => {
     await rm(home, { recursive: true, force: true })
   })
 
-  it('upsert dedups on source+locale+context and updates the target', () => {
+  /**
+   * The memory holds every translation the locale approved for a source, not
+   * the last one imported. Collapsing them made whichever alternative came last
+   * in a TMX the one that answers for the source, which is arbitrary, and since
+   * 0.14.0 that answer approves submissions without a model. A real export held
+   * 6,480 sources with more than one approved wording.
+   */
+  it('keeps a second translation of the same source as an alternative', () => {
+    upsertTm(db, [{ source: 'Scroll to Top', target: 'Tepeye kaydır', locale: 'tr' }])
+    upsertTm(db, [{ source: 'Scroll to Top', target: 'Yukarı kaydır', locale: 'tr' }])
+
+    expect(findMemory(db, 'Scroll to Top', 'tr').map((e) => e.target).sort()).toEqual(['Tepeye kaydır', 'Yukarı kaydır'])
+  })
+
+  it('still dedups a translation it already holds', () => {
+    upsertTm(db, [
+      { source: 'Settings', target: 'Ayarlar', locale: 'tr' },
+      { source: 'Settings', target: 'Ayarlar', locale: 'tr' },
+    ])
+    expect(findMemory(db, 'Settings', 'tr')).toHaveLength(1)
+  })
+
+  // Alternatives belong to the context they were approved under. Mixing them
+  // would hand a verb's translation to a noun.
+  it('keeps each context own alternatives to itself', () => {
+    upsertTm(db, [
+      { source: 'Post', target: 'Yazı', locale: 'tr' },
+      { source: 'Post', target: 'Gönderi', locale: 'tr' },
+      { source: 'Post', target: 'Gönder', locale: 'tr', context: 'verb' },
+    ])
+    expect(findMemory(db, 'Post', 'tr', 'verb').map((e) => e.target)).toEqual(['Gönder'])
+    expect(findMemory(db, 'Post', 'tr').map((e) => e.target).sort()).toEqual(['Gönderi', 'Yazı'])
+    // The context-less fallback still applies when the scoped context has none.
+    expect(findMemory(db, 'Post', 'tr', 'unknown').map((e) => e.target).sort()).toEqual(['Gönderi', 'Yazı'])
+    expect(findMemory(db, 'Missing', 'tr')).toEqual([])
+  })
+
+  // For the callers that can only act on one, such as filling an untranslated
+  // entry during a translate run.
+  it('offers the most recently updated alternative first', () => {
+    upsertTm(db, [{ source: 'Icon', target: 'İkon', locale: 'tr' }])
+    upsertTm(db, [{ source: 'Icon', target: 'Simge', locale: 'tr' }])
+    expect(findMemory(db, 'Icon', 'tr')[0]?.target).toBe('Simge')
+    expect(findExactTm(db, 'Icon', 'tr')?.target).toBe('Simge')
+  })
+
+  it('upsert dedups on source+locale+context+target and refreshes what it holds', () => {
     const inserted = upsertTm(db, [
       { source: 'Settings', target: 'Ayarlar', locale: 'tr' },
       { source: 'Settings', target: 'Ayarlar', locale: 'tr' },
@@ -31,17 +78,51 @@ describe('tm', () => {
     const rows = db.prepare('SELECT count(*) AS n FROM tm').get() as { n: number }
     expect(rows.n).toBe(3)
 
+    // A wording the memory does not hold yet joins the source rather than
+    // replacing what is there.
     upsertTm(db, [{ source: 'Settings', target: 'Seçenekler', locale: 'tr', project: 'woo' }])
     const after = db.prepare('SELECT count(*) AS n FROM tm').get() as { n: number }
-    expect(after.n).toBe(3)
+    expect(after.n).toBe(4)
     const hit = findExactTm(db, 'Settings', 'tr')
     expect(hit?.target).toBe('Seçenekler')
     expect(hit?.project).toBe('woo')
     expect(hit?.context).toBeUndefined()
+    expect(findMemory(db, 'Settings', 'tr').map((e) => e.target).sort()).toEqual(['Ayarlar', 'Seçenekler'])
   })
 
   it('returns 0 for an empty batch', () => {
     expect(upsertTm(db, [])).toBe(0)
+  })
+
+  /**
+   * A database written before alternatives were kept carries a unique
+   * constraint that allows only one translation per source. Opening it has to
+   * rebuild the table, keep every row, and leave the full text index working.
+   */
+  it('migrates a database that could only hold one translation per source', async () => {
+    const old = join(home, 'old.db')
+    const raw = new DatabaseCtor(old)
+    raw.exec(`
+      CREATE TABLE tm (
+        id INTEGER PRIMARY KEY, source TEXT NOT NULL, target TEXT NOT NULL, locale TEXT NOT NULL,
+        context TEXT NOT NULL DEFAULT '', project TEXT, updated_at TEXT NOT NULL,
+        UNIQUE (source, locale, context)
+      );
+      INSERT INTO tm (source, target, locale, context, project, updated_at)
+      VALUES ('Scroll to Top', 'Tepeye kaydır', 'tr', '', 'core', '2020-01-01T00:00:00.000Z');
+    `)
+    raw.close()
+
+    const migrated = openDb(old)
+    try {
+      expect(findMemory(migrated, 'Scroll to Top', 'tr').map((e) => e.target)).toEqual(['Tepeye kaydır'])
+      upsertTm(migrated, [{ source: 'Scroll to Top', target: 'Yukarı kaydır', locale: 'tr' }])
+      expect(findMemory(migrated, 'Scroll to Top', 'tr')).toHaveLength(2)
+      // The index is content-backed by the table that was just replaced.
+      expect(searchTm(migrated, 'Scroll to Top', 'tr').length).toBeGreaterThan(0)
+    } finally {
+      migrated.close()
+    }
   })
 
   it('prefers a context-specific match and falls back to context-less', () => {
