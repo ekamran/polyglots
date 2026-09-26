@@ -49,13 +49,12 @@ async function openTranslateAndStart(stdin: FakeStdin, lastFrame: () => string |
   await tick()
   stdin.write(keys.enter)
   await waitForText(lastFrame, /Draft engine/)
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 4; i++) {
     stdin.write(keys.down)
     await tick()
   }
+  // A pending run starts on the keypress; only `all` asks again.
   stdin.write(keys.enter)
-  await waitForText(lastFrame, '[y/N]')
-  stdin.write('y')
 }
 
 describe('runTui', () => {

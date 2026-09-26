@@ -12,6 +12,7 @@ import { BACK_HINT, DONE_HINT, Hint } from '../components/Hint.js'
 import { ReviewProgress } from '../components/ReviewProgress.js'
 import { useTask } from '../hooks/useTask.js'
 import { createRunControl, type RunControl } from '../../run-control.js'
+import { batchSizeChoices } from '../batch-size.js'
 
 export interface ReviewProps {
   cwd: string
@@ -27,15 +28,6 @@ const FIELD_NO_AI = 2
 const FIELD_FRESH = 3
 const FIELD_START = 4
 const FIELD_COUNT = 5
-
-const BATCH_SIZES = [10, 25, 50, 75, 100]
-
-// A locale team can set any batch size in config.json, and whatever they set has
-// to stay reachable after the first keypress, so it joins the ladder in order.
-export function batchSizeChoices(configured: number): number[] {
-  if (BATCH_SIZES.includes(configured)) return BATCH_SIZES
-  return [...BATCH_SIZES, configured].sort((a, b) => a - b)
-}
 
 function step(values: number[], current: number, by: number): number {
   const i = values.indexOf(current)

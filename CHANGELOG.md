@@ -10,6 +10,26 @@ Run `polyglots --version` to see which build you have; the TUI shows it beside i
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-09-26
+
+### Changed
+
+- A pending translation starts when you choose "Start translation", instead of
+  asking again. The screen put a second question in front of every run, which
+  review does not and neither does the translate command: its confirmation has
+  always been scoped to `--all`. The mode that re-translates entries which
+  already have a translation still asks, because translate saves in place and
+  that is the one data-loss path in the round trip.
+
+### Added
+
+- The translate screen offers a batch size, the same ladder review offers, and
+  passes it to the run. `translateFile` has taken one since it had batches and
+  the command has `--batch-size`, but the screen never passed one, so a
+  translation started from the TUI was stuck on the configured default however
+  large the file. The batch advice about a size too small to be worth it is
+  shown here too, since the drafts are reviewed by the same agent.
+
 ## [0.15.0] - 2026-09-25
 
 ### Changed

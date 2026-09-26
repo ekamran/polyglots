@@ -7,7 +7,7 @@ import { saveConfig } from '../../src/config.js'
 import type { TranslateOptions } from '../../src/commands/translate.js'
 import { CommandsProvider } from '../../src/tui/commands.js'
 import { Translate } from '../../src/tui/screens/Translate.js'
-import { ESC_DELAY, fakeCommands, flat, keys, makeHome, render, scriptedTranslate, tick, waitForText, type Home } from './helpers.js'
+import { ESC_DELAY, fakeCommands, flat, keys, makeHome, render, scriptedTranslate, tick, waitFor, waitForText, type Home } from './helpers.js'
 
 let home: Home
 let cwd: string
@@ -97,6 +97,8 @@ describe('Translate run', () => {
     await waitForText(lastFrame, /Locale:\s+tr_TR/)
     stdin.write(keys.down)
     await tick()
+    stdin.write(keys.down)
+    await tick()
     stdin.write(keys.enter)
     await waitForText(lastFrame, /re-translate/)
     expect(lastFrame()).toContain('[y/N]')
@@ -120,7 +122,9 @@ describe('Translate run', () => {
     const commands = fakeCommands()
     const { lastFrame, stdin } = mount(commands)
     await pickFile(stdin, lastFrame)
-    for (let i = 0; i < 3; i++) {
+    stdin.write(keys.right)
+    await waitForText(lastFrame, /Mode:\s+all/)
+    for (let i = 0; i < 4; i++) {
       stdin.write(keys.down)
       await tick()
     }
@@ -137,7 +141,7 @@ describe('Translate run', () => {
     await pickFile(stdin, lastFrame)
     stdin.write(keys.right)
     await waitForText(lastFrame, /Mode:\s+all/)
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 4; i++) {
       stdin.write(keys.down)
       await tick()
     }
@@ -164,13 +168,11 @@ describe('Translate run', () => {
     let back = 0
     const { lastFrame, stdin } = mount(commands, () => back++)
     await pickFile(stdin, lastFrame)
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 4; i++) {
       stdin.write(keys.down)
       await tick()
     }
     stdin.write(keys.enter)
-    await waitForText(lastFrame, '[y/N]')
-    stdin.write('y')
     await waitForText(lastFrame, /0\/2/)
 
     stdin.write('q')
@@ -193,13 +195,79 @@ describe('Translate run', () => {
     })
     const { lastFrame, stdin } = mount(commands)
     await pickFile(stdin, lastFrame)
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 4; i++) {
+      stdin.write(keys.down)
+      await tick()
+    }
+    stdin.write(keys.enter)
+    await waitForText(lastFrame, 'DEEPL_API_KEY is not set')
+  })
+})
+
+/**
+ * Translate asked twice: once on "Start translation" and again at a [y/N].
+ * Review asks once, and so does the translate command, whose confirmation is
+ * scoped to --all (cli.ts: `flags.all === true && flags.yes !== true`). The
+ * second question only earns its place on the mode that overwrites entries
+ * that already have a translation, in a file translate saves in place.
+ */
+describe('Translate starting a run', () => {
+  it('starts a pending run straight from the options, with no confirmation', async () => {
+    const commands = fakeCommands()
+    const { lastFrame, stdin } = mount(commands)
+    await pickFile(stdin, lastFrame)
+    for (let i = 0; i < 4; i++) {
+      stdin.write(keys.down)
+      await tick()
+    }
+    stdin.write(keys.enter)
+
+    await waitFor(() => (commands.translateFile as ReturnType<typeof vi.fn>).mock.calls.length > 0)
+    expect(lastFrame()).not.toContain('[y/N]')
+    expect((commands.translateFile as ReturnType<typeof vi.fn>).mock.calls[0]![0]).toMatchObject({ mode: 'pending' })
+  })
+
+  // The one mode that overwrites work already in the file keeps its question.
+  it('still confirms an all run', async () => {
+    const commands = fakeCommands()
+    const { lastFrame, stdin } = mount(commands)
+    await pickFile(stdin, lastFrame)
+    stdin.write(keys.right)
+    await waitForText(lastFrame, /Mode:\s+all/)
+    for (let i = 0; i < 4; i++) {
       stdin.write(keys.down)
       await tick()
     }
     stdin.write(keys.enter)
     await waitForText(lastFrame, '[y/N]')
-    stdin.write('y')
-    await waitForText(lastFrame, 'DEEPL_API_KEY is not set')
+    expect(commands.translateFile).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * translateFile has taken a batch size since it had batches, the CLI has
+ * --batch-size, and review's screen has offered the choice for releases. This
+ * screen never passed one, so a translate run in the TUI was stuck on the
+ * configured default however large the file.
+ */
+describe('Translate batch size', () => {
+  it('offers the batch size and passes the chosen one to translateFile', async () => {
+    const commands = fakeCommands()
+    const { lastFrame, stdin } = mount(commands)
+    await pickFile(stdin, lastFrame)
+    expect(flat(lastFrame())).toMatch(/Batch size:\s+25/)
+
+    for (let i = 0; i < 3; i++) {
+      stdin.write(keys.down)
+      await tick()
+    }
+    stdin.write(keys.right)
+    await waitForText(lastFrame, /Batch size:\s+50/)
+    stdin.write(keys.down)
+    await tick()
+    stdin.write(keys.enter)
+
+    await waitFor(() => (commands.translateFile as ReturnType<typeof vi.fn>).mock.calls.length > 0)
+    expect((commands.translateFile as ReturnType<typeof vi.fn>).mock.calls[0]![0]).toMatchObject({ batchSize: 50 })
   })
 })

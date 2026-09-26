@@ -12,6 +12,8 @@ import { BACK_HINT, DONE_HINT, Hint } from '../components/Hint.js'
 import { Progress } from '../components/Progress.js'
 import { useTask } from '../hooks/useTask.js'
 import { createRunControl, type RunControl } from '../../run-control.js'
+import { batchAdvice } from '../../agent/providers.js'
+import { batchSizeChoices } from '../batch-size.js'
 
 export interface TranslateProps {
   cwd: string
@@ -28,8 +30,9 @@ const ENGINES: Engine[] = ['deepl', 'openai', 'qwen']
 const FIELD_MODE = 0
 const FIELD_ENGINE = 1
 const FIELD_LOCALE = 2
-const FIELD_START = 3
-const FIELD_COUNT = 4
+const FIELD_BATCH = 3
+const FIELD_START = 4
+const FIELD_COUNT = 5
 
 function next<T>(values: T[], current: T, step: number): T {
   const i = values.indexOf(current)
@@ -44,6 +47,7 @@ export function Translate({ cwd, onBack }: TranslateProps) {
   const [mode, setMode] = useState<Mode>('pending')
   const [engine, setEngine] = useState<Engine>(config.defaultDraftEngine)
   const [locale, setLocale] = useState(config.defaultLocale)
+  const [batchSize, setBatchSize] = useState(config.batchSize)
   const [focus, setFocus] = useState(FIELD_MODE)
   const [events, setEvents] = useState<TranslateEvent[]>([])
   // Held in a ref so a keypress reaches the run in flight without re-rendering
@@ -58,7 +62,9 @@ export function Translate({ cwd, onBack }: TranslateProps) {
   const isBack = (input: string, key: { escape: boolean; ctrl: boolean; meta: boolean }) =>
     key.escape || (!typing && input === 'q' && !key.ctrl && !key.meta)
 
-  const start = () => {
+  // Takes the locale rather than reading state, because the keypress that
+  // starts a run normalises it in the same handler and would not see it yet.
+  const start = (chosenLocale: string) => {
     setEvents([])
     setPhase('running')
     const run = createRunControl()
@@ -75,9 +81,10 @@ export function Translate({ cwd, onBack }: TranslateProps) {
       commands.translateFile({
         control: run,
         file,
-        locale,
+        locale: chosenLocale,
         mode,
         draftEngine: engine,
+        batchSize,
         onProgress: (e) => setEvents((prev) => [...prev, e]),
       }).finally(unsubscribe),
     )
@@ -98,7 +105,7 @@ export function Translate({ cwd, onBack }: TranslateProps) {
     }
     if (stage === 'confirm') {
       // [y/N]: only an explicit y starts; enter is No, so a double enter on "Start" cannot launch an all run
-      if (input === 'y' || input === 'Y') start()
+      if (input === 'y' || input === 'Y') start(locale)
       else if (input === 'n' || input === 'N' || key.return || isBack(input, key)) setPhase('options')
       return
     }
@@ -118,12 +125,20 @@ export function Translate({ cwd, onBack }: TranslateProps) {
       const step = key.leftArrow ? -1 : 1
       if (focus === FIELD_MODE) setMode((m) => next(MODES, m, step))
       if (focus === FIELD_ENGINE) setEngine((e) => next(ENGINES, e, step))
+      if (focus === FIELD_BATCH) setBatchSize((n) => next(batchSizeChoices(config.batchSize), n, step))
     } else if (key.return && focus !== FIELD_LOCALE) {
       if (focus === FIELD_START) {
         const normalized = normalizeLocale(locale)
         if (normalized.length > 0) {
           setLocale(normalized)
-          setPhase('confirm')
+          // Only `all` asks again. It re-translates entries that already have a
+          // translation, in a file translate saves in place, which is the one
+          // data-loss path in the round trip. `pending` fills what is empty or
+          // fuzzy and starts on the keypress, the way review does and the way
+          // the translate command already behaves: its confirmation is scoped
+          // to --all too.
+          if (mode === 'all') setPhase('confirm')
+          else start(normalized)
         }
       } else setFocus((f) => f + 1)
     }
@@ -167,8 +182,16 @@ export function Translate({ cwd, onBack }: TranslateProps) {
           </Text>
           <Box>
             <Text>{marker(FIELD_LOCALE)}Locale:        </Text>
-            {typing ? <TextInput value={locale} onChange={setLocale} onSubmit={() => setFocus(FIELD_START)} /> : <Text>{locale}</Text>}
+            {typing ? <TextInput value={locale} onChange={setLocale} onSubmit={() => setFocus(FIELD_BATCH)} /> : <Text>{locale}</Text>}
           </Box>
+          <Text>
+            {marker(FIELD_BATCH)}Batch size:    {batchSize} entries per draft and review call
+          </Text>
+          {/* The drafts are reviewed by the same agent a review run uses, so
+              the same advice about a batch too small to be worth it applies. */}
+          {batchAdvice(config.reviewProvider, batchSize) && (
+            <Text color="yellow">{batchAdvice(config.reviewProvider, batchSize)}</Text>
+          )}
           <Text>{marker(FIELD_START)}Start translation</Text>
           <Hint>↑↓ move · ←→ change · enter select · esc back to menu</Hint>
         </>
@@ -177,7 +200,7 @@ export function Translate({ cwd, onBack }: TranslateProps) {
       {stage === 'confirm' && (
         <>
           <Text>
-            {file} · mode {mode} · engine {engine} · locale {locale}
+            {file} · mode {mode} · engine {engine} · locale {locale} · batch {batchSize}
           </Text>
           {mode === 'all' && <Text color="yellow">This will re-translate already-translated entries.</Text>}
           <Text>Continue? [y/N]</Text>
