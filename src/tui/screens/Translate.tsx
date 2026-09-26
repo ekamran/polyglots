@@ -20,7 +20,7 @@ export interface TranslateProps {
   onBack: () => void
 }
 
-type Phase = 'pick' | 'options' | 'confirm' | 'running'
+type Phase = 'pick' | 'options' | 'running'
 type Mode = 'pending' | 'all'
 type Engine = DraftEngineChoice
 
@@ -103,12 +103,6 @@ export function Translate({ cwd, onBack }: TranslateProps) {
       else if (input === 'q') run.stop()
       return
     }
-    if (stage === 'confirm') {
-      // [y/N]: only an explicit y starts; enter is No, so a double enter on "Start" cannot launch an all run
-      if (input === 'y' || input === 'Y') start(locale)
-      else if (input === 'n' || input === 'N' || key.return || isBack(input, key)) setPhase('options')
-      return
-    }
     if (isBack(input, key)) {
       onBack()
       return
@@ -131,14 +125,12 @@ export function Translate({ cwd, onBack }: TranslateProps) {
         const normalized = normalizeLocale(locale)
         if (normalized.length > 0) {
           setLocale(normalized)
-          // Only `all` asks again. It re-translates entries that already have a
-          // translation, in a file translate saves in place, which is the one
-          // data-loss path in the round trip. `pending` fills what is empty or
-          // fuzzy and starts on the keypress, the way review does and the way
-          // the translate command already behaves: its confirmation is scoped
-          // to --all too.
-          if (mode === 'all') setPhase('confirm')
-          else start(normalized)
+          // No second question, on either mode. Choosing `all` is the choice,
+          // and the screen where it is made says what it does; re-translating
+          // entries that already have a translation is the point of the mode
+          // rather than a mistake to catch on the way out. Review starts on the
+          // keypress too.
+          start(normalized)
         }
       } else setFocus((f) => f + 1)
     }
@@ -177,6 +169,12 @@ export function Translate({ cwd, onBack }: TranslateProps) {
           <Text>
             {marker(FIELD_MODE)}Mode:          {mode === 'pending' ? 'pending only (empty and fuzzy entries)' : 'all (re-translate every entry)'}
           </Text>
+          {/* Said where the mode is chosen rather than in a prompt on the way
+              out. translate saves the catalogue in place, so this is the one
+              mode that replaces work already in the file. */}
+          {mode === 'all' && (
+            <Text color="yellow">   This will re-translate already-translated entries, in place.</Text>
+          )}
           <Text>
             {marker(FIELD_ENGINE)}Draft engine:  {engine}
           </Text>
@@ -194,16 +192,6 @@ export function Translate({ cwd, onBack }: TranslateProps) {
           )}
           <Text>{marker(FIELD_START)}Start translation</Text>
           <Hint>↑↓ move · ←→ change · enter select · esc back to menu</Hint>
-        </>
-      )}
-
-      {stage === 'confirm' && (
-        <>
-          <Text>
-            {file} · mode {mode} · engine {engine} · locale {locale} · batch {batchSize}
-          </Text>
-          {mode === 'all' && <Text color="yellow">This will re-translate already-translated entries.</Text>}
-          <Text>Continue? [y/N]</Text>
         </>
       )}
 

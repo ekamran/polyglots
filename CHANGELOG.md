@@ -10,6 +10,18 @@ Run `polyglots --version` to see which build you have; the TUI shows it beside i
 
 ## [Unreleased]
 
+## [0.16.1] - 2026-09-26
+
+### Changed
+
+- The translate screen no longer confirms anything, including an `all` run.
+  0.16.0 kept the question for the mode that re-translates entries which
+  already have a translation, on the grounds that it writes in place. Choosing
+  that mode is the choice, and a prompt that only ever repeats what the screen
+  already says teaches people to answer it without reading. What the mode does
+  is stated in yellow where the mode is picked, which is where it is useful,
+  and the run starts on the keypress as review does.
+
 ## [0.16.0] - 2026-09-26
 
 ### Changed

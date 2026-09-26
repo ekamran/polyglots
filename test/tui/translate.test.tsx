@@ -100,11 +100,6 @@ describe('Translate run', () => {
     stdin.write(keys.down)
     await tick()
     stdin.write(keys.enter)
-    await waitForText(lastFrame, /re-translate/)
-    expect(lastFrame()).toContain('[y/N]')
-    expect(lastFrame()).toContain('locale tr-tr')
-
-    stdin.write('y')
     await waitForText(lastFrame, 'Done. 2 translated, 1 fuzzy, 1 from TM, 0 skipped.')
     expect(flat(lastFrame())).toContain(`Open ${poFile} in PoEdit to review.`)
     await waitForText(lastFrame, 'enter/q back to menu')
@@ -118,40 +113,7 @@ describe('Translate run', () => {
     expect(back).toBe(1)
   })
 
-  it('cancels at the confirmation with n and returns to the options', async () => {
-    const commands = fakeCommands()
-    const { lastFrame, stdin } = mount(commands)
-    await pickFile(stdin, lastFrame)
-    stdin.write(keys.right)
-    await waitForText(lastFrame, /Mode:\s+all/)
-    for (let i = 0; i < 4; i++) {
-      stdin.write(keys.down)
-      await tick()
-    }
-    stdin.write(keys.enter)
-    await waitForText(lastFrame, '[y/N]')
-    stdin.write('n')
-    await waitForText(lastFrame, /Draft engine/)
-    expect(commands.translateFile).not.toHaveBeenCalled()
-  })
 
-  it('treats enter at the confirmation as No, so a double enter never starts an all run', async () => {
-    const commands = fakeCommands()
-    const { lastFrame, stdin } = mount(commands)
-    await pickFile(stdin, lastFrame)
-    stdin.write(keys.right)
-    await waitForText(lastFrame, /Mode:\s+all/)
-    for (let i = 0; i < 4; i++) {
-      stdin.write(keys.down)
-      await tick()
-    }
-    stdin.write(keys.enter)
-    await waitForText(lastFrame, '[y/N]')
-    stdin.write(keys.enter)
-    await waitForText(lastFrame, /Draft engine/)
-    expect(commands.translateFile).not.toHaveBeenCalled()
-    expect(lastFrame()).not.toContain('[y/N]')
-  })
 
   it('ignores q and escape while a run is in flight', async () => {
     let release!: () => void
@@ -227,20 +189,30 @@ describe('Translate starting a run', () => {
     expect((commands.translateFile as ReturnType<typeof vi.fn>).mock.calls[0]![0]).toMatchObject({ mode: 'pending' })
   })
 
-  // The one mode that overwrites work already in the file keeps its question.
-  it('still confirms an all run', async () => {
+  /**
+   * `all` does not ask either. Choosing it is the choice, and it is spelled out
+   * on the screen where it is made: re-translating entries that already have a
+   * translation is the point of the mode, not a mistake to be caught on the way
+   * out.
+   */
+  it('starts an all run without asking, having said what it will do', async () => {
     const commands = fakeCommands()
     const { lastFrame, stdin } = mount(commands)
     await pickFile(stdin, lastFrame)
     stdin.write(keys.right)
     await waitForText(lastFrame, /Mode:\s+all/)
+    // Said on the options screen, where the mode is chosen.
+    expect(flat(lastFrame())).toMatch(/re-translate already-translated entries/i)
+
     for (let i = 0; i < 4; i++) {
       stdin.write(keys.down)
       await tick()
     }
     stdin.write(keys.enter)
-    await waitForText(lastFrame, '[y/N]')
-    expect(commands.translateFile).not.toHaveBeenCalled()
+
+    await waitFor(() => (commands.translateFile as ReturnType<typeof vi.fn>).mock.calls.length > 0)
+    expect(lastFrame()).not.toContain('[y/N]')
+    expect((commands.translateFile as ReturnType<typeof vi.fn>).mock.calls[0]![0]).toMatchObject({ mode: 'all' })
   })
 })
 
