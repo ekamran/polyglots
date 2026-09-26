@@ -223,8 +223,26 @@ export class PoFile {
     return out.sort((a, b) => this.rank(a.key) - this.rank(b.key))
   }
 
-  // Reduces the file to the annotated entries, each marked fuzzy with its reasons
-  // attached, so `translate` picks them up (fuzzy is what it selects by default).
+  /**
+   * Reduces the file to the annotated entries, with their reasons attached.
+   *
+   * Nothing is marked fuzzy. Every entry here is already one the review had
+   * something to say about, so a flag on all of them adds nothing the file does
+   * not already say, and it costs the reviewer a step: their way through such a
+   * file is to clear the flags, read from the top, and mark the single entry
+   * they stopped at so they can find it again tomorrow. A file that arrives
+   * entirely fuzzy erases that bookmark before it can be used.
+   *
+   * The flag was here for a pipeline that no longer exists. It arrived with the
+   * first review commit, when review only flagged and wrote no corrections, so
+   * this file was a worklist and `translate` consumed it by selecting fuzzy
+   * entries. Review repairs now, and handing those repairs to a draft engine
+   * would replace a considered correction with a machine guess.
+   *
+   * Flags the entry already carried are left alone. Not adding one is not the
+   * same as taking one away, and a submission that came in fuzzy is reporting
+   * the contributor's own state.
+   */
   keepOnly(annotations: Map<string, Annotation>): void {
     for (const ctx of Object.keys(this.raw.translations)) {
       for (const msgid of Object.keys(this.raw.translations[ctx])) {
@@ -243,9 +261,6 @@ export class PoFile {
               : [annotation.text[0] ?? '']
         }
         setNotes(entry, readableNotes(annotation.notes))
-        const flags = flagList(entry).filter((f) => f !== 'fuzzy')
-        flags.push('fuzzy')
-        entry.comments = { ...entry.comments, flag: flags.join(', ') }
       }
       if (ctx !== '' && Object.keys(this.raw.translations[ctx]).length === 0) {
         delete this.raw.translations[ctx]

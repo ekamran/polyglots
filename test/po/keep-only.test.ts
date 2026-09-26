@@ -23,6 +23,10 @@ msgstr "Taslak"
 #, php-format
 msgid "%s comments"
 msgstr "yorumlar"
+
+#, fuzzy
+msgid "Arrived fuzzy"
+msgstr "Bulanık geldi"
 `
 
 describe('PoFile.keepOnly', () => {
@@ -55,10 +59,30 @@ describe('PoFile.keepOnly', () => {
     expect(text).not.toContain('msgid "%s comments"')
   })
 
-  it('marks kept entries fuzzy and preserves the submitted translation', async () => {
+  /**
+   * Every entry in this file is already there because something was wrong with
+   * it, so a flag on all of them says nothing the file does not. It cost the
+   * reviewer a step, too: their way of working is to select all, clear the
+   * flags, read from the top, and mark the one entry they stopped at so they
+   * can find it again. A file that arrives entirely fuzzy erases that.
+   *
+   * It was there for a pipeline that no longer exists. The flag was added in
+   * the first review commit, when review only flagged and wrote no fixes, so
+   * the file was a worklist and `translate` picked it up by selecting fuzzy
+   * entries. Review learned to repair later; re-drafting its repairs with a
+   * machine engine would throw away the better answer.
+   */
+  it('leaves the kept entries unflagged and preserves the submitted translation', async () => {
     const text = await keep(new Map([['Settings', { notes: ['title case'] }]]))
-    expect(text).toMatch(/#,\s*fuzzy/)
+    expect(text).not.toMatch(/#,\s*fuzzy/)
     expect(text).toContain('msgstr "Ayarlar"')
+  })
+
+  // Not adding one is not the same as taking one away: a submission that was
+  // already fuzzy says so, and that is the contributor's state to report.
+  it('leaves a flag the entry arrived with alone', async () => {
+    const text = await keep(new Map([['Arrived fuzzy', { notes: ['meaning'] }]]))
+    expect(text).toMatch(/#,\s*fuzzy/)
   })
 
   it('writes each annotation as a translator comment', async () => {
@@ -69,10 +93,10 @@ describe('PoFile.keepOnly', () => {
     expect(text).toContain('# polyglots: glossary term not used')
   })
 
-  it('keeps existing flags alongside fuzzy', async () => {
+  it('keeps the flags an entry already had, and adds none', async () => {
     const text = await keep(new Map([['%s comments', { notes: ['placeholder missing'] }]]))
     expect(text).toMatch(/#,.*php-format/)
-    expect(text).toMatch(/#,.*fuzzy/)
+    expect(text).not.toMatch(/#,.*fuzzy/)
   })
 
   it('keeps a context-qualified entry by its key', async () => {

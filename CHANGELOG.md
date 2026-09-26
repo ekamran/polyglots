@@ -10,6 +10,28 @@ Run `polyglots --version` to see which build you have; the TUI shows it beside i
 
 ## [Unreleased]
 
+## [0.16.2] - 2026-09-27
+
+### Changed
+
+- The repaired file no longer marks its entries fuzzy. Every entry in it is
+  there because the review had something to say about it, so a flag on all of
+  them says nothing the file does not, and it cost the reviewer a step: the way
+  through such a file is to clear the flags, read from the top, and mark the one
+  entry you stopped at so you can find it again. Arriving entirely fuzzy erased
+  that bookmark before it could be used.
+
+  The flag was there for a pipeline that no longer exists. It arrived with the
+  first review commit, when review only flagged and wrote no corrections, so the
+  file was a worklist and `translate` consumed it by selecting fuzzy entries.
+  Review repairs now, and handing those repairs to a draft engine would replace
+  a considered correction with a machine guess. Measured on a real run, 337 of
+  337 entries in a repaired file had been rewritten, 6 of them by the rules or
+  the memory rather than the model.
+
+  Flags an entry already carried are left alone, so a submission that came in
+  fuzzy still says so.
+
 ## [0.16.1] - 2026-09-26
 
 ### Changed

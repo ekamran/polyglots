@@ -113,7 +113,7 @@ describe('review end to end', () => {
     expect(Object.keys(summary.byRule)).toEqual(expect.arrayContaining(['placeholder', 'html', 'title-case']))
   })
 
-  it('writes a problems file that parses, is fuzzy, and carries its reasons', async () => {
+  it('writes a problems file that parses and carries its reasons', async () => {
     const summary = await run()
     const problems = await loadPo(summary.problemsFile!)
     const entries = problems.auditEntries()
@@ -122,7 +122,9 @@ describe('review end to end', () => {
     // too, without being a `problem` or a `needsReview`, so `problems` alone
     // undercounts what is actually on disk.
     expect(entries.length).toBe(summary.written)
-    expect(entries.every((e) => e.fuzzy)).toBe(true)
+    // Nothing is marked: the reviewer clears the flags before reading anyway,
+    // and uses one to mark where they stopped.
+    expect(entries.some((e) => e.fuzzy)).toBe(false)
     expect(entries.every((e) => e.msgstr.some(Boolean))).toBe(true)
 
     const text = await readFile(summary.problemsFile!, 'utf8')
@@ -130,12 +132,18 @@ describe('review end to end', () => {
     expect(text).toContain('Plural-Forms: nplurals=2')
   })
 
-  it('hands the problems file to translate as pending work', async () => {
+  /**
+   * The reverse of what this file used to assert. Review's output was once a
+   * worklist for `translate`, back when review only flagged and wrote no
+   * fixes. It writes the repairs itself now, and handing them to a draft
+   * engine would replace a considered correction with a machine guess.
+   */
+  it('is not a worklist for translate, whose drafts would overwrite its repairs', async () => {
     const summary = await run()
     const problems = await loadPo(summary.problemsFile!)
 
-    // `translate` selects empty-or-fuzzy entries, which is exactly what review wrote.
-    expect(problems.units('pending').length).toBe(summary.problems)
+    expect(summary.written).toBeGreaterThan(0)
+    expect(problems.units('pending')).toEqual([])
   })
 
   it('lets the model flag a meaning error the rules cannot see', async () => {

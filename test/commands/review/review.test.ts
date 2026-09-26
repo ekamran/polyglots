@@ -146,13 +146,13 @@ describe('reviewFile', () => {
     expect(summary.reviewed).toBe(3)
   })
 
-  it('writes only flagged entries, marked fuzzy with their reasons', async () => {
+  it('writes only flagged entries, with their reasons and no added flag', async () => {
     const summary = await run()
     const problems = await loadPo(summary.problemsFile!)
     const entries = problems.auditEntries()
 
     expect(entries.map((e) => e.msgid)).toEqual(['%s comments'])
-    expect(entries[0]!.fuzzy).toBe(true)
+    expect(entries[0]!.fuzzy).toBe(false)
     expect(entries[0]!.msgstr).toEqual(['yorumlar'])
     const text = await readFile(summary.problemsFile!, 'utf8')
     expect(text).toContain('polyglots:')
