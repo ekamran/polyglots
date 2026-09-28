@@ -181,7 +181,10 @@ describe('reviewFile', () => {
         problem: c.msgid === 'Save all changes',
         categories: c.msgid === 'Save all changes' ? (['glossary'] as never[]) : ([] as never[]),
         reason: 'wrong term',
-        fix: c.msgid === 'Save all changes' ? 'Tüm değişiklikleri kaydet' : undefined,
+        // An array, as the schema requires. Written as a bare string here once,
+        // which judgeFix used to reject as having 25 plural forms, so the test
+        // passed while exercising a path the real adjudicator cannot produce.
+        fix: c.msgid === 'Save all changes' ? ['Tüm değişiklikleri kaydet'] : undefined,
       })),
     )
     const summary = await run({ adjudicate })

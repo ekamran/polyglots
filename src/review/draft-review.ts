@@ -1,4 +1,5 @@
 import type { Locale, ReviewInput, ReviewResult } from '../types.js'
+import { matchSourceEscaping } from '../po/escapes.js'
 import {
   AgentError,
   MCP_TOOLS,
@@ -63,7 +64,12 @@ export function mapResults(inputs: ReviewInput[], payload: unknown, nplurals: nu
   return inputs.map((input, i) => {
     const raw = byId.get(i + 1)!
     const expected = input.msgidPlural === undefined ? 1 : nplurals
-    const result: ReviewResult = { key: input.key, text: raw.text, fuzzy: raw.fuzzy, reason: raw.reason }
+    // The agent sometimes returns the file's spelling of a quote rather than
+    // the string's, leaving a backslash that belongs to nobody. The source is
+    // the one text nobody retyped, so it decides.
+    const source = `${input.msgid}${input.msgidPlural ?? ''}`
+    const text = raw.text.map((form) => matchSourceEscaping(source, form))
+    const result: ReviewResult = { key: input.key, text, fuzzy: raw.fuzzy, reason: raw.reason }
     if (result.text.length !== expected) {
       throw new ReviewError(
         `agent output for key ${JSON.stringify(input.key)} has ${result.text.length} text forms, expected ${expected}`,

@@ -1,4 +1,5 @@
 import type { AuditEntry } from '../types.js'
+import { matchSourceEscaping } from '../po/escapes.js'
 import { runRules, type RuleContext } from './rules/index.js'
 
 // Rules whose correct output is computable from the source, so no judgment and
@@ -52,7 +53,12 @@ export interface JudgeFixArgs {
 // shaped like a translation of this entry, and does not break something the
 // rules can prove. Soft findings are not grounds for rejection: the model just
 // weighed those, and rejecting on them would mean no fix could ever land.
-export function judgeFix({ entry, fix, nplurals, ctx }: JudgeFixArgs): FixVerdict {
+export function judgeFix({ entry, fix: proposed, nplurals, ctx }: JudgeFixArgs): FixVerdict {
+  // Before anything judges it: an agent that escaped a quote the source leaves
+  // plain wrote the file's spelling instead of the string's, and that is a
+  // stray character rather than a reason to throw away a good translation.
+  const source = `${entry.msgid}${entry.msgidPlural ?? ''}`
+  const fix = proposed.map((form) => matchSourceEscaping(source, form))
   const forms = entry.msgidPlural === undefined ? 1 : nplurals
   if (fix.length !== forms) {
     return { rejected: `the proposed fix has ${fix.length} plural forms where this entry needs ${forms}` }

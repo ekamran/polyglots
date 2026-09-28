@@ -10,6 +10,8 @@ Entries say what changed. For why and how, read the commit.
 
 ## [Unreleased]
 
+## [0.16.3] - 2026-09-28
+
 ### Fixed
 
 - Repairs and drafts no longer escape a quote the source leaves plain. Applies to the model's

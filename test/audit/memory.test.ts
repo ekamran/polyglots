@@ -136,3 +136,15 @@ describe('decideFromMemory when the memory holds the English itself', () => {
     expect(decideFromMemory(entry('Flip', 'Flip'), ['Flip'], true)).toBeUndefined()
   })
 })
+
+// The memory carries the same slip in 7 of its rows, imported from work that
+// had it. A repair written from one must not put it back in the catalogue.
+describe('decideFromMemory and the source escaping', () => {
+  it('repairs with the escaping the source uses', () => {
+    const e = entry('See <a href="%s">docs</a>', 'See <a href="%s">docs</a>')
+    expect(decideFromMemory(e, ['Bkz <a href=\\"%s\\">belgeler</a>'], true)).toEqual({
+      kind: 'repair',
+      text: ['Bkz <a href="%s">belgeler</a>'],
+    })
+  })
+})

@@ -1,4 +1,5 @@
 import type { AuditEntry } from '../types.js'
+import { matchSourceEscaping } from '../po/escapes.js'
 
 /**
  * What the memory can settle about an entry on its own, without a model.
@@ -71,7 +72,9 @@ export function decideFromMemory(
   if (submitted === entry.msgid) {
     const wordings = new Set(memory.map(fold))
     if (wordings.size !== 1 || wordings.has(fold(entry.msgid))) return undefined
-    return { kind: 'repair', text: [memory[0]!] }
+    // The memory carries the same stray escaping in a handful of rows,
+    // imported from work that had it. The source decides here as everywhere.
+    return { kind: 'repair', text: [matchSourceEscaping(entry.msgid, memory[0]!)] }
   }
 
   if (memory.some((m) => m === submitted || fold(m) === fold(submitted))) return { kind: 'approve' }

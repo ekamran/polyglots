@@ -263,6 +263,19 @@ describe('reviewBatch', () => {
   })
 })
 
+describe('mapResults and the source escaping', () => {
+  // Same slip as the review pass makes, on the other half of the tool.
+  it('takes the escaping of the source rather than the agent own', () => {
+    const inputs: ReviewInput[] = [
+      { key: 'link', msgid: 'See <a href="%s">docs</a>', comments: [], drafts: ['Bkz <a href="%s">belgeler</a>'] },
+    ]
+    const payload = {
+      results: [{ id: 1, text: ['Bkz <a href=\\"%s\\">belgeler</a>'], fuzzy: false, reason: 'ok' }],
+    }
+    expect(mapResults(inputs, payload, 2)[0]!.text).toEqual(['Bkz <a href="%s">belgeler</a>'])
+  })
+})
+
 describe('mapResults', () => {
   it('maps by id, so keys containing control characters never round-trip through the model', () => {
     const payload = {

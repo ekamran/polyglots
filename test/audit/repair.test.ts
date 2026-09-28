@@ -79,6 +79,23 @@ describe('judgeFix', () => {
     expect(verdict).toEqual({ rejected: expect.stringMatching(/placeholder/i) })
   })
 
+  /**
+   * The model writes the fix as if it were writing the .po line, escaping a
+   * quote the source leaves plain, and the backslash ends up in the catalogue.
+   * Repaired here rather than rejected: the wording is right and one stray
+   * character is no reason to throw the work away.
+   */
+  it('takes the escaping of the source rather than the model own', () => {
+    const link = entry('See <a href="%s">docs</a>', ['Bkz <a href="%s">belgeler</a>'])
+    const verdict = judgeFix({
+      entry: link,
+      fix: ['Belgelere bakın: <a href=\\"%s\\">belgeler</a>'],
+      nplurals: 2,
+      ctx: ctxFor([link]),
+    })
+    expect(verdict).toEqual({ accepted: ['Belgelere bakın: <a href="%s">belgeler</a>'] })
+  })
+
   it('rejects a fix identical to what was submitted, since that repairs nothing', () => {
     expect(judgeFix({ entry: broken, fix: ['yorumlar'], nplurals: 2, ctx })).toEqual({
       rejected: expect.stringMatching(/unchanged/i),
