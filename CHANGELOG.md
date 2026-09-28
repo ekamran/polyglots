@@ -6,953 +6,382 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html). While the version stays below
 1.0, a minor bump may carry a breaking change.
 
-Run `polyglots --version` to see which build you have; the TUI shows it beside its title.
+Entries say what changed. For why and how, read the commit.
 
 ## [Unreleased]
+
+### Fixed
+
+- Repairs and drafts no longer escape a quote the source leaves plain. Applies to the model's
+  fixes, reviewed drafts and repairs written from the memory.
 
 ## [0.16.2] - 2026-09-27
 
 ### Changed
 
-- The repaired file no longer marks its entries fuzzy. Every entry in it is
-  there because the review had something to say about it, so a flag on all of
-  them says nothing the file does not, and it cost the reviewer a step: the way
-  through such a file is to clear the flags, read from the top, and mark the one
-  entry you stopped at so you can find it again. Arriving entirely fuzzy erased
-  that bookmark before it could be used.
-
-  The flag was there for a pipeline that no longer exists. It arrived with the
-  first review commit, when review only flagged and wrote no corrections, so the
-  file was a worklist and `translate` consumed it by selecting fuzzy entries.
-  Review repairs now, and handing those repairs to a draft engine would replace
-  a considered correction with a machine guess. Measured on a real run, 337 of
-  337 entries in a repaired file had been rewritten, 6 of them by the rules or
-  the memory rather than the model.
-
-  Flags an entry already carried are left alone, so a submission that came in
-  fuzzy still says so.
+- The repaired file no longer marks its entries fuzzy. Flags an entry already carried are kept.
 
 ## [0.16.1] - 2026-09-26
 
 ### Changed
 
-- The translate screen no longer confirms anything, including an `all` run.
-  0.16.0 kept the question for the mode that re-translates entries which
-  already have a translation, on the grounds that it writes in place. Choosing
-  that mode is the choice, and a prompt that only ever repeats what the screen
-  already says teaches people to answer it without reading. What the mode does
-  is stated in yellow where the mode is picked, which is where it is useful,
-  and the run starts on the keypress as review does.
+- The translate screen no longer asks for confirmation on any mode.
 
 ## [0.16.0] - 2026-09-26
 
-### Changed
-
-- A pending translation starts when you choose "Start translation", instead of
-  asking again. The screen put a second question in front of every run, which
-  review does not and neither does the translate command: its confirmation has
-  always been scoped to `--all`. The mode that re-translates entries which
-  already have a translation still asks, because translate saves in place and
-  that is the one data-loss path in the round trip.
-
 ### Added
 
-- The translate screen offers a batch size, the same ladder review offers, and
-  passes it to the run. `translateFile` has taken one since it had batches and
-  the command has `--batch-size`, but the screen never passed one, so a
-  translation started from the TUI was stuck on the configured default however
-  large the file. The batch advice about a size too small to be worth it is
-  shown here too, since the drafts are reviewed by the same agent.
+- Batch size on the translate screen, the same ladder review offers, passed to the run.
+
+### Changed
+
+- A pending translation starts without a second confirmation. `all` still asks.
 
 ## [0.15.0] - 2026-09-25
 
 ### Changed
 
-- The memory holds every wording the locale approved for a source, instead of
-  one. Its table allowed a single translation per source and context, so an
-  import overwrote whatever was there and whichever alternative came last in a
-  TMX became the one that speaks for the source. That was arbitrary, and since
-  0.14.0 it is also what approves submissions without a model. A real export of
-  115,125 units had 6,480 sources carrying more than one approved wording,
-  nearly all of them synonyms: `Tepeye kaydır` and `Yukarı kaydır` are both
-  right, and which one a contributor reached for is not a finding.
-
-  A submission matching any approved wording is now approved. `tm-conflict`
-  fires only when a submission matches none of them, and names them all. The
-  prompt lists them, so the model chooses between settled options rather than
-  judging one. A repair from the memory still needs a single answer, so it
-  happens only where the alternatives agree; where they differ the model
-  decides with all of them in front of it. `translate` fills an entry from the
-  memory as before, but marks it fuzzy when there was more than one wording to
-  choose between, because nobody approved that choice for that string.
-
-  Opening a database written before this rebuilds the `tm` table and its full
-  text index. It is a widening, so no row is dropped, but take a copy first as
-  with any migration.
+- The memory holds every wording the locale approved for a source, not just the last imported.
+  A submission matching any of them is approved, and `tm-conflict` fires only when none match.
+- A repair from the memory happens only where the alternatives agree.
+- `translate` marks a fill from the memory fuzzy when more than one wording was on offer.
+- Opening a database written before this rebuilds the `tm` table and its index. No row is dropped.
 
 ### Fixed
 
-- A submission left in English is no longer approved because the memory holds
-  the same English. The memory carries English for everything the locale keeps
-  that way, brands, icon slugs, place names and Lorem ipsum, alongside a few
-  leftovers nobody ever translated, and it cannot tell them apart. Approving on
-  that basis approved a contributor for leaving the English exactly where the
-  memory is weakest. Such an entry goes to the model instead, which on a real
-  theme moved about 15 entries of 1,359 back into a batch. It is still repaired
-  outright where the memory holds a single Turkish wording for the source.
+- A submission left in English is no longer approved because the memory holds the same English.
 
 ## [0.14.0] - 2026-09-21
 
 ### Changed
 
-- Entries the memory can settle no longer go to the model. The memory has been
-  in the prompt since 0.11.0, so the model was being handed the answer and then
-  asked the question, and every entry went to a batch whatever the memory
-  already said. On `wp-themes-business-roy-tr.po`, against a 94,435-row memory,
-  265 of 1,359 entries are now settled before any batch is built, and the run
-  sends 11 batches of a hundred instead of 14. A submission identical to the
-  translation the locale approved for that exact source is approved, which
-  outranks a suspect rule (every title-case and untranslated hit on such a match
-  in that file was a label or a brand the locale had approved as written) but
-  not an error. A submission left in English where the memory holds the
-  approved text is repaired with it, and the rules re-check the repaired text
-  before it is accepted.
-
-  A submission that differs from the memory only in case is approved as
-  written, keeping the contributor's capitals: labels keep theirs by the locale
-  team's rule, the memory cannot tell a label from prose, and either casing is
-  acceptable. Case is compared the Turkish way, where I and İ lower to ı and i.
-  Any match found only by dropping the entry's context is left to the model,
-  since a msgctxt exists exactly where a source is ambiguous; on that file it
-  kept `Cover` under "Background Control" from being written in as `Kapak`. The progress line says how many the memory settled, so a run
-  that sends fewer batches than its size suggests says why.
-
-  Nothing is re-reviewed. What the memory decides is worked out afresh on every
-  run and never cached, so the prompt and the configuration hash are untouched
-  and a TMX import is felt on the next run without invalidating anything.
+- Entries the memory can settle no longer go to the model: an exact match is approved, a
+  case-only difference is approved as written, and one left in English is repaired from it.
+  On a 1,359-entry theme, 265 entries settled and the run sent 11 batches instead of 14.
+- The progress line says how many entries the memory settled.
 
 ### Fixed
 
-- The resume line says "1 batch left", and the plural was the least of what
-  was wrong with it. The count was the number of batches the run started with
-  and never went down, so ten batches in it still claimed all twelve; it is
-  worked out from what has finished now. Before the first batch starts, which
-  on a large file is the whole rules pass, there was no count at all and it
-  said "0 batches left" to a run with everything ahead of it, so that clause
-  now waits until there is a number to give. The CLI's own resume notice had
-  the same agreement slip, as "1 entries".
+- The resume line counts down, says "1 batch" rather than "1 batches", and waits for a batch
+  count before claiming one.
 
 ## [0.13.0] - 2026-09-20
 
-### Fixed
-
-- A batch the agent refuses is attempted twice again, undoing the change made
-  in 0.12.0 an hour before it cost a hundred entries. That change read one
-  batch that reached for a shell on both of its attempts and concluded an
-  identical prompt buys an identical refusal. It was the wrong lesson from the
-  right observation: that batch was provoked by its own content, wanting to
-  count its entries, and the prompt now states the count. What is left is an
-  agent that asks for a shell on its first turn, before it has read an entry,
-  on roughly one batch in seven, and nothing about the prompt decides it. A
-  retry is not a replay either, since each attempt spawns the CLI afresh and is
-  sampled again, and a refusal costs four seconds against the minutes a real
-  batch takes. `AgentError` has lost the notion of a failure not worth
-  retrying rather than keeping one that classifies nothing.
-- A refused batch says it produced no output, instead of reporting the empty
-  string as malformed JSON. The message read "response field is not JSON: "
-  with nothing after the colon, naming the one thing that was not wrong. The
-  account of what happened is the stderr that follows it.
-- Pressing p or q says so immediately, on every surface. Both are acted on at
-  the next batch boundary, which on a hundred-entry batch is minutes away, and
-  until it arrived the screen was indistinguishable from one that had dropped
-  the key: q printed nothing whatsoever, and p announced the run parked while
-  it was still spending calls on the batch in flight. The progress line now
-  says "will stop after this batch" or "will pause after this batch" while that
-  batch runs, and reports the pause only once it has actually happened. It
-  takes the place of the remaining-time estimate, which is no longer the plan
-  and which the reducers now drop, so the line does not grow and wrap.
-- Translate's progress reducer never had a case for pause or resume at all, so
-  its screen had said nothing about either since the day it got a pause key.
-  Both surfaces share the account now.
-
 ### Added
 
-- The requester message links to the translations it is talking about, instead
-  of carrying an empty `href` for the reviewer to fill in by hand. The link was
-  left empty on the reasoning that only the reviewer knows which page they
-  mean; they do, and so does the run. GlotPress names its exports after the
-  project path, so `wp-plugins-netro-ads-dev-tr.po` already says the project,
-  the branch and the locale, and the reviewer's own wp.org login is a standing
-  setting. Set it once:
+- The requester message links to the reviewer's own translations. Set it up once with
+  `polyglots config set wporgUsername <your wp.org login>`. Plugin, theme and patterns exports
+  are understood; anything else keeps an empty `href`.
 
-  ```
-  polyglots config set wporgUsername <your wp.org login>
-  ```
+### Fixed
 
-  Without it the `href` stays empty, because an unfiltered page would show the
-  whole project's translations and the sentence would be claiming them. The
-  run's own locale is what tells a slug from the locale in a name where both
-  may hold hyphens, which is why `ReviewSummary` now carries it.
-
-  Plugin and theme exports are read from their names. A core project shares no
-  shape with them, so those are a table of pages someone has opened in a
-  browser, and it currently holds one: patterns. Anything this has not been
-  shown keeps the empty `href` rather than being sent a guess, since the cost
-  of being wrong is a contributor following a 404 in a message signed by the
-  reviewer.
+- A batch the agent refuses is attempted twice again, undoing the change made in 0.12.0.
+- A refused batch reports that it produced no output, instead of blaming malformed JSON.
+- `p` and `q` are acknowledged the moment they are pressed, on every surface.
+- Translate's progress screen reports pause and resume at all.
 
 ## [0.12.0] - 2026-09-20
 
-### Fixed
-
-- A batch now states how many entries it contains. antigravity was counting
-  them itself, and on one run of a hundred it did so by pasting the whole 32KB
-  batch into a `python3 -c` heredoc whose entire body was `len(lines)`. Headless
-  mode cannot prompt for the shell permission that needs, so the call was
-  auto-denied and the batch ended with no output at all. It is not a symptom of
-  large batches: the same instinct asked to write a validation script during a
-  run of fifty. The prompt now gives the count and says there is no shell and no
-  filesystem, which leaves nothing to derive. Stating it moves the
-  configuration hash, so cached verdicts for the locale are pruned once.
-- A batch the agent refused is no longer attempted twice. A refusal is a
-  decision about the prompt, not bad luck, and the replay sends the identical
-  prompt: both attempts at that lost batch reached for python, a minute apart,
-  for a second batch of metered time. Failures that may genuinely differ on a
-  second attempt, a timeout or a non-zero exit, are retried as before.
-
 ### Changed
 
-- A review driven by antigravity now records which model formed its verdicts.
-  antigravity takes its model from its own settings file and polyglots passes
-  no `--model`, so every verdict it had ever formed was filed under a bare
-  `antigravity` whatever was behind it, and switching from Flash to Pro would
-  have served one engine's opinions as the other's. The reasoning effort rides
-  along inside the name, so `antigravity:Gemini 3.8 Flash (Medium)` says both.
-  An unreadable settings file records the bare provider name, as before.
+- A review driven by antigravity records the model from its settings, as
+  `antigravity:Gemini 3.8 Flash (Medium)`.
+- Cached verdicts prune once on the next run.
 
-### Cached verdicts are re-reviewed once
+### Fixed
 
-Both changes above move the key a verdict is stored under: the prompt wording
-feeds the configuration hash, and the engine id now names antigravity's model.
-The first run after upgrading prunes the cached verdicts for the locale and
-asks again. Nothing in a `.po` is lost, and a run interrupted afterwards
-resumes as usual.
+- The prompt states how many entries a batch holds, and that there is no shell or filesystem.
+- A refused batch is no longer attempted twice. (Reverted in 0.13.0.)
 
 ## [0.11.0] - 2026-09-20
 
 ### Changed
 
-- An entry now states how its exact source was translated and approved before,
-  instead of leaving the model to ask. On a real run `tm_lookup` was 44% of
-  every tool call the agent made, and the answer was already on disk: 908 of
-  6,426 entries in that submission have an exact match. The guidance no longer
-  invites the lookup for an entry that carries a `memory`, only for near
-  matches to one that does not.
-  - The prompt grows by about 3%: a 50-entry batch went from 18.8KB to 19.4KB.
-  - This is the same treatment the glossary got in 0.9.9, which took its share
-    of tool calls from 30% to 12%.
-- The memory is part of the verdict key. It is not part of `configHash`, so
-  nothing else in the key would have noticed a TMX import changing what the
-  model was told, and a verdict formed under the old wording would have been
-  served for the new.
-
-### Note for existing databases
-
-The guidance moved again, so `configHash` moves with it and the next run prunes
-every cached verdict for the locale. The entry key changed too. Anything worth
-keeping should be reviewed on the previous build first, or split out of the
-file before upgrading.
+- An entry states how its exact source was translated and approved before, so the agent no
+  longer looks it up. The memory joins the verdict key.
+- Cached verdicts prune once on the next run.
 
 ## [0.10.0] - 2026-09-20
 
-A version number, corrected.
-
-0.9.9 was cut as a patch and should not have been. It added the `tm-conflict`
-rule, changed what the review prompt says, and moved `configHash`, so anyone
-picking it up gets findings they did not have before and a verdict cache that
-prunes itself on the next run. That is a minor by any reading, and the number
-said otherwise. The work is unchanged and still described under 0.9.9; this
-release carries the number it should have had.
-
 ### Changed
 
-- `/release` chooses the bump size when the caller does not name one. The rule
-  it applies asks what a release does to somebody already using the tool rather
-  than how much code moved: a new way in, a change to what a run produces, a
-  default that shifts on its own, or work the user has to redo all make it a
-  minor, and everything else is a patch. Adding a rule is seven files and a
-  minor; correcting a table across the docs touches as much and is a patch.
-  - Anything that moves `configHash` or an engine id is called out by name,
-    because it prunes the verdict cache on the next run and that is the
-    consequence easiest to ship without noticing. It belongs in the changelog
-    under its own heading whatever size the release ends up being.
+- `/release` chooses the bump size when the caller does not name one.
+- Corrects 0.9.9, which was cut as a patch and should have been a minor.
 
 ## [0.9.9] - 2026-09-20
 
-Ask the agent less, and tell it more.
-
 ### Added
 
-- A `tm-conflict` rule: the translation memory already holds a different
-  translation of this exact source. On a real 6,426-entry submission it found
-  336 of them, including `Canonical URL` left in English, `Post` rendered
-  against the approved term, and `Greater Than` translated as "more" when it is
-  a comparison operator. Resolving the memory for the whole file costs 71ms.
-  - Always a suspicion, never proof, because either side can be the wrong one:
-    on that same file the memory offered `Yazı tipi` for *post type*, which in
-    Turkish means a font. The message quotes what the memory says so a human
-    can decide which is right.
-  - Differences of case, spacing and a trailing stop are not reported. They
-    were 138 of 474 on that file and would have buried the 336 that mattered.
-  - The context is part of the lookup key, since gettext lets the same English
-    string mean two different things.
-  - Universal rather than Turkish, because the memory is per locale and says
-    nothing about a language's orthography.
+- A `tm-conflict` rule: the memory holds a different translation of this exact source. Suspect
+  severity, and differences of case, spacing or a trailing stop are not reported.
 
 ### Changed
 
-- Every entry now states the glossary terms its source contains, with their
-  approved translations, instead of inviting the model to look each one up.
-  Measured across eight batches, `glossary_lookup` was 30% of every tool call
-  the agent made. One matcher now serves both the glossary rule and the prompt,
-  so the two cannot disagree about which terms apply.
-- The timeout is a property of the agent. Claude keeps five minutes; antigravity
-  gets twenty. Claude issues its tool calls concurrently, while antigravity
-  issues one per planner turn, so a shared ceiling cut its slower batches off
-  mid-question: the batches that finished took two to three and a half minutes,
-  and every failure needed more than about 28 tool calls.
-- antigravity is given a deadline just inside the caller's, so it reports its
-  own timeout instead of being killed mid-sentence. Sharing a deadline meant
-  both fired at once and the process was signalled before it could write
-  anything, which is why every timeout arrived with an empty stderr. Its own
-  default is to wait forever, so the flag cannot simply be left off.
-- The review screen and `polyglots review` warn when the batch is too small for
-  antigravity. Shrinking a batch is the obvious response to a timeout and the
-  wrong one here: a 25-entry batch drew 11 tool calls where 10-entry batches
-  drew 22 to 31, so the smaller batch spent about six times as many round trips
-  per entry and still paid to read the tool schemas at the start of each one.
-
-### Note for existing databases
-
-The guidance and the rule set both changed, so `configHash` moves and the next
-run prunes every cached verdict for the locale. Back up `jobs.db` first if the
-cached work is worth keeping.
+- An entry states the glossary terms its source contains, so the agent no longer looks them up.
+- Timeouts are per provider: five minutes for Claude, twenty for antigravity, which is given its
+  own deadline just inside the caller's.
+- The review screen and `polyglots review` warn when a batch is too small for antigravity.
+- Cached verdicts prune once on the next run.
 
 ## [0.9.8] - 2026-09-20
 
-### Fixed
-
-- A review that named `antigravity` spawned `claude`. The options handed to the
-  adjudicator are assembled field by field, and `provider` was never added to
-  that list, so the runner fell back to its default. Every review since the
-  provider landed drove the wrong agent: it spent the wrong subscription, and
-  it cached Claude's verdicts under antigravity's key, which is the
-  cross-agent mixing the engine id exists to prevent.
-  - Nothing caught it because every test injected an adjudicator and none
-    looked at what it was handed. The new ones assert both the name and the
-    argv built from it, since the name alone could still be read as a default.
-  - A database written before this holds Claude's verdicts filed under
-    `antigravity`. They are worth keeping, and they belong to Claude:
-    `UPDATE OR REPLACE audit_verdict SET engine = 'claude' WHERE engine =
-    'antigravity'`, and the same for the review rows in `run`. Relabelling
-    rather than deleting keeps the work reusable and stops a genuinely
-    antigravity run from inheriting opinions it never formed.
-  - The comparison in `docs/antigravity.md` was measured through this bug, so
-    the antigravity row is Claude. It is left in place until a real run
-    replaces it, with a note saying so.
-
 ### Changed
 
-- Every screen that starts or reports a job names the agent it will use. The
-  menu reads `Provider: antigravity · p to switch`; the review and translate
-  screens read `Provider: antigravity` and do not offer the switch, because
-  changing agent mid-file would split one submission's verdicts between two of
-  them. Nothing is shown while a file is still being picked, since no job
-  exists yet to attribute. A night of reviews spent the wrong subscription with
-  nothing on screen to contradict the name in the run log.
+- Every screen that starts or reports a job names the provider it will use.
+
+### Fixed
+
+- A review that named `antigravity` spawned `claude`. Verdicts cached before this are Claude's,
+  filed under antigravity.
 
 ## [0.9.7] - 2026-09-20
 
 ### Changed
 
-- A resumed review says so. Resume is per entry and lives in the job store, so
-  a run that inherited most of its work looked exactly like a cold one: the
-  same header, and a bar counting from zero out of however many batches were
-  left. On a 9,826-entry file with 2,300 entries already judged, the only
-  difference on screen was 302 where a first run said 394, which is not a
-  difference anyone notices at two in the morning.
-  - The batches a previous run paid for are counted into both ends of the bar,
-    so it opens a quarter of the way along one the length a first run would
-    have had: `batch 93/394`, not `batch 1/302`. A green line underneath says
-    what was inherited and what is left.
-  - The count of inherited batches is kept apart from the batches this run
-    actually ran, so the reducer never claims a batch happened that did not.
-  - A cold run is unchanged: no line, and the count still starts at zero.
-  - A file the cache covers entirely reads as finished rather than empty,
-    because no batch ever starts and the total is whatever was inherited.
-  - `polyglots review` prints the same thing on one line before the bar.
+- A resumed review says so, counting the inherited batches into the bar instead of starting
+  from zero.
 
 ## [0.9.6] - 2026-09-19
 
 ### Added
 
-- `docs/ideas.md`, for features worth building that are not yet committed to:
-  fetching a project's waiting strings straight from translate.wordpress.org,
-  checking the model's own fixes with the rules, and Turkish rules for suffixes
-  glued to placeholders and plural nouns after numbers. Each records what is
-  settled and what is still open, so the next person to pick one up starts
-  from the decisions rather than the brainstorm.
-- A backlog entry for moving to the next split part from the review results
-  screen, which is the loop `split` was built for and currently costs a trip
-  to the menu per part.
+- `docs/ideas.md`, and a backlog entry for moving to the next split part from the results screen.
 
 ### Changed
 
-- The stats page caveat and the build guard's refusal message are reworded
-  without em dashes, as is every comment and design document in the
-  repository. Scraped test fixtures, test input and the empty-cell marker in
-  the stats tables keep theirs, since those are data rather than prose.
+- Em dashes removed from the prose in comments, documents and messages.
 
 ## [0.9.5] - 2026-09-19
 
 ### Added
 
-- `/release` for Claude Code sessions in this repository: verify, bump, write
-  the changelog, build and commit, in that order. It lives in
-  `.claude/commands/release.md` and is committed with the code, because what it
-  encodes is specific to this repository and a convention remembered by one
-  session is gone by the next.
-  - Verification comes before the bump, so a failing tree stops the release
-    before it has a version number that would then have to be withdrawn.
-  - A build refused because a run is in flight is treated as correct rather
-    than as an obstacle. The release is committed, `dist/` is reported as
-    stale, and the override stays the user's to reach for.
-  - It carries two ways a report went wrong while this was being written:
-    `polyglots --version` reads `package.json` at run time, so after a refused
-    build it names the new version while running the old code; and comparing
-    `dist/` with `src/` by time of day made a current build look stale,
-    because a file untouched for nine days sorted first.
+- `/release` for Claude Code sessions in this repository: verify, bump, changelog, build, commit.
 
 ## [0.9.4] - 2026-09-19
 
 ### Fixed
 
-- Corrected the antigravity timings in `docs/antigravity.md` and in the 0.8.0
-  entry below. Both reported it at four times Claude's cost and extrapolated to
-  nine hours against two on a large submission, which would have been a reason
-  to avoid it. Measured on whole runs at batch size 25 the two are close, and
-  antigravity was the faster of them: 27.4 seconds per batch against 32.5 and
-  36.3.
-  - The original figure came from one 25-entry batch run cold, which pays for
-    the MCP server starting, its tool schemas being read and the prompt cache
-    being filled. That run's own envelope reported 260,550 cached tokens read.
-    Across the ten batches of a real submission the start-up amortises away, so
-    a single batch measures the worst case and reads like the rate.
-  - What the two do differ in is where they look, and that part stands:
-    near-identical agreement on glossary terms, with antigravity finding about
-    three times as many title-case problems and Claude about twice as many
-    about meaning and fluency.
+- Corrected the antigravity timings in `docs/antigravity.md` and in the 0.8.0 entry. The two
+  providers are close rather than four times apart.
 
 ## [0.9.3] - 2026-09-19
 
 ### Added
 
-- The statistics screen can choose where the page goes. Tab opens a folder
-  picker, and the name field keeps working for anyone who would rather type it:
-  a name with a path in it wins over the chosen folder, so knowing exactly
-  where you want the file does not mean walking there.
-  - Tab rather than a letter, because the name field has focus and
-    ink-text-input types any printable key into it. It is also how the review
-    screen already moves between its own controls.
-- `o` on the statistics screen opens the page it just wrote, the same way the
-  review and translate screens open their output.
+- The statistics screen chooses where the page goes, with Tab, and `o` opens it.
 
 ### Changed
 
-- The file picker can choose a folder as well as a file. In that mode it lists
-  folders only, since a file is not a choice there and leaving them in only
-  makes the list longer, and a row at the top picks the folder being browsed.
-  That row leads, so opening the picker and pressing enter chooses where you
-  already are.
+- The file picker can choose a folder as well as a file.
 
 ## [0.9.2] - 2026-09-19
 
 ### Fixed
 
-- The apostrophe rule flagged ordinary words that merely began with an English
-  one. On a real 1,278-entry submission it produced 56 findings and almost none
-  concerned a proper noun: `and` made `anda` an offender, `list` made `Liste`
-  one, `sun` made `sunt` one. It now produces 2 on the same file, and every
-  other rule's output is unchanged.
-  - A word is no longer taken for a proper noun on the strength of one capital
-    mid-sentence. UI copy capitalises ordinary nouns freely, and that one
-    signal had taught `footer`, `header`, `block`, `create`, `new` and `to`.
-    The same word written in lower case anywhere in the file now settles it.
-  - The rule only considers proper nouns the entry's own source mentions. It
-    reads a translated word as "brand plus suffix" on a prefix match, so every
-    brand the file had ever mentioned used to be tried against every
-    translation in it.
-  - The curated brand list is authoritative and is not subject to either check,
-    so a source that writes `wordpress` in lower case somewhere cannot disarm
-    the rule for the entries that spell it properly.
-  - The permissive list of possible proper nouns is kept for the title-case
-    rule, which needs the opposite thing: it excuses a capital in a
-    translation, and narrowing it made title-case flag `John Smith`, a street
-    address and `Lorem Ipsum`. The two rules now read two sets.
+- The apostrophe rule flagged ordinary words that began with an English one: 56 findings on a
+  1,278-entry submission became 2.
 
 ## [0.9.1] - 2026-09-19
 
 ### Fixed
 
-- The review screen said `0 flagged by rules` on submissions where the rules
-  had flagged thousands. It was reporting only entries the rules proved wrong,
-  which are error severity, and saying nothing about the ones they doubt.
-  `title-case`, `apostrophe`, `untranslated` and `punctuation` are all suspect
-  severity, and on a Turkish submission they are most of what fires: one
-  9,826-entry file had 5,529 rule findings and not a single error, so the line
-  read zero. It now reads `rules: 0 wrong, 5529 suspect`, which are two
-  different questions and are kept apart rather than summed.
-- A rules-only run (`--no-ai`) reported no suspects at all, whatever the rules
-  found. The count was read from the entries waiting on a model, and that run
-  leaves none waiting: it decides every entry on the spot. It is now read from
-  both places an entry can end up, which is where the flagged count was already
-  read from. A `--no-ai` pass over 1,278 real entries reported 0 suspects
-  before and reports 591 now.
+- The review screen said `0 flagged by rules` where the rules had flagged thousands. It now
+  reads `rules: N wrong, N suspect`.
+- A rules-only run reported no suspects at all.
 
 ## [0.9.0] - 2026-09-19
 
-Cut a big catalogue into parts you can finish.
-
 ### Added
 
-- `polyglots split <file> --size <n>` writes numbered parts into
-  `<name>-split/` beside the source, and the menu has the same thing. Pausing a
-  long run already worked, but a review is only worth anything once it is
-  finished, so everything still landed at the end. Parts can be checked and
-  submitted one at a time while the rest wait.
-  - `--size` counts every entry the file holds, translated or not, and the last
-    part is whatever is left over: 9,326 entries at 1,000 is ten parts, the
-    last of them 326.
-  - Splitting costs no repeated work. Draft and verdict keys are derived from
-    the source text alone, so a part reuses everything already cached for the
-    whole file, and a file re-split differently later reuses it again.
-  - The index is padded to the width the part count needs. Unpadded, a name
-    sort reads 1, 10, 100, 11, which is the order the picker lists them in.
-  - Retired `#~` entries go in the first part alone. gettext-parser holds them
-    apart from the translations and re-emits them on compile, so a part built
-    from a copy of the source carries every one of them, in all of the parts.
-  - The parts carry the source header untouched. A split revises no
-    translation, so stamping it would date every part today and name this tool
-    as the author of work it only copied.
-  - Writing into a folder that already has files in it is refused unless
-    `--force` is passed, and even then nothing is deleted. A part left over
-    from an earlier, finer split looks exactly like work waiting to be
-    submitted, so it is named in the output instead.
+- `polyglots split <file> --size <n>` writes numbered parts into `<name>-split/`, and the menu
+  has the same. Parts reuse whatever is already cached for the whole file.
 
 ## [0.8.0] - 2026-09-19
 
-A second agent to review with.
-
 ### Added
 
-- `reviewProvider` chooses which agent CLI judges translations: `claude`, or
-  `antigravity` through its `agy` command. It is a setting rather than a per-run
-  flag, because it is a standing preference about which subscription to spend.
-  Press `p` on the main screen to switch, or
-  `polyglots config set reviewProvider antigravity`.
-  - antigravity needs its own setup first: the MCP server registered with it,
-    and the three lookups permitted in its settings. `docs/antigravity.md` has
-    the commands and says why polyglots does not write that configuration
-    itself. Without it every tool call is denied and the run fails with
-    antigravity's own stderr quoted back.
-  - Measured on whole runs at batch size 25, the two are close: 32.5 and 36.3
-    seconds per batch through Claude, 27.4 through antigravity. (This entry
-    first reported four times the cost, from one cold batch; see 0.9.4.) They
-    differ in where they look rather than how long they take. antigravity also
-    reads the source more freely, once deciding an English string was a typo
-    and offering a translation of what it thought was meant.
-- The agent runner keeps stderr and folds it into the error it raises. Both
-  providers have a failure that exits zero and explains itself only there: a
-  denied tool, or a quota message that arrives without a non-zero status.
+- `reviewProvider` chooses the agent that judges translations: `claude`, or `antigravity`
+  through its `agy` command. Press `p` on the main screen to switch. Setup is in
+  `docs/antigravity.md`, and antigravity needs it before it will work at all.
+- The agent runner keeps stderr and folds it into the error it raises.
 
 ### Changed
 
-- `engineId` names the provider as well as the model, so two agents' verdicts
-  coexist instead of one being served as the other's. A row written before
-  there was a choice says `claude` and still reads back as the same identity,
-  so nothing cached is orphaned.
-- The Claude runner moved to `src/agent/`, with the provider differences
-  (arguments, and the shape of the envelope each one returns) behind one
-  interface. Both put their validated object in `structured_output`, so only
-  the failure paths differ. `claude-review.ts` became `draft-review.ts` and its
-  errors no longer name Claude, since either agent can raise them.
+- `engineId` names the provider as well as the model, so two agents' verdicts coexist.
+- The Claude runner moved to `src/agent/`; `claude-review.ts` became `draft-review.ts`.
 
 ## [0.7.6] - 2026-09-19
 
 ### Fixed
 
-- A local draft is cached under the model that wrote it, not under `qwen`. The
-  engine names itself `ollama:<model>` precisely so two models cannot serve each
-  other's drafts, but the cache key was built before the engine exists and fell
-  back to the chosen engine's name. For `deepl` and `openai` that string is the
-  engine id already, so nothing showed; for the local engine every model shared
-  one key. Switching the model in `config.json` would have served the previous
-  model's drafts, written straight into the `.po`.
-  - `run.engine` was recording the same string, so `stats` collapsed every local
-    model into one row and could not compare them.
-  - The name now comes from `draftEngineId`, derived rather than read off an
-    engine. The engine is built only once there is a batch to translate, so a
-    fully cached run needs no API key and no reachable Ollama, and constructing
-    one just to ask its name would trade that away.
-  - Existing rows keep working. A database written before this carries `qwen`,
-    and those drafts were produced by whatever model was configured at the time,
-    which the row cannot say. Migrating them is a judgement only the person with
-    the database can make: `UPDATE draft SET engine = 'ollama:<model>' WHERE
-    engine = 'qwen'` is right if the model has not changed since, and wrong
-    otherwise.
-  - Every translate test injected a draft engine, so the faulty branch was never
-    the one under test. There is now a test that runs the real path with nothing
-    injected, over a fully translated catalogue so no engine is ever built.
+- A local draft is cached under `ollama:<model>` rather than under `qwen`, so two models cannot
+  serve each other's drafts. Rows written before this say `qwen`.
 
 ## [0.7.5] - 2026-09-19
 
-Open it where you were going to open it anyway.
-
 ### Added
 
-- `o` on either results screen opens the file in whatever the desktop associates
-  with `.po`, which on a translator's machine is PoEdit. Review opens the
-  repaired file rather than the submission, since the submission on disk is
-  unchanged and would show none of the run's work. Translate opens the file it
-  rewrote in place.
-  - The launcher is detached, so the editor outlives the run and a large
-    catalogue loading does not block the screen. Neither screen accepts `o`
-    while a run is still going: the catalogue is rewritten after every batch,
-    and opening it mid-run shows exactly the half-written state this tool works
-    to avoid.
+- `o` on either results screen opens the file in PoEdit.
 
 ## [0.7.4] - 2026-09-19
 
 ### Added
 
-- `CLAUDE.md` in the project root, recording the things about this repository that
-  are expensive to rediscover: the build guard, which database holds work that
-  cannot be regenerated, the template-literal trap in the migrations, and where a
-  cache invalidates itself.
+- `CLAUDE.md` in the project root.
 
 ## [0.7.3] - 2026-09-19
 
-Say it in a sentence the requester can read.
-
 ### Added
 
-- The review results screen offers the line to post back to whoever submitted the
-  translation, and `c` puts it on the clipboard. The tally a review ends with
-  answers the reviewer's question; a contributor reads `ai:glossary 23 · glossary
-  20` and learns nothing.
-  - The link is left as an empty `href`. Only the reviewer knows which
-    translations page they mean, and guessing a URL into a message bound for a
-    public forum is not a guess worth making.
-  - `polyglots review` prints the same sentence rather than copying it. A run
-    there may be in a pipe or a script, where reaching for the clipboard is a
-    side effect nobody asked for.
-  - Clipboard access never throws. A missing helper, a sandbox that blocks
-    spawning, or a headless machine is a reported failure with the sentence still
-    on screen, so a copy that did not work costs a keystroke rather than the
-    run's output.
-- `byGroup` on the review summary: the run's findings folded into the few groups
-  the message names, counted over repaired entries, once per entry per group.
-  `byRule` counts a rule firing, so an entry both a rule and the model caught
-  appears in it twice; summing that per group reported 43 glossary problems out
-  of 37 entries fixed. Rounding in the sentence is capped by the number it opens
-  with, so a group that is nearly the whole run rounds down rather than claiming
-  more fixes of one kind than there were fixes at all.
+- The review results screen offers a one-line message for the requester, and `c` copies it.
+  `polyglots review` prints the same sentence.
+- `byGroup` on the review summary, counted over repaired entries.
 
 ## [0.7.2] - 2026-09-19
 
 ### Added
 
-- Each catalogue in the file picker shows how many entries it holds, in a column.
-  A 9,826-entry stable export and the 222-entry waiting export next to it are
-  otherwise indistinguishable until several minutes into a run. The count is read
-  from the file rather than parsed, which agrees with the parser on every export
-  translate.wordpress.org produces and is fast enough to redo on every keystroke.
-- `s` cycles the picker's order: newest first, name A-Z, name Z-A, oldest first.
+- The file picker shows how many entries each catalogue holds, and `s` cycles the sort order.
 
 ### Changed
 
-- The picker orders by modification time, newest first, instead of by name. The
-  file a session is about is nearly always the one just downloaded, and a name
-  sort puts it wherever the alphabet says. Every order breaks ties on name, so a
-  directory a split job wrote in one millisecond cannot reshuffle between renders.
-- The selected row in the picker takes the same blue as the pointer. It was
-  yellow, as were all the unselected catalogues around it, leaving weight as the
-  only thing distinguishing the cursor from its neighbours.
-- A run now records how it ended, not only that it did. `done` meant finished;
-  `stopped` meant the operator pressed q, or it threw, or a hard kill left a row
-  behind, and anything counting "did not finish" counted all three as faults.
-  Stopping part way to look at the output and resuming later is ordinary use, so
-  the stats page was reporting a working habit as a warning. A nullable `ended`
-  column says which: `stopped`, `failed` or `abandoned`. `abandonRun` becomes
-  `endRun` and requires the reason rather than defaulting to one, because the
-  caller is the only thing that knows.
-  - `state` still answers only whether a run is terminal, so no existing reader
-    changes. A row written before the column is not counted as a fault: it
-    cannot say how it ended, and the commonest way a run stopped was the
-    operator stopping it, so treating the unknown as a failure would invent
-    crashes that mostly did not happen.
+- The picker orders by modification time, newest first, and the selected row takes the
+  pointer's blue.
+- A run records how it ended: `stopped`, `failed` or `abandoned`.
 
 ### Fixed
 
-- A literal percent sign is no longer read as a placeholder. The printf flag set
-  included the space flag, so `100% satisfaction` parsed as `%s`, `30% off` as
-  `%o` and `101% Growth` as `%G`. English puts the sign after the number and
-  Turkish puts it before, `%100`, so the phantom was reported lost on every one
-  of these, and on the audit side as an error the model had no way to clear.
-  Six phantoms gone across the local corpus, 110 real placeholders kept.
-  - The space flag is legal printf and asks for a blank where a plus sign would
-    go. Nothing in a WordPress UI string wants it. Percent-encoded URLs still
-    match, `%2F` reading as a width-2 float, and that is left alone: both sides
-    of a translation carry the same URL so the counts cancel, and a draft that
-    mangles one deserves the warning.
-  - The pattern existed twice, verbatim, in the draft and audit trees, and the
-    two had drifted. Now exported from one place.
-- A run row left at `running` by a hard kill is cleared at the start of the next
-  `translate` or `review`. `kill -9`, a crash or a closed terminal has no ordinary
-  stop path, so the row stayed forever and kept its scratch rows with it, and
-  `stats` counted it under "did not finish" for good. Applied to the live
-  database on release: one row from a pre-0.7.1 kill, carrying 3,585 orphan
-  entry rows.
-  - The live set comes from `liveRuns` rather than a second pid check, so the two
-    cannot disagree. It errs towards leaving rows behind: a pid the operating
-    system has recycled reads as alive and is skipped, because a wrong number in
-    `stats` costs less than stopping a live run. The sweep does not run in
-    `stats`, which documents itself as writing nothing.
+- A literal percent sign is no longer read as a placeholder.
+- A run row left at `running` by a hard kill is cleared at the start of the next run.
 
 ## [0.7.1] - 2026-09-19
 
 ### Added
 
-- `npm run build` refuses while a review or translate is in flight, and says which
-  one. A running job spawns an MCP server from `dist/` for every batch, so
-  rebuilding underneath it can hand a half-written file to the next spawn. Set
-  `POLYGLOTS_ALLOW_BUILD=1` to override.
-- A run records the process that owns it. Without that, a row left saying
-  `running` by a hard kill is indistinguishable from a job that is genuinely
-  working, and the guard above would refuse to build ever again.
+- `npm run build` refuses while a review or translate is in flight, and says which.
+  `POLYGLOTS_ALLOW_BUILD=1` overrides it.
+- A run records the process that owns it.
 
 ### Changed
 
-- The check fails open. A missing database, a native module that is not built
-  yet, or a schema older than the new column all allow the build: a guard that
-  can block a legitimate build through its own malfunction is worse than the
-  hazard it guards against, and `prepare` runs during `npm install`.
+- The build guard fails open: no database, an unbuilt native module or an older schema all
+  allow the build.
 
 ## [0.7.0] - 2026-09-19
 
-A draft engine that costs nothing.
-
 ### Added
 
-- `--draft-engine qwen` drafts against a local Ollama, so a long translate has no
-  quota and no bill. Configure it under `ollama` in `config.json`: `baseUrl` and
-  `model`, defaulting to a stock install and `qwen3.8:27b-mlx`.
-  - Measured on 3,656 short pattern strings: about 1.4s an entry at a batch of 15,
-    1.5s at 30, and 4.6s at 60. The engine warns above 30, because a batch size
-    chosen for the metered engines quietly triples a local run.
-  - It identifies itself as `ollama:<model>`, so switching models invalidates its
-    cached drafts instead of serving one model's work as another's.
+- `--draft-engine qwen` drafts against a local Ollama, configured under `ollama` in
+  `config.json`. It identifies itself as `ollama:<model>`.
 
 ### Fixed
 
-- Draft engines now identify items by number rather than by gettext key. A key can
-  begin with a newline and end in spaces, and a model asked to echo one back
-  normalises it; the reply then looks well-formed while naming no entry. This was
-  losing whole batches against a local model. The review side has worked this way
-  for some time. Every cached draft is invalidated by the change, which is correct:
-  they were produced under a different instruction.
+- Draft engines identify items by number rather than by gettext key. Every cached draft is
+  invalidated.
 
 ## [0.6.0] - 2026-09-19
 
-Say what the reviewing has added up to.
-
 ### Added
 
-- `polyglots stats` writes a self-contained HTML page from the run history: how many
-  submissions and entries were reviewed, by week and by project, what gets flagged,
-  and the median turnaround. Available from the menu as well.
-  - The page carries no script and references nothing off the machine, so it opens
-    from an email attachment on a computer that has never heard of this tool. The
-    charts are hand-built SVG for the same reason.
-  - Light, dark and follow-the-system, and English or Turkish, switched in the page
-    itself. Both languages ship inside it and CSS shows one, so the switches need no
-    script. Numbers are grouped the way each language groups them.
-  - A second section covers translation: entries drafted, how many were left fuzzy,
-    and what an engine skipped. Kept apart from the review numbers rather than summed,
-    because "looks wrong" and "wants a human eye" answer different questions.
-  - Both sections compare the engines that did the work. Review rows separate two
-    Claude models; translation rows separate DeepL from OpenAI. Each engine gets its
-    own median, so a slow one is visible. The table is omitted when only one engine
-    ever ran, since a comparison of one thing is a row of numbers pretending.
-  - Only finished runs count. One that stopped part way froze no totals, and the
-    page says how many did that rather than quietly shrinking the denominator.
-  - It states that a flag measures what the tool flagged, not the quality of anyone's
-    work. These numbers may be read by the people who volunteered the translations.
-
-### Fixed
-
-- A cached verdict now records which model produced it. Two Claude models answer the
-  same question differently and both were stored as `claude`, so one could be served
-  the other's judgement.
-- An entry whose whitespace was repaired mechanically no longer shares a cache key
-  with the same entry submitted already clean. The hash is taken after the repair, and
-  the prompt tells the model which of the two it is looking at.
-- A `by_category` tally holding something that is not a number now reads as absent
-  rather than as a partial tally, so a chart is never drawn from a count with an entry
-  silently dropped.
+- `polyglots stats` writes a self-contained HTML page from the run history, also available from
+  the menu. No script, nothing off the machine, light and dark, English and Turkish.
 
 ### Changed
 
-- `pruneStaleConfigs` checks its table name against an allow-list at runtime, not only
-  through its type.
-- The `X-Polyglots-Review` header no longer carries a fingerprint. Nothing reads the
-  header back, and computing it meant reading the whole submission a second time on
-  every run to fill a field nobody consumes.
-- A run row can say `running`, `done` or `stopped`, and nothing else. It previously
-  also allowed `paused` and `stopping`, which nothing ever wrote.
+- `pruneStaleConfigs` checks its table name against an allow-list at runtime.
+- The `X-Polyglots-Review` header no longer carries a fingerprint.
+- A run row says `running`, `done` or `stopped`, and nothing else.
+
+### Fixed
+
+- A cached verdict records which model produced it.
+- An entry whose whitespace was repaired no longer shares a cache key with one submitted clean.
+- A `by_category` tally holding something that is not a number reads as absent.
 
 ## [0.5.0] - 2026-09-18
 
-Run state moved out of the `.po` file and into a database, so the counts, the output
-file and the resume point stopped being three things that had to agree.
+Run state moved out of the `.po` file and into a database.
 
 ### Added
 
-- `translate` can resume, which it never could. A re-run reuses the drafts and the
-  reviews of them that it already has, so it no longer re-pays the metered draft API
-  for work it already did.
-- A review that was interrupted picks up where it stopped. Re-run the same command
-  and only the entries that were never decided go back to the model; the rest come
-  back from what the earlier run already established about that file.
-- `translate --fresh` ignores the drafts and reviews kept from an earlier run and
-  asks for them again, for when the first answer was not good enough.
-- Per-run totals are kept as history, so a reporting command can be written later
-  against real numbers rather than starting from the day it ships.
+- `translate` resumes, reusing the drafts and reviews it already has.
+- An interrupted review picks up where it stopped.
+- `translate --fresh` ignores both and asks again.
+- Per-run totals are kept as history.
 
 ### Changed
 
-- Resume is per entry rather than per file. Editing three strings in a 294-entry
-  submission re-reviews three entries instead of all 294.
-- A failed batch no longer discards the entries it did judge. Only the ones it could
-  not reach are re-attempted.
-- Changing the glossary, the rules or the prompt discards every cached verdict for
-  that locale, and only that locale. Verdicts formed under different instructions
-  cannot be mixed, and reviewing a `de` submission must not throw away the `tr` work.
+- Resume is per entry rather than per file.
+- A failed batch keeps the entries it did judge.
+- Changing the glossary, the rules or the prompt discards cached verdicts for that locale only.
 
 ### Removed
 
-- The `X-Polyglots-Review` resume marker. It is still written, because it is useful
-  to read in the file, but nothing reads it back. A marker written by 0.2.0 through
-  0.4.0 is ignored with a message saying so, and the review starts from the top.
+- The `X-Polyglots-Review` marker is still written but never read back. One written by 0.2.0
+  through 0.4.0 is ignored, and the review starts from the top.
 
 ## [0.4.0] - 2026-09-14
 
-Pause a long run, and have it stop itself when the subscription runs out.
-
 ### Added
 
-- `p` pauses a translate or review run, `r` resumes it, `q` stops it and keeps what is done.
-  Works on both the TUI and the CLI. The pause takes effect at a batch boundary, never inside
-  one, so the call already paid for finishes and saves first.
-- Both commands give up after three consecutive failed batches rather than grinding through
-  the rest of the file. Each batch already retries once, so that is six failed calls: past any
-  transient blip and into something systemic, which in practice means an exhausted quota.
-- The review summary reports `pending`, the entries a stopped run never looked at, and says
-  `Stopped early with N entries not reviewed. Re-run the same command to carry on.`
+- `p` pauses a run, `r` resumes it, `q` stops it and keeps what is done, on both surfaces. It
+  takes effect at a batch boundary.
+- Both commands give up after three consecutive failed batches.
+- The review summary reports `pending`, the entries a stopped run never looked at.
 
 ### Fixed
 
-- A failing `claude` call now reports whichever stream actually said something. It prints its
-  usage-limit notice on stdout and exits non-zero, and only stderr was being kept, so an
-  exhausted quota appeared as `exit code 1; stderr:` with nothing after it.
-- A failed batch no longer advances the resume marker. A run that failed its way to the end
-  recorded itself as complete, so re-running it started again from the first batch instead of
-  resuming.
-- `approvable` could go negative. Entries in a failed streak were counted both as problems and
-  as pending, and subtracted twice.
-- A stopped run no longer claims the submission "looks approvable" while also reporting
-  entries it never reviewed.
-- The CLI no longer puts a non-terminal stdin into raw mode, which would break a piped or
-  scheduled run. Where raw mode is used, Ctrl+C is recognised by hand and handed back, since
-  raw mode swallows the signal.
+- A failing `claude` call reports whichever stream actually said something.
+- A failed batch no longer advances the resume marker.
+- `approvable` could go negative.
+- A stopped run no longer claims the submission looks approvable while reporting entries it
+  never reviewed.
+- The CLI no longer puts a non-terminal stdin into raw mode.
 
 ## [0.3.0] - 2026-09-12
 
-Review stopped merely judging a submission and started repairing it.
-
 ### Added
 
-- Review returns corrected translations, not just verdicts, and writes `<name>-repaired.po`.
-- Faults that need no judgment are repaired before the rules pass judgment. Today that is
-  whitespace, the one rule whose correct output is computable from the source.
-- Entries the rules condemn now go to the model to be repaired. Their verdict is settled
-  first, so the model supplies a fix rather than an opinion and cannot clear a mechanical
-  fact.
-- Every proposed fix is re-run through the deterministic rules and refused if it introduces a
-  new error, so a repair that restores one placeholder while dropping another never ships. A
-  refused fix is recorded in the file rather than dropped silently.
-- `repaired` and `written` counts in the summary, and a closing line saying how much is left
-  to do by hand.
+- Review returns corrected translations and writes `<name>-repaired.po`.
+- Whitespace is repaired before the rules pass judgment.
+- Entries the rules condemn go to the model for a fix, which is re-run through the rules and
+  refused if it introduces a new error.
+- `repaired` and `written` counts in the summary.
 
 ### Changed
 
-- `<name>-problems.po` is now written only by `--no-ai` runs, which have no model to repair
-  with. The file name says whether anything could have been repaired.
-- The resume marker format is at version 2. Markers written by earlier builds are rejected, so
-  a review started before this upgrade restarts rather than resuming from a short count.
+- `<name>-problems.po` is written only by `--no-ai` runs.
+- The resume marker format is at version 2; markers from earlier builds are rejected.
 
 ### Fixed
 
-- A repaired translation could be silently reverted on resume. The output file is rebuilt from
-  the untouched source every save, so a repair exists nowhere else, and the resume path
-  recovered only the comments. Closed structurally: anything written can now be read back.
-- The TUI told the user to run `translate` over the repaired file, which re-selects fuzzy
-  entries and would have undone every repair.
-- `npm run typecheck` now covers the tests as well as `src`, via `tsconfig.test.json`. The
-  build still emits only `src`.
+- A repaired translation could be silently reverted on resume.
+- The TUI told the user to run `translate` over the repaired file, which would have undone
+  every repair.
+- `npm run typecheck` covers the tests as well as `src`.
 
 ## [0.2.0] - 2026-09-11
 
-Made a multi-hour run possible to watch, interrupt and pick up again.
-
 ### Added
 
-- An estimated finish time in the progress line, from the first batch onward: a guess at a
-  default pace until a batch has been timed, then the median of the last five.
-- An elapsed clock per batch on both translate and review, so a call that takes minutes is
-  visibly alive rather than apparently wedged.
-- Review can resume an interrupted run from a marker in the output file's header. A
-  fingerprint over the submission, glossary, rules, prompt and batch size means a resume is
-  refused, with a reason, rather than mixing verdicts from two different runs. `--fresh`
-  ignores the marker.
-- Batch size is selectable per run in the TUI, and both surfaces take their default from
-  `config.json`.
+- An estimated finish time in the progress line, and an elapsed clock per batch.
+- Review resumes an interrupted run from a marker in the output file's header. `--fresh`
+  ignores it.
+- Batch size is selectable per run in the TUI.
 
 ### Changed
 
-- One progress bar across every surface, drawn as `▰▱`. The last cell stays empty until the
-  work is genuinely finished, because a full bar on a run with entries left reads as a hang.
+- One progress bar across every surface.
 - The review progress line shows one counter instead of two that contradicted each other.
 
 ### Fixed
 
-- Review wrote its output only at the end, so a several-hour run interrupted at any point lost
-  everything. It now writes after every batch.
+- Review writes after every batch instead of only at the end.
 - The progress bar drew as full before the first batch had started.
 
 ## [0.1.0] - 2026-09-10
 
 First working version: `translate` drafts and reviews `.po` entries, `review` audits a
-contributor's submission against the WordPress glossary and a set of per-locale rules, with a
-TUI over both, an MCP server for glossary, consistency and TM lookups, and a local SQLite
-translation memory fed from PoEdit TMX exports.
+submission against the WordPress glossary and per-locale rules, with a TUI over both, an MCP
+server for glossary, consistency and TM lookups, and a local SQLite memory fed from PoEdit TMX
+exports.

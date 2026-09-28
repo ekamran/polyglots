@@ -118,8 +118,10 @@ a body explaining why it was worth changing. No conventional-commits prefixes, n
 bullet summaries of the diff. Look at recent history before writing one.
 
 Version bumps use
-`npm version patch --no-git-tag-version`, and `CHANGELOG.md` follows Keep a
-Changelog, in the same prose voice as the code comments.
+`npm version patch --no-git-tag-version`. `CHANGELOG.md` follows Keep a
+Changelog and is deliberately terse: one line per entry, three at the very most,
+saying what changed and nothing about why. The prose voice belongs in the commit
+message, which is where anyone wanting the reasoning is sent.
 
 Verifying, bumping, writing the changelog, building and committing is one
 routine, and `/release` is it. The order and the traps are in
