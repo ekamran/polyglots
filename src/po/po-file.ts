@@ -226,22 +226,19 @@ export class PoFile {
   /**
    * Reduces the file to the annotated entries, with their reasons attached.
    *
-   * Nothing is marked fuzzy. Every entry here is already one the review had
-   * something to say about, so a flag on all of them adds nothing the file does
-   * not already say, and it costs the reviewer a step: their way through such a
-   * file is to clear the flags, read from the top, and mark the single entry
-   * they stopped at so they can find it again tomorrow. A file that arrives
-   * entirely fuzzy erases that bookmark before it can be used.
+   * Fuzzy marks the entries the run could not fix, and nothing else. Those are
+   * the ones the summary counts as "left for you", and they are what a reviewer
+   * opens the file to find: a repaired entry already holds its correction and
+   * needs reading, while an unrepaired one needs writing.
    *
-   * The flag was here for a pipeline that no longer exists. It arrived with the
-   * first review commit, when review only flagged and wrote no corrections, so
-   * this file was a worklist and `translate` consumed it by selecting fuzzy
-   * entries. Review repairs now, and handing those repairs to a draft engine
-   * would replace a considered correction with a machine guess.
+   * Every entry used to be marked, which said nothing the file did not already
+   * say, since being in the file means the review had something to say about
+   * it. It also erased the reviewer's own use of the flag, which is to clear
+   * them all, read from the top, and mark the single entry they stopped at.
+   * With one or two marked, the flag points at the work instead.
    *
-   * Flags the entry already carried are left alone. Not adding one is not the
-   * same as taking one away, and a submission that came in fuzzy is reporting
-   * the contributor's own state.
+   * Flags the entry already carried are left alone. A submission that came in
+   * fuzzy is reporting the contributor's own state.
    */
   keepOnly(annotations: Map<string, Annotation>): void {
     for (const ctx of Object.keys(this.raw.translations)) {
@@ -254,13 +251,19 @@ export class PoFile {
           delete this.raw.translations[ctx][msgid]
           continue
         }
-        if (annotation.text?.length) {
+        const repair = annotation.text?.length ? annotation.text : undefined
+        if (repair) {
           entry.msgstr =
             entry.msgid_plural !== undefined
-              ? Array.from({ length: this.nplurals }, (_, i) => annotation.text![i] ?? '')
-              : [annotation.text[0] ?? '']
+              ? Array.from({ length: this.nplurals }, (_, i) => repair[i] ?? '')
+              : [repair[0] ?? '']
         }
         setNotes(entry, readableNotes(annotation.notes))
+        if (!repair) {
+          const flags = flagList(entry).filter((f) => f !== 'fuzzy')
+          flags.push('fuzzy')
+          entry.comments = { ...entry.comments, flag: flags.join(', ') }
+        }
       }
       if (ctx !== '' && Object.keys(this.raw.translations[ctx]).length === 0) {
         delete this.raw.translations[ctx]

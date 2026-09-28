@@ -122,9 +122,9 @@ describe('review end to end', () => {
     // too, without being a `problem` or a `needsReview`, so `problems` alone
     // undercounts what is actually on disk.
     expect(entries.length).toBe(summary.written)
-    // Nothing is marked: the reviewer clears the flags before reading anyway,
-    // and uses one to mark where they stopped.
-    expect(entries.some((e) => e.fuzzy)).toBe(false)
+    // Marked exactly where the run left work behind: the count the summary
+    // reports as "left for you" is written - repaired.
+    expect(entries.filter((e) => e.fuzzy).length).toBe(summary.written - summary.repaired)
     expect(entries.every((e) => e.msgstr.some(Boolean))).toBe(true)
 
     const text = await readFile(summary.problemsFile!, 'utf8')
@@ -133,17 +133,16 @@ describe('review end to end', () => {
   })
 
   /**
-   * The reverse of what this file used to assert. Review's output was once a
-   * worklist for `translate`, back when review only flagged and wrote no
-   * fixes. It writes the repairs itself now, and handing them to a draft
-   * engine would replace a considered correction with a machine guess.
+   * A repair is never offered to `translate`, which would replace a considered
+   * correction with a machine guess. What is offered is the remainder: entries
+   * nobody fixed, where a draft overwrites nothing anyone wrote.
    */
-  it('is not a worklist for translate, whose drafts would overwrite its repairs', async () => {
+  it('offers translate only the entries no repair was found for', async () => {
     const summary = await run()
     const problems = await loadPo(summary.problemsFile!)
 
     expect(summary.written).toBeGreaterThan(0)
-    expect(problems.units('pending')).toEqual([])
+    expect(problems.units('pending').length).toBe(summary.written - summary.repaired)
   })
 
   it('lets the model flag a meaning error the rules cannot see', async () => {

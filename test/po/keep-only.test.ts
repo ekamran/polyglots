@@ -72,10 +72,18 @@ describe('PoFile.keepOnly', () => {
    * entries. Review learned to repair later; re-drafting its repairs with a
    * machine engine would throw away the better answer.
    */
-  it('leaves the kept entries unflagged and preserves the submitted translation', async () => {
+  it('marks an entry nobody could fix, so the work left to do is findable', async () => {
     const text = await keep(new Map([['Settings', { notes: ['title case'] }]]))
-    expect(text).not.toMatch(/#,\s*fuzzy/)
+    expect(text).toMatch(/#,\s*fuzzy/)
     expect(text).toContain('msgstr "Ayarlar"')
+  })
+
+  // The other kind: a correction is already in the entry, so there is nothing
+  // to go and write. Marking these too would flag the whole file again.
+  it('leaves a repaired entry unflagged, since its text is the repair', async () => {
+    const text = await keep(new Map([['Settings', { notes: ['title case'], text: ['Ayarlar düzeltildi'] }]]))
+    expect(text).not.toMatch(/#,\s*fuzzy/)
+    expect(text).toContain('msgstr "Ayarlar düzeltildi"')
   })
 
   // Not adding one is not the same as taking one away: a submission that was
@@ -93,8 +101,8 @@ describe('PoFile.keepOnly', () => {
     expect(text).toContain('# polyglots: glossary term not used')
   })
 
-  it('keeps the flags an entry already had, and adds none', async () => {
-    const text = await keep(new Map([['%s comments', { notes: ['placeholder missing'] }]]))
+  it('keeps the flags an entry already had', async () => {
+    const text = await keep(new Map([['%s comments', { notes: ['placeholder missing'], text: ['%s yorum'] }]]))
     expect(text).toMatch(/#,.*php-format/)
     expect(text).not.toMatch(/#,.*fuzzy/)
   })

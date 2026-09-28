@@ -10,6 +10,13 @@ Entries say what changed. For why and how, read the commit.
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-09-28
+
+### Changed
+
+- The repaired file marks fuzzy the entries no repair was found for, the ones the summary
+  counts as "left for you". Repaired entries stay unflagged.
+
 ## [0.17.0] - 2026-09-28
 
 ### Added

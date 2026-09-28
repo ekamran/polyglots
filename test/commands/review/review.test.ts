@@ -146,13 +146,14 @@ describe('reviewFile', () => {
     expect(summary.reviewed).toBe(3)
   })
 
-  it('writes only flagged entries, with their reasons and no added flag', async () => {
+  it('writes only flagged entries, with their reasons, marking what it could not fix', async () => {
     const summary = await run()
     const problems = await loadPo(summary.problemsFile!)
     const entries = problems.auditEntries()
 
     expect(entries.map((e) => e.msgid)).toEqual(['%s comments'])
-    expect(entries[0]!.fuzzy).toBe(false)
+    // No fix came back for it, so it is one of the "left for you" entries.
+    expect(entries[0]!.fuzzy).toBe(true)
     expect(entries[0]!.msgstr).toEqual(['yorumlar'])
     const text = await readFile(summary.problemsFile!, 'utf8')
     expect(text).toContain('polyglots:')
