@@ -18,6 +18,8 @@ const UNIVERSAL = [
   'plural-count',
   'whitespace',
   'untranslated',
+  // How a .po line spells its string, which no language's orthography touches.
+  'escaping',
   'punctuation',
   'glossary',
   'inconsistent',

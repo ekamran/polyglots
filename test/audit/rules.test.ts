@@ -463,3 +463,47 @@ describe('tm-conflict with alternatives', () => {
     expect(conflict!.message).toContain('Yukarı kaydır')
   })
 })
+
+/**
+ * A `.po` line quotes its string, so `\"` in the file is a plain quote in the
+ * string. A contributor pasting from a tool that wrote the file's spelling
+ * submits a backslash that renders in the UI. Nothing caught it: the four found
+ * on a real review were only corrected because the model happened to rewrite
+ * those entries for other reasons.
+ */
+describe('escaping', () => {
+  const check = (msgid: string, msgstr: string) => {
+    const e = { key: msgid, msgid, msgstr: [msgstr], comments: [], references: [], fuzzy: false }
+    return runRules(e, buildRuleContext({ locale: 'tr', glossary: [], nplurals: 2, entries: [e] }))
+  }
+
+  it('reports a backslash before a quote that the source spells plainly', () => {
+    const findings = check('See <a href="%s">docs</a>', 'Bkz <a href=\\"%s\\">belgeler</a>')
+    const escaping = findings.find((f) => f.rule === 'escaping')
+    expect(escaping?.severity).toBe('error')
+  })
+
+  // The other direction: the source is about the backslash character itself, so
+  // dropping it loses the thing the string is describing.
+  it('reports a translation that dropped an escape the source carries', () => {
+    const findings = check('Passwords may not contain the character "\\".', 'Parola "" karakterini içermemeli.')
+    expect(findings.map((f) => f.rule)).toContain('escaping')
+  })
+
+  it('says nothing when the two agree', () => {
+    expect(check('See <a href="%s">docs</a>', 'Bkz <a href="%s">belgeler</a>').map((f) => f.rule)).not.toContain('escaping')
+    expect(check('the character "\\".', 'the "\\" character.').map((f) => f.rule)).not.toContain('escaping')
+  })
+
+  it('says nothing about an entry with no quotes at all', () => {
+    expect(check('Settings', 'Ayarlar').map((f) => f.rule)).not.toContain('escaping')
+  })
+
+  // Universal: it is about how a .po line spells its string, which has nothing
+  // to do with a language's orthography.
+  it('runs for a locale with no orthography rules of its own', () => {
+    const e = { key: 'k', msgid: 'a "b"', msgstr: ['c \\"d\\"'], comments: [], references: [], fuzzy: false }
+    const ctx = buildRuleContext({ locale: 'de', glossary: [], nplurals: 2, entries: [e] })
+    expect(runRules(e, ctx).map((f) => f.rule)).toContain('escaping')
+  })
+})

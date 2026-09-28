@@ -10,6 +10,19 @@ Entries say what changed. For why and how, read the commit.
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-09-28
+
+### Added
+
+- An `escaping` rule: the translation escapes a quote the source spells plainly, or drops one
+  the source carries. Error severity, and universal rather than per locale.
+
+### Changed
+
+- A stray backslash before a quote is repaired mechanically, like whitespace. A lost one is
+  left for the model, since nothing can compute where it belonged.
+- Cached verdicts prune once on the next run.
+
 ## [0.16.3] - 2026-09-28
 
 ### Fixed

@@ -4,11 +4,18 @@ import { runRules, type RuleContext } from './rules/index.js'
 
 // Rules whose correct output is computable from the source, so no judgment and
 // no model call is needed. A rule qualifies only if it is `error` severity and
-// exactly invertible: `punctuation` looks similar but is a `suspect`, meaning
-// the locale team wants the model to decide, and forcing it here would overrule
-// that. This list is part of the resume fingerprint, so adding to it correctly
+// the correct text follows from the source: `punctuation` looks similar but is
+// a `suspect`, meaning the locale team wants the model to decide, and forcing
+// it here would overrule that.
+//
+// `escaping` qualifies in one direction only. A backslash the source does not
+// have can be dropped, while a lost one cannot be put back, so the rule still
+// fires for that case and the model handles it. Listed all the same, because
+// what matters here is whether the rules repair anything on their own.
+//
+// This list is part of the resume fingerprint, so adding to it correctly
 // refuses to resume a review that ran under the old set.
-export const REPAIRABLE_RULES = ['whitespace'] as const
+export const REPAIRABLE_RULES = ['whitespace', 'escaping'] as const
 
 const LEAD = /^\s*/
 const TRAIL = /\s*$/
@@ -20,8 +27,12 @@ function edges(value: string): { lead: string; trail: string; body: string } {
 }
 
 // Gives every translated plural form the source's leading and trailing
-// whitespace. Returns undefined when there was nothing to fix, so the caller can
-// tell a repair from a no-op.
+// whitespace, and the source's way of spelling a quote. Returns undefined when
+// there was nothing to fix, so the caller can tell a repair from a no-op.
+//
+// Only the direction that can be computed: a backslash the source does not have
+// is dropped, while a translation that lost an escape the source carries is left
+// for the model, since nothing here knows where the backslash belonged.
 export function repairMechanically(entry: AuditEntry): string[] | undefined {
   const source = edges(entry.msgid)
   let changed = false
@@ -32,9 +43,10 @@ export function repairMechanically(entry: AuditEntry): string[] | undefined {
     // blank the entry.
     if (form.trim() === '') return form
     const target = edges(form)
-    if (target.lead === source.lead && target.trail === source.trail) return form
+    const body = matchSourceEscaping(entry.msgid, target.body)
+    if (target.lead === source.lead && target.trail === source.trail && body === target.body) return form
     changed = true
-    return `${source.lead}${target.body}${source.trail}`
+    return `${source.lead}${body}${source.trail}`
   })
 
   return changed ? repaired : undefined

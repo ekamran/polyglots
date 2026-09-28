@@ -51,7 +51,7 @@ describe('repairMechanically', () => {
   // Only rules whose correct output is computable qualify. punctuation is a
   // suspect the model is supposed to judge, so it is deliberately not here.
   it('names only the rules it can actually invert', () => {
-    expect([...REPAIRABLE_RULES]).toEqual(['whitespace'])
+    expect([...REPAIRABLE_RULES]).toEqual(['whitespace', 'escaping'])
   })
 })
 
@@ -120,5 +120,35 @@ describe('judgeFix', () => {
     const wordy = entry('Open the sidebar', ['Yan menüyü aç'])
     const verdict = judgeFix({ entry: wordy, fix: ['Yan menüyü açın'], nplurals: 2, ctx: ctxFor([wordy]) })
     expect(verdict).toEqual({ accepted: ['Yan menüyü açın'] })
+  })
+})
+
+/**
+ * Stripping a backslash the source does not have needs no judgment: the source
+ * says what the spelling should be. The other direction cannot be computed,
+ * since nothing here knows where a lost backslash belonged, so that one is left
+ * for the model.
+ */
+describe('repairMechanically and escaping', () => {
+  const entry = (msgid: string, msgstr: string[]) => ({
+    key: msgid, msgid, msgstr, comments: [], references: [], fuzzy: false,
+  })
+
+  it('strips a backslash the source spells plainly', () => {
+    expect(repairMechanically(entry('See <a href="%s">docs</a>', ['Bkz <a href=\\"%s\\">belgeler</a>']))).toEqual([
+      'Bkz <a href="%s">belgeler</a>',
+    ])
+  })
+
+  it('repairs the whitespace and the escaping together', () => {
+    expect(repairMechanically(entry('  say "hi" ', ['de \\"merhaba\\"']))).toEqual(['  de "merhaba" '])
+  })
+
+  it('leaves a translation that lost an escape for the model', () => {
+    expect(repairMechanically(entry('the character "\\".', ['the "" character.']))).toBeUndefined()
+  })
+
+  it('still reports nothing to do when both agree', () => {
+    expect(repairMechanically(entry('a "b"', ['c "d"']))).toBeUndefined()
   })
 })
