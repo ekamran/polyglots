@@ -507,3 +507,100 @@ describe('escaping', () => {
     expect(runRules(e, ctx).map((f) => f.rule)).toContain('escaping')
   })
 })
+
+/**
+ * Measured over 69,229 approved strings from 66 wp.org projects, which is the
+ * test a rule has to pass: firing on work the locale team approved is a false
+ * positive by construction.
+ */
+describe('rules measured against approved work', () => {
+  const check = (msgid: string, msgstr: string, locale = 'tr') => {
+    const e = { key: msgid, msgid, msgstr: [msgstr], comments: [], references: [], fuzzy: false }
+    return runRules(e, buildRuleContext({ locale, glossary: [], nplurals: 2, entries: [e] })).map((f) => f.rule)
+  }
+
+  // 326 of 69,229 (0.47%), and the samples are real losses: "Stock
+  // availability class." became "Stok durumu".
+  describe('punctuation, extended to the end of a sentence', () => {
+    it('reports a final stop the translation dropped', () => {
+      expect(check('Stock availability class.', 'Stok durumu')).toContain('punctuation')
+    })
+
+    it('reports one the translation invented', () => {
+      expect(check('Bank account details', 'Banka hesabı ayrıntıları.')).toContain('punctuation')
+    })
+
+    /**
+     * Presence, not which mark. 27 of the 353 raw hits were an exclamation
+     * mark rendered as a full stop, which is the locale's own convention:
+     * "deleted successfully!" is approved as "başarıyla silindi."
+     */
+    it('says nothing when Turkish trades an exclamation for a stop', () => {
+      expect(check('Test email sent successfully!', 'Test e-postası başarıyla gönderildi.')).not.toContain('punctuation')
+    })
+
+    it('says nothing when neither ends with one', () => {
+      expect(check('Save changes', 'Değişiklikleri kaydet')).not.toContain('punctuation')
+    })
+  })
+
+  // 15 of 69,229 (0.02%). A dropped line in an email body is structure, not
+  // whitespace, and cannot be put back by anything mechanical.
+  describe('line-breaks', () => {
+    it('reports a lost line', () => {
+      expect(check('--\nThe Team\nhttps://example.org', 'Ekip\nhttps://example.org')).toContain('line-breaks')
+    })
+
+    it('says nothing when the count matches', () => {
+      expect(check('Howdy,\n\nA request', 'Merhaba,\n\nBir istek')).not.toContain('line-breaks')
+    })
+
+    // Universal: an email body has the same shape in every language.
+    it('runs outside Turkish too', () => {
+      expect(check('a\nb', 'c', 'de')).toContain('line-breaks')
+    })
+  })
+
+  // 89 of 69,229 (0.13%), nearly all of them labels the guide would write with
+  // "ve": "Etkinleştir & Kaydet", "Tarih & Saat".
+  describe('ampersand', () => {
+    it('reports an ampersand carried into the translation', () => {
+      expect(check('Activate & Save', 'Etkinleştir & Kaydet')).toContain('ampersand')
+    })
+
+    it('reports the encoded form too', () => {
+      expect(check('Date &amp; Time', 'Tarih &amp; Saat')).toContain('ampersand')
+    })
+
+    it('says nothing once it is written as a word', () => {
+      expect(check('Date & Time', 'Tarih ve Saat')).not.toContain('ampersand')
+    })
+
+    // Entities and query strings are not the conjunction.
+    it('leaves entities and URLs alone', () => {
+      expect(check('&hellip; and &#8220;quoted&#8221;', '&hellip; ve &#8220;alıntı&#8221;')).not.toContain('ampersand')
+      expect(check('See <a href="?a=1&b=2">docs</a>', '<a href="?a=1&b=2">belgeler</a> bakın')).not.toContain('ampersand')
+    })
+
+    // Turkish only: the rule is a convention of this locale, not of gettext.
+    it('does not run for a locale that has not asked for it', () => {
+      expect(check('Date & Time', 'Datum & Zeit', 'de')).not.toContain('ampersand')
+    })
+  })
+
+  // 3 of 69,229. Turkish writes the sign before the number, closed up.
+  describe('number-format', () => {
+    it('reports a space between the percent sign and its number', () => {
+      expect(check('25% off', '% 25 indirim')).toContain('number-format')
+    })
+
+    it('says nothing about the closed-up form', () => {
+      expect(check('25% off', '%25 indirim')).not.toContain('number-format')
+    })
+
+    // A placeholder is not a percentage.
+    it('leaves placeholders alone', () => {
+      expect(check('%s items and %d more', '%s öge ve %d tane daha')).not.toContain('number-format')
+    })
+  })
+})

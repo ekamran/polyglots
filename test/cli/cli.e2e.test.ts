@@ -258,10 +258,18 @@ describe('tm import', () => {
   })
 
   it('exits 1 on a broken file', async () => {
+    // Genuinely broken, rather than a .po under a .tmx name: the importer picks
+    // its parser by what the file holds, so that one imports now.
     const broken = join(home, 'broken.tmx')
-    await copyFile(samplePo, broken)
+    await writeFile(broken, 'not a catalogue of any kind', 'utf8')
     const res = await runCli(['tm', 'import', broken])
     expect(res.code).toBe(1)
     expect(res.stderr).toMatch(/broken\.tmx/)
+  })
+
+  it('imports a .po export, which is what translate.wordpress.org gives you', async () => {
+    const res = await runCli(['tm', 'import', samplePo, '--locale', 'tr'])
+    expect(res.code).toBe(0)
+    expect(res.stdout).toMatch(/entries/)
   })
 })

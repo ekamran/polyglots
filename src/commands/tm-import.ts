@@ -1,7 +1,9 @@
+import { readFile } from 'node:fs/promises'
 import type Database from 'better-sqlite3'
 import { openDb, upsertTm } from '../storage/index.js'
-import { loadTmx, normalizeLocale } from '../tmx/parse.js'
-import type { Locale } from '../types.js'
+import { loadPo } from '../po/po-file.js'
+import { decodeXml, loadTmx, normalizeLocale } from '../tmx/parse.js'
+import type { Locale, TmEntry } from '../types.js'
 
 export interface TmImportProgress {
   file: string
@@ -45,9 +47,62 @@ export async function importTmx(files: string[], opts: TmImportOptions): Promise
   return result
 }
 
+/**
+ * Reads a memory export, whichever of the two shapes it is.
+ *
+ * TMX is what PoEdit exports. A `.po` is what translate.wordpress.org exports,
+ * and a locale team's approved work arrives that way: 66 project exports carry
+ * 69,302 approved Turkish strings between them. Converting each one to TMX
+ * first is a step with nothing to decide in it.
+ *
+ * Chosen by what the file holds rather than by its name, because an export
+ * saved under the wrong extension is a likelier accident than a file that lies
+ * about its own first bytes.
+ */
+async function loadEntries(file: string, targetLocale: Locale, project?: string): Promise<TmEntry[]> {
+  const text = decodeXml(await readFile(file))
+  if (text.includes('<tmx')) return loadTmx(file, { targetLocale, project })
+  if (!/^msgid\s/m.test(text)) throw new Error('not a TMX or .po catalogue')
+  return poEntries(file, targetLocale, project)
+}
+
+/**
+ * The translated entries of a `.po`, as memory rows.
+ *
+ * Fuzzy and untranslated entries are left out: neither is approved, and the
+ * memory's whole claim is that its rows are. An export filtered to current
+ * strings carries neither, but a file saved from an editor will.
+ *
+ * A plural entry becomes two rows, one per source form, because the memory
+ * holds one string per source and `translate` reads a plural back by looking up
+ * each form separately.
+ */
+async function poEntries(file: string, locale: Locale, project?: string): Promise<TmEntry[]> {
+  const po = await loadPo(file)
+  const rows: TmEntry[] = []
+  for (const entry of po.auditEntries()) {
+    if (entry.fuzzy) continue
+    const forms = [
+      { source: entry.msgid, target: entry.msgstr[0] },
+      ...(entry.msgidPlural === undefined ? [] : [{ source: entry.msgidPlural, target: entry.msgstr[1] }]),
+    ]
+    for (const { source, target } of forms) {
+      if (!target || target.trim() === '') continue
+      rows.push({
+        source,
+        target,
+        locale,
+        ...(entry.msgctxt === undefined ? {} : { context: entry.msgctxt }),
+        ...(project === undefined ? {} : { project }),
+      })
+    }
+  }
+  return rows
+}
+
 async function loadFile(file: string, targetLocale: Locale, project?: string) {
   try {
-    return await loadTmx(file, { targetLocale, project })
+    return await loadEntries(file, targetLocale, project)
   } catch (err) {
     if (isFsErrorFor(err, file)) throw err
     const message = err instanceof Error ? err.message : String(err)

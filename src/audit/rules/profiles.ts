@@ -20,6 +20,8 @@ const UNIVERSAL = [
   'untranslated',
   // How a .po line spells its string, which no language's orthography touches.
   'escaping',
+  // An email body has the same shape in every language.
+  'line-breaks',
   'punctuation',
   'glossary',
   'inconsistent',
@@ -38,7 +40,10 @@ export const DEFAULT_PROFILE: RuleProfile = {
 // every noun by rule, so `title-case` would flag correct translations wholesale.
 const BY_LANGUAGE: Record<string, RuleProfile> = {
   tr: {
-    rules: new Set([...UNIVERSAL, 'title-case', 'apostrophe']),
+    // `ampersand` and `number-format` are conventions of this locale rather
+    // than of gettext, so they wait for someone who speaks the language to say
+    // they apply, exactly as the orthography rules do.
+    rules: new Set([...UNIVERSAL, 'title-case', 'apostrophe', 'ampersand', 'number-format']),
     glossaryStemRatio: 0.7,
   },
 }

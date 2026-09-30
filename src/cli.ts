@@ -6,6 +6,7 @@ import { text } from 'node:stream/consumers'
 import { fileURLToPath } from 'node:url'
 import { Command, CommanderError } from 'commander'
 import { exportGlossary } from './commands/glossary-export.js'
+import { exportTm, type TmExportFormat } from './commands/tm-export.js'
 import { syncGlossary } from './commands/glossary-sync.js'
 import { reviewFile } from './commands/review.js'
 import { splitPo } from './commands/split.js'
@@ -56,6 +57,7 @@ export interface CliDeps {
   importTmx?: typeof importTmx
   syncGlossary?: typeof syncGlossary
   exportGlossary?: typeof exportGlossary
+  exportTm?: typeof exportTm
   reviewFile?: typeof reviewFile
   splitPo?: typeof splitPo
   writeStats?: typeof writeStats
@@ -68,6 +70,7 @@ interface Cli {
   importTmx: typeof importTmx
   syncGlossary: typeof syncGlossary
   exportGlossary: typeof exportGlossary
+  exportTm: typeof exportTm
   reviewFile: typeof reviewFile
   splitPo: typeof splitPo
   writeStats: typeof writeStats
@@ -96,6 +99,7 @@ function createCli(deps: CliDeps): Cli {
     importTmx: deps.importTmx ?? importTmx,
     syncGlossary: deps.syncGlossary ?? syncGlossary,
     exportGlossary: deps.exportGlossary ?? exportGlossary,
+    exportTm: deps.exportTm ?? exportTm,
     reviewFile: deps.reviewFile ?? reviewFile,
     splitPo: deps.splitPo ?? splitPo,
     writeStats: deps.writeStats ?? writeStats,
@@ -309,6 +313,13 @@ function configAddName(cli: Cli, name: string, locale: Locale): number {
   return EXIT_OK
 }
 
+function parseTmExportFormat(value: string | undefined): TmExportFormat | undefined {
+  if (value === undefined) return undefined
+  const format = value.trim().toLowerCase()
+  if (format === 'tmx' || format === 'po') return format
+  throw new UsageError(`Unknown format "${value}"; expected tmx or po`)
+}
+
 function configGet(cli: Cli, key: string | undefined): void {
   const config = cli.config()
   const secrets = loadSecrets()
@@ -515,6 +526,24 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
       if (summary.leftBehind.length > 0) {
         cli.err(`Left alone, not part of this split: ${summary.leftBehind.join(', ')}`)
       }
+    })
+
+  tm.command('export [file]')
+    .description('Write the translation memory as TMX or .po (stdout when no file is given)')
+    .option('--locale <locale>', `Memory locale (default: ${shown.defaultLocale})`)
+    .option('--format <format>', 'tmx or po (default: from the file name, else tmx)')
+    .action(async (file: string | undefined, flags: { locale?: string; format?: string }) => {
+      const locale = parseLocaleArg(flags.locale ?? cli.config().defaultLocale)
+      const format = parseTmExportFormat(flags.format)
+      const result = await cli.exportTm({ locale, ...(file ? { file } : {}), ...(format ? { format } : {}) })
+      if (!result.file) {
+        cli.streams.stdout.write(result.text)
+        return
+      }
+      // The dropped count is the whole reason a .po export is not the default:
+      // saying nothing would hand back a file holding less than it was asked for.
+      const lost = result.dropped > 0 ? `, ${result.dropped} alternative wording(s) dropped` : ''
+      cli.out(`Exported ${result.entries} translations (${locale}) to ${result.file}${lost}`)
     })
 
   const glossary = program.command('glossary').description('translate.wordpress.org glossary cache')

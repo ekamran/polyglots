@@ -10,6 +10,28 @@ Entries say what changed. For why and how, read the commit.
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-09-30
+
+### Added
+
+- `tm import` reads `.po` exports as well as TMX, which is what translate.wordpress.org
+  gives you. The format is chosen by what the file holds, not by its name. Fuzzy and
+  untranslated entries are skipped, and a plural entry becomes one row per source form.
+- `tm export [file]` writes the memory as TMX or `.po`, `--format` or the file name
+  deciding. A `.po` holds one translation per source and context, so alternatives are
+  collapsed to the most recent and the count dropped is reported.
+- A `line-breaks` rule: the translation has a different number of line breaks than the
+  source. Error severity, universal, and not repairable.
+- An `ampersand` rule: the translation keeps `&` where Turkish writes the conjunction as a
+  word. Entities and query strings are left alone.
+- A `number-format` rule: a space between the percent sign and its number.
+
+### Changed
+
+- `punctuation` also reports a sentence-ending stop that one side has and the other does
+  not. Presence only: trading `!` for `.` is the locale's own convention.
+- Cached verdicts prune once on the next run.
+
 ## [0.17.1] - 2026-09-28
 
 ### Changed

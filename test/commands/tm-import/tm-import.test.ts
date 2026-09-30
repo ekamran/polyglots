@@ -251,3 +251,93 @@ describe('importTmx', () => {
     expect(opened).toHaveLength(0)
   })
 })
+
+/**
+ * translate.wordpress.org exports `.po`, not TMX, and a locale team's approved
+ * work is most directly imported from there: 66 project exports carry 69,302
+ * approved Turkish strings. Converting each one to TMX first is a step with
+ * nothing to decide in it.
+ */
+describe('importTmx reading a .po export', () => {
+  const PO = `msgid ""
+msgstr ""
+"MIME-Version: 1.0\\n"
+"Content-Type: text/plain; charset=UTF-8\\n"
+"Language: tr\\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\\n"
+
+msgid "Publish"
+msgstr "Yayımla"
+
+msgctxt "post status"
+msgid "Draft"
+msgstr "Taslak"
+
+msgid "%d item"
+msgid_plural "%d items"
+msgstr[0] "%d öge"
+msgstr[1] "%d öge"
+
+msgid "Never translated"
+msgstr ""
+
+#, fuzzy
+msgid "Needs work"
+msgstr "Çalışma gerekiyor"
+`
+  let home: string
+  let db: Database.Database
+  let file: string
+
+  beforeEach(async () => {
+    home = await mkdtemp(join(tmpdir(), 'polyglots-po-import-'))
+    file = join(home, 'wp-dev-tr.po')
+    await writeFile(file, PO, 'utf8')
+    db = openDb(join(home, 'polyglots.db'))
+  })
+
+  afterEach(async () => {
+    db.close()
+    await rm(home, { recursive: true, force: true })
+  })
+
+  it('imports the translated entries, keeping the context', async () => {
+    const result = await importTmx([file], { locale: 'tr', db })
+
+    expect(findExactTm(db, 'Publish', 'tr')?.target).toBe('Yayımla')
+    expect(findExactTm(db, 'Draft', 'tr', 'post status')?.target).toBe('Taslak')
+    expect(result.files).toBe(1)
+  })
+
+  // The memory holds one string per source, and translate reads a plural entry
+  // back by looking up each source separately.
+  it('stores both halves of a plural entry', async () => {
+    await importTmx([file], { locale: 'tr', db })
+
+    expect(findExactTm(db, '%d item', 'tr')?.target).toBe('%d öge')
+    expect(findExactTm(db, '%d items', 'tr')?.target).toBe('%d öge')
+  })
+
+  // An export filtered to current strings should carry neither, but a file
+  // saved from an editor will.
+  it('skips what nobody approved: empty and fuzzy entries', async () => {
+    await importTmx([file], { locale: 'tr', db })
+
+    expect(findExactTm(db, 'Never translated', 'tr')).toBeUndefined()
+    expect(findExactTm(db, 'Needs work', 'tr')).toBeUndefined()
+  })
+
+  it('still reads TMX, chosen by what the file holds rather than its name', async () => {
+    const tmx = join(home, 'looks-like-anything.po')
+    await writeFile(tmx, SECOND_TMX, 'utf8')
+    await importTmx([tmx], { locale: 'tr', db })
+
+    expect(findExactTm(db, 'Publish', 'tr')?.target).toBe('Yayımla')
+  })
+
+  it('names the file when it is neither', async () => {
+    const junk = join(home, 'junk.po')
+    await writeFile(junk, 'this is not a catalogue', 'utf8')
+    await expect(importTmx([junk], { locale: 'tr', db })).rejects.toThrow(/junk\.po/)
+  })
+})
