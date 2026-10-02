@@ -32,6 +32,16 @@ describe('createRunControl', () => {
     expect(await gate).toBe('stop')
   })
 
+  // A fetch batch shares one control across parallel jobs, so several gates
+  // park on the same pause. Every one of them has to come back on resume.
+  it('releases every parked gate, not only the last one to arrive', async () => {
+    const control = createRunControl()
+    control.pause()
+    const gates = [control.gate(), control.gate(), control.gate()]
+    control.resume()
+    expect(await Promise.all(gates.map(settle))).toEqual(['go', 'go', 'go'])
+  })
+
   it('stops at the next boundary when asked while running', async () => {
     const control = createRunControl()
     control.stop()

@@ -7,7 +7,7 @@ import { App } from '../../src/tui/App.js'
 import { statsTarget } from '../../src/tui/screens/Stats.js'
 import { DEFAULT_STATS_FILE, type StatsOptions } from '../../src/commands/stats.js'
 import { openInDefaultApp } from '../../src/tui/open-file.js'
-import { fakeCommands, keys, makeHome, render, tick, waitForText, type Home } from './helpers.js'
+import { fakeCommands, hopsTo, keys, makeHome, render, tick, waitForText, type Home } from './helpers.js'
 
 // The real one launches a browser. A test run must not open one.
 vi.mock('../../src/tui/open-file.js', () => ({
@@ -34,8 +34,7 @@ async function openStats() {
   const commands = fakeCommands()
   const view = render(<App commands={commands} cwd={cwd} />)
   await tick()
-  // Menu order puts statistics third.
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < hopsTo('stats'); i++) {
     view.stdin.write(keys.down)
     await tick()
   }

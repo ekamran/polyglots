@@ -5,6 +5,7 @@ import { DEFAULT_PROVIDER } from '../agent/providers.js'
 import type { ReviewProvider } from '../types.js'
 import { ActivityProvider, createActivity, type Activity } from './hooks/activity.js'
 import { ConfigureKeys } from './screens/ConfigureKeys.js'
+import { Fetch } from './screens/Fetch.js'
 import { ImportTm } from './screens/ImportTm.js'
 import { Menu, type MenuAction } from './screens/Menu.js'
 import { Review } from './screens/Review.js'
@@ -69,6 +70,7 @@ export function App({ commands = defaultCommands, cwd = process.cwd(), activity,
         )}
         {screen === 'translate' && <Translate cwd={cwd} onBack={back} />}
         {screen === 'review' && <Review cwd={cwd} onBack={back} />}
+        {screen === 'fetch' && <Fetch onBack={back} />}
         {screen === 'split' && <Split cwd={cwd} onBack={back} />}
         {screen === 'import-tm' && <ImportTm cwd={cwd} onBack={back} />}
         {screen === 'stats' && <Stats cwd={cwd} onBack={back} />}

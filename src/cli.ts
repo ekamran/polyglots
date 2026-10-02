@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url'
 import { Command, CommanderError } from 'commander'
 import { exportGlossary } from './commands/glossary-export.js'
 import { exportTm, type TmExportFormat } from './commands/tm-export.js'
+import { fetchProjects, resolveProjects } from './commands/fetch.js'
+import { runFetch, type FetchFlags } from './cli/fetch.js'
 import { syncGlossary } from './commands/glossary-sync.js'
 import { reviewFile } from './commands/review.js'
 import { splitPo } from './commands/split.js'
@@ -61,6 +63,8 @@ export interface CliDeps {
   reviewFile?: typeof reviewFile
   splitPo?: typeof splitPo
   writeStats?: typeof writeStats
+  resolveProjects?: typeof resolveProjects
+  fetchProjects?: typeof fetchProjects
   runTui?: RunTui
 }
 
@@ -74,6 +78,8 @@ interface Cli {
   reviewFile: typeof reviewFile
   splitPo: typeof splitPo
   writeStats: typeof writeStats
+  resolveProjects: typeof resolveProjects
+  fetchProjects: typeof fetchProjects
   runTui: RunTui
   config: () => PolyglotsConfig
   out(line: string): void
@@ -103,6 +109,8 @@ function createCli(deps: CliDeps): Cli {
     reviewFile: deps.reviewFile ?? reviewFile,
     splitPo: deps.splitPo ?? splitPo,
     writeStats: deps.writeStats ?? writeStats,
+    resolveProjects: deps.resolveProjects ?? resolveProjects,
+    fetchProjects: deps.fetchProjects ?? fetchProjects,
     runTui: deps.runTui ?? loadTui,
     config: () => (cached ??= loadConfig()),
     out: (line) => streams.stdout.write(`${line}\n`),
@@ -415,6 +423,41 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
         onProgress: (e) => cli.err(`${e.file}: ${e.entries} entries, ${e.upserted} upserted`),
       })
       cli.out(`Imported ${result.files} file(s): ${result.entries} entries, ${result.upserted} upserted (locale ${locale}).`)
+    })
+
+  program
+    .command('fetch [names...]')
+    .description('Fetch themes and plugins from translate.wordpress.org and review or translate every one')
+    .option('--get <status>', 'waiting (reviewed) or untranslated (translated)')
+    .option('--parallel <n>', `Projects to run at once, 1 to 8 (default: 1)`)
+    .option('--out-dir <dir>', 'Where to save the exports (default: ~/Downloads/polyglots)')
+    .option('--force', 'With --get untranslated, replace a file that already exists instead of keeping it')
+    .option('--locale <locale>', `Locale (default: ${shown.defaultLocale})`)
+    .option('--batch-size <n>', `Entries per batch (default: ${shown.batchSize})`)
+    .option('--fresh', 'Ignore cached verdicts or drafts and ask again')
+    .option('--no-ai', 'Review only: run the deterministic checks, skipping AI adjudication')
+    .option('--draft-engine <engine>', `Translate only: deepl, openai or qwen (default: ${shown.defaultDraftEngine})`)
+    .addHelpText(
+      'after',
+      '\nNames are slugs or translate.wordpress.org URLs, as arguments or one per line on stdin.\nA bare slug is tried as a theme first, then as a plugin.',
+    )
+    .action(async (names: string[], flags: FetchFlags) => {
+      setExitCode(
+        await runFetch(
+          {
+            stdin: cli.streams.stdin,
+            config: cli.config,
+            resolveProjects: cli.resolveProjects,
+            fetchProjects: cli.fetchProjects,
+            reviewFile: cli.reviewFile,
+            translate: cli.translate,
+            out: cli.out,
+            err: cli.err,
+          },
+          names,
+          flags,
+        ),
+      )
     })
 
   program

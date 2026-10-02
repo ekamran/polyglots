@@ -12,6 +12,7 @@ const { version: VERSION } = createRequire(import.meta.url)('../../../package.js
 export type MenuAction =
   | 'translate'
   | 'review'
+  | 'fetch'
   | 'split'
   | 'stats'
   | 'import-tm'
@@ -21,6 +22,7 @@ export type MenuAction =
 export const MENU_ITEMS: { label: string; value: MenuAction }[] = [
   { label: 'Translate a .po file', value: 'translate' },
   { label: 'Review a submitted .po', value: 'review' },
+  { label: 'Fetch from translate.wordpress.org', value: 'fetch' },
   { label: 'Split a .po into parts', value: 'split' },
   { label: 'Review statistics', value: 'stats' },
   { label: 'Import Translation Memory (.tmx)', value: 'import-tm' },

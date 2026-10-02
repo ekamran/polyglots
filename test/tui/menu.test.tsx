@@ -6,17 +6,9 @@ import { cleanup } from 'ink-testing-library'
 import { App } from '../../src/tui/App.js'
 import { DEFAULT_CONFIG } from '../../src/config.js'
 import type { PolyglotsConfig } from '../../src/types.js'
-import { MENU_ITEMS, type MenuAction } from '../../src/tui/screens/Menu.js'
-import { ESC_DELAY, fakeCommands, keys, makeHome, tick, waitForText, render, type Home } from './helpers.js'
+import { MENU_ITEMS } from '../../src/tui/screens/Menu.js'
+import { ESC_DELAY, fakeCommands, hopsTo, keys, makeHome, tick, waitForText, render, type Home } from './helpers.js'
 
-// How many times to press down to land on an action. Derived rather than
-// counted by hand: a new menu item used to shift every index below it and
-// break these tests for a reason that had nothing to do with what they test.
-function hopsTo(action: MenuAction): number {
-  const at = MENU_ITEMS.findIndex((item) => item.value === action)
-  if (at < 0) throw new Error(`no menu item for ${action}`)
-  return at
-}
 
 let home: Home
 let cwd: string
@@ -39,6 +31,7 @@ afterEach(async () => {
 const EXPECTED_LABELS = [
   'Translate a .po file',
   'Review a submitted .po',
+  'Fetch from translate.wordpress.org',
   'Split a .po into parts',
   'Review statistics',
   'Import Translation Memory (.tmx)',

@@ -6,7 +6,7 @@ import { cleanup } from 'ink-testing-library'
 import { App } from '../../src/tui/App.js'
 import { digitsOnly } from '../../src/tui/screens/Split.js'
 import type { SplitOptions } from '../../src/commands/split.js'
-import { fakeCommands, keys, makeHome, render, tick, waitForText, type Home } from './helpers.js'
+import { fakeCommands, hopsTo, keys, makeHome, render, tick, waitForText, type Home } from './helpers.js'
 
 let home: Home
 let cwd: string
@@ -49,10 +49,10 @@ async function typeSize(stdin: { write: (s: string) => void }, value: string) {
 async function openSplit(commands = fakeCommands()) {
   const view = render(<App commands={commands} cwd={cwd} />)
   await tick()
-  view.stdin.write(keys.down)
-  await tick()
-  view.stdin.write(keys.down)
-  await tick()
+  for (let i = 0; i < hopsTo('split'); i++) {
+    view.stdin.write(keys.down)
+    await tick()
+  }
   view.stdin.write(keys.enter)
   await waitForText(view.lastFrame, 'Split')
   return view

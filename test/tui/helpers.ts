@@ -6,12 +6,15 @@ import type { ReactElement } from 'react'
 import { render as inkRender } from 'ink-testing-library'
 import { vi } from 'vitest'
 import { loadConfig, saveConfig, loadSecrets, saveSecret } from '../../src/config.js'
+import type { Fetched, Ready, Resolution } from '../../src/commands/fetch.js'
 import type { SplitOptions } from '../../src/commands/split.js'
 import type { StatsOptions } from '../../src/commands/stats.js'
 import type { TmImportOptions } from '../../src/commands/tm-import.js'
 import type { TranslateEvent, TranslateOptions, TranslateSummary } from '../../src/commands/translate.js'
 import type { ReviewFileOptions, TuiCommands } from '../../src/tui/commands.js'
+import { MENU_ITEMS, type MenuAction } from '../../src/tui/screens/Menu.js'
 import type { ReviewSummary } from '../../src/types.js'
+import type { FetchStatus, ProjectRef } from '../../src/wporg/projects.js'
 
 const ANSI = /\[[0-9;]*m/g
 const strip = (s: string | undefined): string => (s ?? '').replace(ANSI, '')
@@ -85,6 +88,15 @@ export const keys = {
   backspace: '',
   esc: '',
   tab: '\t',
+}
+
+// How many times to press down to land on an action. Derived rather than
+// counted by hand: a new menu item used to shift every index below it and
+// break these tests for a reason that had nothing to do with what they test.
+export function hopsTo(action: MenuAction): number {
+  const at = MENU_ITEMS.findIndex((item) => item.value === action)
+  if (at < 0) throw new Error(`no menu item for ${action}`)
+  return at
 }
 
 export const tick = (ms = 0): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
@@ -212,6 +224,14 @@ export function fakeCommands(overrides: Partial<TuiCommands> = {}): TuiCommands 
       opts.onProgress?.({ type: 'done', summary })
       return summary
     }),
+    // Every slug resolves as a theme with work, and every download succeeds.
+    // The network is never touched: a test that wants another answer passes one.
+    resolveProjects: vi.fn(async (refs: ProjectRef[], opts: { status: FetchStatus }) =>
+      refs.map((r): Resolution => ({ input: r.slug, state: 'ready', type: 'wp-themes', slug: r.slug, count: opts.status === 'waiting' ? 5 : 3 })),
+    ),
+    fetchProjects: vi.fn(async (ready: Ready[], opts: { outDir: string }) =>
+      ready.map((p): Fetched => ({ input: p.input, state: 'fetched', file: join(opts.outDir, `${p.type}-${p.slug}-tr.po`) })),
+    ),
     loadConfig,
     saveConfig,
     loadSecrets,

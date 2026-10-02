@@ -1,4 +1,8 @@
-export const USER_AGENT = 'polyglots/0.1 (+https://github.com/emre/polyglots)'
+import { VERSION } from '../version.js'
+
+// The version actually running, rather than the 0.1 this was written at: a
+// server operator reading their logs should be able to tell builds apart.
+export const USER_AGENT = `polyglots/${VERSION} (+https://github.com/emre/polyglots)`
 const TIMEOUT_MS = 20_000
 
 export async function fetchHtml(url: string): Promise<string> {
@@ -17,6 +21,47 @@ export async function fetchHtml(url: string): Promise<string> {
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
       throw new Error(`GET ${url} timed out after ${TIMEOUT_MS}ms`)
+    }
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+export interface HttpResponse {
+  status: number
+  body: string
+}
+
+export type HttpGet = (url: string, opts?: { timeoutMs?: number }) => Promise<HttpResponse>
+
+/**
+ * A GET that reports the status instead of throwing on it.
+ *
+ * `fetchHtml` throws the same error for a 404 as for a server that did not
+ * answer, which is right for a scraper that wants a page or nothing. Resolving
+ * a project list needs the difference: a 404 means the project does not exist,
+ * and anything else means wp.org could not be asked, which must never be
+ * reported as a missing project.
+ *
+ * The timeout is the caller's. A page answers in a second or two; an export of
+ * a project the size of WooCommerce, over 14,000 strings, takes far longer than
+ * the twenty seconds a scraped page is given.
+ */
+export const httpGet: HttpGet = async (url, opts = {}) => {
+  const timeoutMs = opts.timeoutMs ?? TIMEOUT_MS
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { 'User-Agent': USER_AGENT },
+      signal: controller.signal,
+    })
+    return { status: res.status, body: await res.text() }
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error(`GET ${url} timed out after ${timeoutMs}ms`)
     }
     throw err
   } finally {

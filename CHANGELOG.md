@@ -10,6 +10,17 @@ Entries say what changed. For why and how, read the commit.
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-10-02
+
+### Added
+
+- `fetch` and a menu entry: take a list of theme and plugin slugs or URLs, download their
+  waiting or untranslated strings, and review or translate all of them, up to 8 at once.
+
+### Fixed
+
+- Resuming a paused run released only one of the jobs waiting on it.
+
 ## [0.18.0] - 2026-09-30
 
 ### Added

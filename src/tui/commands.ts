@@ -1,4 +1,5 @@
 import { createContext, useContext, useState } from 'react'
+import { fetchProjects, resolveProjects } from '../commands/fetch.js'
 import { syncGlossary } from '../commands/glossary-sync.js'
 import { importTmx } from '../commands/tm-import.js'
 import { reviewFile } from '../commands/review.js'
@@ -18,6 +19,8 @@ export interface TuiCommands {
   reviewFile: typeof reviewFile
   splitPo: typeof splitPo
   writeStats: typeof writeStats
+  resolveProjects: typeof resolveProjects
+  fetchProjects: typeof fetchProjects
   loadConfig: typeof loadConfig
   saveConfig: typeof saveConfig
   loadSecrets: typeof loadSecrets
@@ -31,6 +34,8 @@ export const defaultCommands: TuiCommands = {
   reviewFile,
   splitPo,
   writeStats,
+  resolveProjects,
+  fetchProjects,
   loadConfig,
   saveConfig,
   loadSecrets,

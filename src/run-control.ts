@@ -17,7 +17,10 @@ export interface RunControl {
 
 export function createRunControl(): RunControl {
   let state: RunState = 'running'
-  let release: (() => void) | undefined
+  // Every parked gate, not just one. A single slot was enough while one review
+  // owned a control, but a fetch batch shares one control across parallel jobs,
+  // and a single slot kept only the last waiter: the others never woke.
+  const waiting = new Set<() => void>()
   const listeners = new Set<(state: RunState) => void>()
 
   const set = (next: RunState): void => {
@@ -26,8 +29,8 @@ export function createRunControl(): RunControl {
     for (const listener of listeners) listener(next)
     // Anything that is not a pause frees a gate that is already waiting.
     if (next !== 'paused') {
-      release?.()
-      release = undefined
+      for (const release of waiting) release()
+      waiting.clear()
     }
   }
 
@@ -48,7 +51,7 @@ export function createRunControl(): RunControl {
       // before the loop gets its turn must park again, not fall through.
       while (state === 'paused') {
         await new Promise<void>((resolve) => {
-          release = resolve
+          waiting.add(resolve)
         })
       }
       return state === 'stopping' ? 'stop' : 'go'

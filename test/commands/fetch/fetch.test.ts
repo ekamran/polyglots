@@ -1,0 +1,224 @@
+import { readFileSync } from 'node:fs'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { defaultOutDir, fetchProjects, resolveProjects } from '../../../src/commands/fetch.js'
+import type { HttpGet } from '../../../src/wporg/http.js'
+import { exportUrl, localePageUrl, parseProjectLines } from '../../../src/wporg/projects.js'
+
+const fixture = (name: string) =>
+  readFileSync(join(import.meta.dirname, '..', '..', 'fixtures', 'wporg', name), 'utf8')
+
+// A plugin page with chosen counts per sub-project, built in the shape the real
+// page has so the scraper reads it the same way.
+function pluginPage(slug: string, rows: Record<string, { untranslated: number; waiting: number }>): string {
+  const cells = Object.entries(rows)
+    .map(
+      ([branch, c]) => `<tr><td class="set-name"><a href="/projects/wp-plugins/${slug}/${branch}/tr/default/">${branch}</a></td>
+        <td class="stats untranslated"><a>${c.untranslated}</a></td><td class="stats waiting"><a>${c.waiting}</a></td></tr>`,
+    )
+    .join('')
+  return `<table>${cells}</table>`
+}
+
+// Answers by URL; anything not listed is a 404, which is what wp.org says for a
+// project that does not exist.
+function serve(routes: Record<string, { status: number; body: string }>): HttpGet {
+  return async (url) => routes[url] ?? { status: 404, body: 'Not found' }
+}
+
+const PO = `msgid ""
+msgstr ""
+"Language: tr\\n"
+
+msgid "Read more"
+msgstr "Devamını oku"
+`
+
+describe('resolveProjects', () => {
+  const opts = { locale: 'tr', status: 'waiting' as const, pauseMs: 0 }
+
+  it('finds a bare slug as a theme', async () => {
+    const http = serve({ [localePageUrl('wp-themes', 'koji', 'tr')]: { status: 200, body: fixture('theme-page.html') } })
+    const [r] = await resolveProjects(parseProjectLines('koji'), { ...opts, http })
+    expect(r).toMatchObject({ state: 'ready', type: 'wp-themes', slug: 'koji', count: 111 })
+  })
+
+  it('falls back to a plugin when no theme has the slug', async () => {
+    const http = serve({
+      [localePageUrl('wp-plugins', 'acme', 'tr')]: {
+        status: 200,
+        body: pluginPage('acme', { dev: { untranslated: 0, waiting: 12 }, stable: { untranslated: 0, waiting: 3 } }),
+      },
+    })
+    const [r] = await resolveProjects(parseProjectLines('acme'), { ...opts, http })
+    expect(r).toMatchObject({ state: 'ready', type: 'wp-plugins', slug: 'acme' })
+  })
+
+  it('reports a slug that is neither as not found', async () => {
+    const [r] = await resolveProjects(parseProjectLines('nope'), { ...opts, http: serve({}) })
+    expect(r).toMatchObject({ state: 'not-found' })
+  })
+
+  /**
+   * A server that did not answer is not a project that does not exist. Saying
+   * "not found" during an outage would quietly drop real work from the batch.
+   */
+  it('keeps a server failure apart from not found', async () => {
+    const http = serve({ [localePageUrl('wp-themes', 'koji', 'tr')]: { status: 503, body: 'busy' } })
+    const [r] = await resolveProjects(parseProjectLines('koji'), { ...opts, http })
+    expect(r).toMatchObject({ state: 'unreachable' })
+  })
+
+  it('reports a network error as unreachable, not as a crash', async () => {
+    const http: HttpGet = async () => {
+      throw new Error('getaddrinfo ENOTFOUND translate.wordpress.org')
+    }
+    const [r] = await resolveProjects(parseProjectLines('koji'), { ...opts, http })
+    expect(r).toMatchObject({ state: 'unreachable', reason: expect.stringMatching(/ENOTFOUND/) })
+  })
+
+  it('takes the plugin branch with more strings in the chosen status', async () => {
+    const http = serve({
+      [localePageUrl('wp-plugins', 'acme', 'tr')]: {
+        status: 200,
+        body: pluginPage('acme', { dev: { untranslated: 0, waiting: 3 }, stable: { untranslated: 0, waiting: 40 } }),
+      },
+    })
+    const [r] = await resolveProjects([{ type: 'wp-plugins', slug: 'acme' }], { ...opts, http })
+    expect(r).toMatchObject({ state: 'ready', branch: 'stable', count: 40 })
+  })
+
+  // A tie goes to dev, where new strings land first.
+  it('takes dev on a tie', async () => {
+    const http = serve({
+      [localePageUrl('wp-plugins', 'acme', 'tr')]: {
+        status: 200,
+        body: pluginPage('acme', { dev: { untranslated: 0, waiting: 5 }, stable: { untranslated: 0, waiting: 5 } }),
+      },
+    })
+    const [r] = await resolveProjects([{ type: 'wp-plugins', slug: 'acme' }], { ...opts, http })
+    expect(r).toMatchObject({ branch: 'dev' })
+  })
+
+  it('never picks a readme from a bare slug, but uses one a URL names', async () => {
+    const body = pluginPage('acme', {
+      dev: { untranslated: 0, waiting: 1 },
+      'dev-readme': { untranslated: 0, waiting: 90 },
+    })
+    const http = serve({ [localePageUrl('wp-plugins', 'acme', 'tr')]: { status: 200, body } })
+    const [bare] = await resolveProjects([{ type: 'wp-plugins', slug: 'acme' }], { ...opts, http })
+    expect(bare).toMatchObject({ branch: 'dev' })
+    const [named] = await resolveProjects([{ type: 'wp-plugins', slug: 'acme', branch: 'dev-readme' }], { ...opts, http })
+    expect(named).toMatchObject({ branch: 'dev-readme', count: 90 })
+  })
+
+  it('marks a project with nothing in the chosen status as empty', async () => {
+    // The theme fixture has 3 untranslated; zero them and ask for untranslated.
+    const page = fixture('theme-page.html').replace(/(stats untranslated[\s\S]*?>)3</, '$10<')
+    const http = serve({ [localePageUrl('wp-themes', 'koji', 'tr')]: { status: 200, body: page } })
+    const [r] = await resolveProjects(parseProjectLines('koji'), { ...opts, status: 'untranslated', http })
+    expect(r).toMatchObject({ state: 'empty' })
+  })
+
+  // The spec orders the attempt, so a slug wp.org has as both resolves to the theme.
+  it('resolves a slug that is both a theme and a plugin to the theme', async () => {
+    const http = serve({
+      [localePageUrl('wp-themes', 'twin', 'tr')]: {
+        status: 200,
+        body: fixture('theme-page.html').replaceAll('/wp-themes/koji/', '/wp-themes/twin/'),
+      },
+      [localePageUrl('wp-plugins', 'twin', 'tr')]: {
+        status: 200,
+        body: pluginPage('twin', { dev: { untranslated: 0, waiting: 500 } }),
+      },
+    })
+    const [r] = await resolveProjects(parseProjectLines('twin'), { ...opts, http })
+    expect(r).toMatchObject({ type: 'wp-themes' })
+  })
+})
+
+describe('fetchProjects', () => {
+  let out: string
+
+  beforeEach(async () => {
+    out = await mkdtemp(join(tmpdir(), 'polyglots-fetch-'))
+  })
+
+  afterEach(async () => {
+    await rm(out, { recursive: true, force: true })
+  })
+
+  const theme = { input: 'koji', state: 'ready' as const, type: 'wp-themes' as const, slug: 'koji', count: 1 }
+
+  it('saves an export under the name the requester link reads back', async () => {
+    const http = serve({ [exportUrl('wp-themes', 'koji', undefined, 'tr', 'waiting')]: { status: 200, body: PO } })
+    const [f] = await fetchProjects([theme], { locale: 'tr', status: 'waiting', outDir: out, http, pauseMs: 0 })
+    expect(f).toMatchObject({ state: 'fetched', file: join(out, 'wp-themes-koji-tr.po') })
+    expect(await readFile(join(out, 'wp-themes-koji-tr.po'), 'utf8')).toBe(PO)
+  })
+
+  // Review writes its output elsewhere, and waiting strings keep arriving, so a
+  // stale export is replaced rather than reused.
+  it('replaces an existing export for review', async () => {
+    await writeFile(join(out, 'wp-themes-koji-tr.po'), 'old', 'utf8')
+    const http = serve({ [exportUrl('wp-themes', 'koji', undefined, 'tr', 'waiting')]: { status: 200, body: PO } })
+    const [f] = await fetchProjects([theme], { locale: 'tr', status: 'waiting', outDir: out, http, pauseMs: 0 })
+    expect(f).toMatchObject({ state: 'fetched' })
+    expect(await readFile(join(out, 'wp-themes-koji-tr.po'), 'utf8')).toBe(PO)
+  })
+
+  // Translate writes into the file, so an existing one is somebody's work.
+  it('keeps an existing file for translate unless forced', async () => {
+    const file = join(out, 'wp-themes-koji-tr-untranslated.po')
+    await writeFile(file, 'my edits', 'utf8')
+    const http = serve({ [exportUrl('wp-themes', 'koji', undefined, 'tr', 'untranslated')]: { status: 200, body: PO } })
+    const [kept] = await fetchProjects([theme], { locale: 'tr', status: 'untranslated', outDir: out, http, pauseMs: 0 })
+    expect(kept).toMatchObject({ state: 'kept', file })
+    expect(await readFile(file, 'utf8')).toBe('my edits')
+
+    const [forced] = await fetchProjects([theme], {
+      locale: 'tr',
+      status: 'untranslated',
+      outDir: out,
+      http,
+      pauseMs: 0,
+      force: true,
+    })
+    expect(forced).toMatchObject({ state: 'fetched' })
+    expect(await readFile(file, 'utf8')).toBe(PO)
+  })
+
+  // A waiting export has no empty entries. Kept as the file to translate, it
+  // would make translate do nothing and still report the project done.
+  it('never mistakes a waiting export for the file to translate', async () => {
+    await writeFile(join(out, 'wp-themes-koji-tr.po'), 'waiting export', 'utf8')
+    const http = serve({ [exportUrl('wp-themes', 'koji', undefined, 'tr', 'untranslated')]: { status: 200, body: PO } })
+    const [f] = await fetchProjects([theme], { locale: 'tr', status: 'untranslated', outDir: out, http, pauseMs: 0 })
+    expect(f).toMatchObject({ state: 'fetched', file: join(out, 'wp-themes-koji-tr-untranslated.po') })
+    expect(await readFile(join(out, 'wp-themes-koji-tr.po'), 'utf8')).toBe('waiting export')
+  })
+
+  // wp.org can answer 200 with a page, for a login or an error. Saving that as a
+  // catalogue would hand review a file it cannot read.
+  it('refuses a 200 that is not a catalogue, and writes nothing', async () => {
+    const http = serve({
+      [exportUrl('wp-themes', 'koji', undefined, 'tr', 'waiting')]: { status: 200, body: '<html>Log in</html>' },
+    })
+    const [f] = await fetchProjects([theme], { locale: 'tr', status: 'waiting', outDir: out, http, pauseMs: 0 })
+    expect(f).toMatchObject({ state: 'failed', reason: expect.stringMatching(/not a catalogue/) })
+    await expect(readFile(join(out, 'wp-themes-koji-tr.po'), 'utf8')).rejects.toThrow()
+  })
+
+  it('reports a failed download and carries on', async () => {
+    const other = { ...theme, input: 'sydney', slug: 'sydney' }
+    const http = serve({ [exportUrl('wp-themes', 'sydney', undefined, 'tr', 'waiting')]: { status: 200, body: PO } })
+    const results = await fetchProjects([theme, other], { locale: 'tr', status: 'waiting', outDir: out, http, pauseMs: 0 })
+    expect(results.map((r) => r.state)).toEqual(['failed', 'fetched'])
+  })
+
+  it('defaults to the Downloads folder the rest of the workflow uses', () => {
+    expect(defaultOutDir()).toMatch(/Downloads[/\\]polyglots$/)
+  })
+})

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createServer, type IncomingMessage, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { fetchHtml, USER_AGENT } from '../../src/wporg/http.js'
+import { VERSION } from '../../src/version.js'
 
 describe('fetchHtml', () => {
   let server: Server
@@ -44,7 +45,7 @@ describe('fetchHtml', () => {
     expect(seen).toHaveLength(1)
     expect(seen[0]!.method).toBe('GET')
     expect(seen[0]!.headers['user-agent']).toBe(USER_AGENT)
-    expect(USER_AGENT).toBe('polyglots/0.1 (+https://github.com/emre/polyglots)')
+    expect(USER_AGENT).toBe(`polyglots/${VERSION} (+https://github.com/emre/polyglots)`)
   })
 
   it('throws on 404 with the status in the message', async () => {
