@@ -35,14 +35,21 @@ function mount(commands = fakeCommands(), onBack: () => void = () => undefined) 
 }
 
 describe('ImportTm', () => {
-  it('lists only .tmx files, imports the picked one with the configured locale and reports', async () => {
+  // tm import reads translate.wordpress.org's .po exports as well as TMX, so
+  // the picker has to offer both or the menu can import less than the CLI.
+  it('lists .tmx and .po files, imports the picked one with the configured locale and reports', async () => {
     saveConfig({ defaultLocale: 'de' })
+    await writeFile(join(cwd, 'notes.txt'), '')
     const commands = fakeCommands()
     let back = 0
     const { lastFrame, stdin } = mount(commands, () => back++)
     await waitForText(lastFrame, 'poedit.tmx')
-    expect(lastFrame()).not.toContain('plugin-tr.po')
+    expect(lastFrame()).toContain('plugin-tr.po')
+    expect(lastFrame()).not.toContain('notes.txt')
 
+    // Rows: .., plugin-tr.po, poedit.tmx.
+    stdin.write(keys.down)
+    await tick()
     stdin.write(keys.down)
     await tick()
     stdin.write(keys.enter)
@@ -66,6 +73,8 @@ describe('ImportTm', () => {
     })
     const { lastFrame, stdin } = mount(commands)
     await waitForText(lastFrame, 'poedit.tmx')
+    stdin.write(keys.down)
+    await tick()
     stdin.write(keys.down)
     await tick()
     stdin.write(keys.enter)

@@ -1,6 +1,7 @@
 import { createContext, useContext, useState } from 'react'
 import { fetchProjects, resolveProjects } from '../commands/fetch.js'
 import { syncGlossary } from '../commands/glossary-sync.js'
+import { exportTm } from '../commands/tm-export.js'
 import { importTmx } from '../commands/tm-import.js'
 import { reviewFile } from '../commands/review.js'
 import { splitPo } from '../commands/split.js'
@@ -15,6 +16,7 @@ export type ReviewFileOptions = Parameters<ReviewFile>[0]
 export interface TuiCommands {
   translateFile: typeof translateFile
   importTmx: typeof importTmx
+  exportTm: typeof exportTm
   syncGlossary: typeof syncGlossary
   reviewFile: typeof reviewFile
   splitPo: typeof splitPo
@@ -30,6 +32,7 @@ export interface TuiCommands {
 export const defaultCommands: TuiCommands = {
   translateFile,
   importTmx,
+  exportTm,
   syncGlossary,
   reviewFile,
   splitPo,

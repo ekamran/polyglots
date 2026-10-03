@@ -1,0 +1,109 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+import React from 'react'
+import { cleanup } from 'ink-testing-library'
+import { saveConfig } from '../../src/config.js'
+import type { ExportTmOptions } from '../../src/commands/tm-export.js'
+import { App } from '../../src/tui/App.js'
+import { CommandsProvider } from '../../src/tui/commands.js'
+import { defaultTmName, ExportTm } from '../../src/tui/screens/ExportTm.js'
+import { fakeCommands, flat, hopsTo, keys, makeHome, render, tick, waitForText, type Home } from './helpers.js'
+
+let home: Home
+
+beforeEach(async () => {
+  home = await makeHome()
+})
+
+afterEach(async () => {
+  cleanup()
+  await home.cleanup()
+})
+
+function mount(commands = fakeCommands(), onBack: () => void = () => undefined) {
+  return render(
+    <CommandsProvider value={commands}>
+      <ExportTm onBack={onBack} />
+    </CommandsProvider>,
+  )
+}
+
+const downloads = join(homedir(), 'Downloads')
+
+describe('defaultTmName', () => {
+  it('dates the file and names it for the format', () => {
+    const at = new Date(2026, 9, 3, 23, 30)
+    expect(defaultTmName('tmx', at)).toBe('polyglots-tm-2026-10-03.tmx')
+    expect(defaultTmName('po', at)).toBe('polyglots-tm-2026-10-03.po')
+  })
+})
+
+describe('ExportTm', () => {
+  it('writes TMX to Downloads by default, with the configured locale', async () => {
+    saveConfig({ defaultLocale: 'de' })
+    const commands = fakeCommands()
+    const view = mount(commands)
+    await waitForText(view.lastFrame, /TMX/)
+    view.stdin.write(keys.enter)
+    await waitForText(view.lastFrame, /Write to/)
+    expect(view.lastFrame()).toContain(defaultTmName('tmx'))
+    view.stdin.write(keys.enter)
+    await waitForText(view.lastFrame, /Exported 120 entries/)
+    const opts = vi.mocked(commands.exportTm).mock.calls[0]![0] as ExportTmOptions
+    expect(opts).toEqual({ locale: 'de', file: join(downloads, defaultTmName('tmx')), format: 'tmx' })
+  })
+
+  // A .po holds one wording per source, so the person is told how many the
+  // file could not carry; TMX is the default for that reason.
+  it('writes .po when chosen and says how many wordings it dropped', async () => {
+    const commands = fakeCommands()
+    const view = mount(commands)
+    await waitForText(view.lastFrame, /TMX/)
+    view.stdin.write(keys.down)
+    await tick()
+    view.stdin.write(keys.enter)
+    await waitForText(view.lastFrame, /Write to/)
+    expect(view.lastFrame()).toContain(defaultTmName('po'))
+    view.stdin.write(keys.enter)
+    await waitForText(view.lastFrame, /Exported/)
+    expect(flat(view.lastFrame())).toMatch(/7 alternative wordings .* not carried/)
+    const opts = vi.mocked(commands.exportTm).mock.calls[0]![0] as ExportTmOptions
+    expect(opts).toMatchObject({ file: join(downloads, defaultTmName('po')), format: 'po' })
+  })
+
+  it('shows why an export failed', async () => {
+    const commands = fakeCommands({
+      exportTm: vi.fn(async () => {
+        throw new Error('EACCES: permission denied')
+      }),
+    })
+    const view = mount(commands)
+    await waitForText(view.lastFrame, /TMX/)
+    view.stdin.write(keys.enter)
+    await waitForText(view.lastFrame, /Write to/)
+    view.stdin.write(keys.enter)
+    await waitForText(view.lastFrame, 'EACCES: permission denied')
+  })
+
+  it('goes back to the menu with escape', async () => {
+    let back = 0
+    const view = mount(fakeCommands(), () => back++)
+    await waitForText(view.lastFrame, /TMX/)
+    view.stdin.write(keys.esc)
+    await tick(60)
+    expect(back).toBe(1)
+  })
+
+  it('is reachable from the menu', async () => {
+    const view = render(<App commands={fakeCommands()} />)
+    await tick()
+    for (let i = 0; i < hopsTo('export-tm'); i++) {
+      view.stdin.write(keys.down)
+      await tick()
+    }
+    view.stdin.write(keys.enter)
+    await waitForText(view.lastFrame, /Export Translation Memory/)
+    expect(view.lastFrame()).toMatch(/TMX/)
+  })
+})

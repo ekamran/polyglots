@@ -16,6 +16,7 @@ export type MenuAction =
   | 'split'
   | 'stats'
   | 'import-tm'
+  | 'export-tm'
   | 'sync-glossary'
   | 'configure-keys'
 
@@ -25,7 +26,8 @@ export const MENU_ITEMS: { label: string; value: MenuAction }[] = [
   { label: 'Fetch from translate.wordpress.org', value: 'fetch' },
   { label: 'Split a .po into parts', value: 'split' },
   { label: 'Review statistics', value: 'stats' },
-  { label: 'Import Translation Memory (.tmx)', value: 'import-tm' },
+  { label: 'Import Translation Memory (.tmx or .po)', value: 'import-tm' },
+  { label: 'Export Translation Memory', value: 'export-tm' },
   { label: 'Sync WordPress.org glossary', value: 'sync-glossary' },
   { label: 'Configure API keys', value: 'configure-keys' },
 ]

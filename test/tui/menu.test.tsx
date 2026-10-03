@@ -34,7 +34,8 @@ const EXPECTED_LABELS = [
   'Fetch from translate.wordpress.org',
   'Split a .po into parts',
   'Review statistics',
-  'Import Translation Memory (.tmx)',
+  'Import Translation Memory (.tmx or .po)',
+  'Export Translation Memory',
   /Sync .*glossary/,
   'Configure API keys',
 ]
@@ -80,8 +81,7 @@ describe('Menu', () => {
       await tick()
     }
     stdin.write(keys.enter)
-    await waitForText(lastFrame, /\.tmx/)
-    expect(lastFrame()).not.toContain('plugin.po')
+    await waitForText(lastFrame, /Import Translation Memory \(\.tmx or \.po\)/)
   })
 
   it('reaches the glossary sync screen', async () => {

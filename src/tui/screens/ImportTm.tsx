@@ -13,7 +13,9 @@ export interface ImportTmProps {
   onBack: () => void
 }
 
-const TMX_EXTENSIONS = ['.tmx']
+// The .po exports translate.wordpress.org hands out import as well as TMX, so
+// the picker offers both; leaving .po out made the menu import less than the CLI.
+const TM_EXTENSIONS = ['.tmx', '.po']
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 
 export function ImportTm({ cwd, onBack }: ImportTmProps) {
@@ -41,11 +43,11 @@ export function ImportTm({ cwd, onBack }: ImportTmProps) {
 
   return (
     <Box flexDirection="column">
-      <Text bold>Import Translation Memory (.tmx) · locale {config.defaultLocale}</Text>
+      <Text bold>Import Translation Memory (.tmx or .po) · locale {config.defaultLocale}</Text>
       {configError && <Text color="yellow">Config error, using defaults: {configError}</Text>}
       {file === undefined && (
         <>
-          <FilePicker dir={cwd} extensions={TMX_EXTENSIONS} onPick={pick} />
+          <FilePicker dir={cwd} extensions={TM_EXTENSIONS} onPick={pick} />
           <Hint>{BACK_HINT}</Hint>
         </>
       )}

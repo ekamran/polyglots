@@ -10,6 +10,16 @@ Entries say what changed. For why and how, read the commit.
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-10-03
+
+### Added
+
+- An "Export Translation Memory" menu entry: TMX or `.po`, saved to Downloads.
+
+### Fixed
+
+- The menu's TM import picker lists `.po` files, not only `.tmx`.
+
 ## [0.19.0] - 2026-10-02
 
 ### Added

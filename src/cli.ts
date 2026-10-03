@@ -411,7 +411,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
 
   const tm = program.command('tm').description('Translation memory')
   tm.command('import <files...>')
-    .description('Import TMX exports into the local translation memory (additive)')
+    .description('Import TMX or .po exports into the local translation memory (additive)')
     .option('--locale <locale>', `Target locale to import (default: ${shown.defaultLocale})`)
     .option('--project <name>', 'Tag imported entries with a project name')
     .action(async (patterns: string[], flags: { locale?: string; project?: string }) => {

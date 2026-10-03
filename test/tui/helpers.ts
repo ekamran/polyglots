@@ -9,6 +9,7 @@ import { loadConfig, saveConfig, loadSecrets, saveSecret } from '../../src/confi
 import type { Fetched, Ready, Resolution } from '../../src/commands/fetch.js'
 import type { SplitOptions } from '../../src/commands/split.js'
 import type { StatsOptions } from '../../src/commands/stats.js'
+import type { ExportTmOptions } from '../../src/commands/tm-export.js'
 import type { TmImportOptions } from '../../src/commands/tm-import.js'
 import type { TranslateEvent, TranslateOptions, TranslateSummary } from '../../src/commands/translate.js'
 import type { ReviewFileOptions, TuiCommands } from '../../src/tui/commands.js'
@@ -232,6 +233,13 @@ export function fakeCommands(overrides: Partial<TuiCommands> = {}): TuiCommands 
     fetchProjects: vi.fn(async (ready: Ready[], opts: { outDir: string }) =>
       ready.map((p): Fetched => ({ input: p.input, state: 'fetched', file: join(opts.outDir, `${p.type}-${p.slug}-tr.po`) })),
     ),
+    // Never touches the memory: a test of the screen must not read polyglots.db.
+    exportTm: vi.fn(async (opts: ExportTmOptions) => ({
+      entries: 120,
+      dropped: opts.format === 'po' ? 7 : 0,
+      text: '',
+      ...(opts.file === undefined ? {} : { file: opts.file }),
+    })),
     loadConfig,
     saveConfig,
     loadSecrets,

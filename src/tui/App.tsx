@@ -6,6 +6,7 @@ import type { ReviewProvider } from '../types.js'
 import { ActivityProvider, createActivity, type Activity } from './hooks/activity.js'
 import { ConfigureKeys } from './screens/ConfigureKeys.js'
 import { Fetch } from './screens/Fetch.js'
+import { ExportTm } from './screens/ExportTm.js'
 import { ImportTm } from './screens/ImportTm.js'
 import { Menu, type MenuAction } from './screens/Menu.js'
 import { Review } from './screens/Review.js'
@@ -73,6 +74,7 @@ export function App({ commands = defaultCommands, cwd = process.cwd(), activity,
         {screen === 'fetch' && <Fetch onBack={back} />}
         {screen === 'split' && <Split cwd={cwd} onBack={back} />}
         {screen === 'import-tm' && <ImportTm cwd={cwd} onBack={back} />}
+        {screen === 'export-tm' && <ExportTm onBack={back} />}
         {screen === 'stats' && <Stats cwd={cwd} onBack={back} />}
         {screen === 'sync-glossary' && <SyncGlossary onBack={back} />}
         {screen === 'configure-keys' && <ConfigureKeys onBack={back} />}
