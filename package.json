@@ -1,6 +1,6 @@
 {
   "name": "polyglots",
-  "version": "0.20.0",
+  "version": "0.20.1",
   "description": "Translate WordPress .po files into Turkish with machine drafts and AI review",
   "type": "module",
   "bin": {

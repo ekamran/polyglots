@@ -9,6 +9,7 @@ import {
   endOfResolution,
   tallyLine,
   tallyOf,
+  waitNotice,
   type BatchSummary,
   type ProjectEnd,
 } from '../../commands/fetch-report.js'
@@ -71,6 +72,8 @@ export function Fetch({ onBack }: FetchProps) {
   const [status, setStatus] = useState<FetchStatus>('waiting')
   const [resolutions, setResolutions] = useState<Resolution[]>([])
   const [resolveError, setResolveError] = useState<string | undefined>(undefined)
+  // The latest backoff, shown under the checking and downloading lines.
+  const [waiting, setWaiting] = useState<string | undefined>(undefined)
   const [focus, setFocus] = useState(0)
   const [parallel, setParallel] = useState(1)
   const [batchSize, setBatchSize] = useState(config.batchSize)
@@ -93,9 +96,16 @@ export function Fetch({ onBack }: FetchProps) {
     setStage('resolving')
     setResolveError(undefined)
     commands
-      .resolveProjects(parseProjectLines(lines.join('\n')), { locale, status: chosen })
+      .resolveProjects(parseProjectLines(lines.join('\n')), {
+        locale,
+        status: chosen,
+        onWait: (ms) => setWaiting(waitNotice(ms)),
+      })
       .then(setResolutions, (err: unknown) => setResolveError(err instanceof Error ? err.message : String(err)))
-      .finally(() => setStage('resolved'))
+      .finally(() => {
+        setWaiting(undefined)
+        setStage('resolved')
+      })
   }
 
   const start = () => {
@@ -110,7 +120,13 @@ export function Fetch({ onBack }: FetchProps) {
         const end = endOfResolution(r, status)
         if (end) ends.set(r.input, end)
       }
-      const fetched = await commands.fetchProjects(ready, { locale, status, outDir: defaultOutDir() })
+      const fetched = await commands.fetchProjects(ready, {
+        locale,
+        status,
+        outDir: defaultOutDir(),
+        onWait: (ms) => setWaiting(waitNotice(ms)),
+      })
+      setWaiting(undefined)
       const toRun = fetched.flatMap((f) => {
         if (f.state === 'failed') {
           ends.set(f.input, { tally: 'failed', detail: `download failed: ${f.reason}` })
@@ -298,6 +314,9 @@ export function Fetch({ onBack }: FetchProps) {
       )}
 
       {shown === 'resolving' && <Text>Checking {plural(lines.length, 'project', 'projects')}...</Text>}
+      {(shown === 'resolving' || (shown === 'running' && phase === 'downloading')) && waiting && (
+        <Text color="yellow">{waiting}</Text>
+      )}
 
       {shown === 'resolved' && (
         <>

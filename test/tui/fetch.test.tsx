@@ -258,6 +258,24 @@ describe('Fetch run', () => {
   })
 })
 
+describe('Fetch waiting on wp.org', () => {
+  it('shows that it is waiting on wp.org while checking the list', async () => {
+    let release!: () => void
+    const view = mount({
+      resolveProjects: async (refs, opts) => {
+        opts.onWait?.(45_000, 'https://translate.wordpress.org/')
+        await new Promise<void>((r) => (release = r))
+        return resolveProjects(refs, opts)
+      },
+    })
+    await enterList(view, ['koji'])
+    view.stdin.write(keys.enter)
+    await waitForText(view.lastFrame, /asked to slow down.*45s/)
+    release()
+    await waitForText(view.lastFrame, /enter to continue/)
+  })
+})
+
 describe('Menu entry', () => {
   it('reaches the fetch screen from the menu', async () => {
     const commands = fakeCommands({ resolveProjects, fetchProjects })

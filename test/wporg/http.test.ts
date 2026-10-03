@@ -31,6 +31,13 @@ describe('httpGet', () => {
     expect((await httpGet('https://example.test/page')).status).toBe(503)
   })
 
+  // wp.org says how long to back off on a 429; the caller needs it to wait
+  // that long rather than guess.
+  it('passes on a Retry-After header with the status', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('slow down', { status: 429, headers: { 'Retry-After': '30' } })))
+    expect(await httpGet('https://example.test/page')).toEqual({ status: 429, body: 'slow down', retryAfter: '30' })
+  })
+
   it('names the URL when it gives up waiting', async () => {
     vi.stubGlobal(
       'fetch',

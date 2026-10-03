@@ -31,6 +31,9 @@ export async function fetchHtml(url: string): Promise<string> {
 export interface HttpResponse {
   status: number
   body: string
+  // The Retry-After header, raw, when the server sent one. wp.org sends it with
+  // a 429, and the caller waits that long rather than guessing.
+  retryAfter?: string
 }
 
 export type HttpGet = (url: string, opts?: { timeoutMs?: number }) => Promise<HttpResponse>
@@ -58,7 +61,8 @@ export const httpGet: HttpGet = async (url, opts = {}) => {
       headers: { 'User-Agent': USER_AGENT },
       signal: controller.signal,
     })
-    return { status: res.status, body: await res.text() }
+    const retryAfter = res.headers.get('retry-after')
+    return { status: res.status, body: await res.text(), ...(retryAfter ? { retryAfter } : {}) }
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
       throw new Error(`GET ${url} timed out after ${timeoutMs}ms`)

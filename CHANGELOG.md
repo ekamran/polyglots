@@ -10,6 +10,16 @@ Entries say what changed. For why and how, read the commit.
 
 ## [Unreleased]
 
+## [0.20.1] - 2026-10-03
+
+### Changed
+
+- `fetch` pauses longer between wp.org requests: 1.5 s between pages, 3 s between exports.
+
+### Fixed
+
+- `fetch` waits out a 429 or 503 from wp.org and retries up to 3 times, saying how long it waits.
+
 ## [0.20.0] - 2026-10-03
 
 ### Added

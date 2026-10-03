@@ -8,6 +8,7 @@ import {
   endOfResolution,
   tallyLine,
   tallyOf,
+  waitNotice,
   type BatchSummary,
   type ProjectEnd,
 } from '../commands/fetch-report.js'
@@ -112,7 +113,8 @@ export async function runFetch(cli: FetchCli, names: string[], flags: FetchFlags
   }
 
   cli.err(`Checking ${refs.length} ${refs.length === 1 ? 'project' : 'projects'} on translate.wordpress.org...`)
-  const resolutions = await cli.resolveProjects(refs, { locale, status })
+  const onWait = (ms: number) => cli.err(waitNotice(ms))
+  const resolutions = await cli.resolveProjects(refs, { locale, status, onWait })
   for (const line of pad(resolutions.map((r) => [r.input, describeResolution(r, status)]))) cli.out(line)
 
   const ends = new Map<string, ProjectEnd>()
@@ -128,6 +130,7 @@ export async function runFetch(cli: FetchCli, names: string[], flags: FetchFlags
       locale,
       status,
       outDir,
+      onWait,
       ...(flags.force ? { force: true } : {}),
     })
     const toRun: Array<Extract<Fetched, { file: string }>> = []

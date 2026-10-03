@@ -2,7 +2,7 @@ import { access, mkdir, rename, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { Locale } from '../types.js'
-import { httpGet, type HttpGet } from '../wporg/http.js'
+import { httpGet, type HttpGet, type HttpResponse } from '../wporg/http.js'
 import {
   exportUrl,
   localePageUrl,
@@ -24,16 +24,67 @@ export type Fetched =
   | { input: string; file: string; state: 'fetched' | 'kept' }
   | { input: string; state: 'failed'; reason: string }
 
-// Half a second between requests. A list of thirty projects resolves in about
-// thirty seconds either way, and wp.org is a volunteer-run service that answers
-// a burst of scraper traffic by rate limiting everyone behind the same address.
-const DEFAULT_PAUSE_MS = 500
+// Between requests. Half a second was enough for a handful of projects and not
+// for a list of twenty-odd, which wp.org answered with 429s part way through
+// resolving. A bare slug can cost two page requests, theme then plugin, so a
+// long list is a long burst. An export is generated on request and is far
+// heavier than a page, so the gap before each one is longer.
+const PAGE_PAUSE_MS = 1_500
+const EXPORT_PAUSE_MS = 3_000
+
+// What to wait after a 429 or 503 that names no time, one step per retry. Three
+// retries spread over about a minute: long enough to outlast a burst limit,
+// short enough that a real outage is reported while the person is still there.
+const BACKOFF_MS = [5_000, 15_000, 45_000]
+// A Retry-After is honoured up to this. A server asking for an hour would park
+// the whole batch with no sign of life; better to report the project and let a
+// re-run pick it up.
+const MAX_RETRY_AFTER_MS = 120_000
 
 // A locale page answers in a second or two, but an export of a project the size
 // of WooCommerce is generated on request and takes minutes, not seconds.
 const EXPORT_TIMEOUT_MS = 300_000
 
-const sleep = (ms: number) => (ms > 0 ? new Promise<void>((r) => setTimeout(r, ms)) : Promise.resolve())
+type Sleep = (ms: number) => Promise<void>
+const realSleep: Sleep = (ms) => (ms > 0 ? new Promise<void>((r) => setTimeout(r, ms)) : Promise.resolve())
+
+// Seconds, or an HTTP date. Anything unreadable falls back to the backoff step.
+function retryAfterMs(raw: string | undefined, now = Date.now()): number | undefined {
+  if (raw === undefined) return undefined
+  const ms = /^\d+$/.test(raw.trim()) ? Number(raw.trim()) * 1000 : Date.parse(raw) - now
+  return Number.isFinite(ms) && ms >= 0 ? Math.min(ms, MAX_RETRY_AFTER_MS) : undefined
+}
+
+interface Polite {
+  http: HttpGet
+  sleep: Sleep
+  onWait?: (ms: number, url: string) => void
+}
+
+/**
+ * A GET that waits out wp.org asking it to slow down.
+ *
+ * A 429 or 503 is retried after the server's Retry-After, or the backoff step
+ * when it names none. Giving up on the first refusal reported real projects as
+ * unreachable in the middle of a list, which is the failure this exists for.
+ * The last answer is returned as it came, so the caller still decides what a
+ * refusal that never lifted means.
+ */
+async function politeGet(p: Polite, url: string, opts?: { timeoutMs?: number }): Promise<HttpResponse & { refusals: number }> {
+  for (let attempt = 0; ; attempt++) {
+    const res = await p.http(url, opts)
+    const refused = res.status === 429 || res.status === 503
+    if (!refused || attempt >= BACKOFF_MS.length) return { ...res, refusals: refused ? attempt + 1 : attempt }
+    const wait = retryAfterMs(res.retryAfter) ?? BACKOFF_MS[attempt]!
+    p.onWait?.(wait, url)
+    await p.sleep(wait)
+  }
+}
+
+const refusedReason = (url: string, status: number, refusals: number) =>
+  status === 429
+    ? `rate limited by translate.wordpress.org (${refusals} refusals); try again in a few minutes`
+    : `GET ${url} answered ${status}`
 
 export function defaultOutDir(): string {
   return join(homedir(), 'Downloads', 'polyglots')
@@ -93,10 +144,18 @@ function pickRow(
  */
 export async function resolveProjects(
   refs: ProjectRef[],
-  opts: { locale: Locale; status: FetchStatus; http?: HttpGet; pauseMs?: number },
+  opts: {
+    locale: Locale
+    status: FetchStatus
+    http?: HttpGet
+    pauseMs?: number
+    sleep?: Sleep
+    onWait?: (ms: number, url: string) => void
+  },
 ): Promise<Resolution[]> {
-  const http = opts.http ?? httpGet
-  const pauseMs = opts.pauseMs ?? DEFAULT_PAUSE_MS
+  const sleep = opts.sleep ?? realSleep
+  const polite: Polite = { http: opts.http ?? httpGet, sleep, ...(opts.onWait ? { onWait: opts.onWait } : {}) }
+  const pauseMs = opts.pauseMs ?? PAGE_PAUSE_MS
   let first = true
 
   const lookup = async (type: ProjectType, slug: string): Promise<PageLookup> => {
@@ -105,12 +164,12 @@ export async function resolveProjects(
     const url = localePageUrl(type, slug, opts.locale)
     let res
     try {
-      res = await http(url)
+      res = await politeGet(polite, url)
     } catch (err) {
       return { kind: 'unreachable', reason: err instanceof Error ? err.message : String(err) }
     }
     if (res.status === 404) return { kind: 'missing' }
-    if (res.status !== 200) return { kind: 'unreachable', reason: `GET ${url} answered ${res.status}` }
+    if (res.status !== 200) return { kind: 'unreachable', reason: refusedReason(url, res.status, res.refusals) }
     // A 200 without the sub-project table is not a project page, whatever
     // wp.org chose to show instead, so it counts as missing for this type.
     const rows = readSubProjects(res.body, type)
@@ -193,10 +252,20 @@ const exists = (path: string) =>
  */
 export async function fetchProjects(
   ready: Ready[],
-  opts: { locale: Locale; status: FetchStatus; outDir: string; force?: boolean; http?: HttpGet; pauseMs?: number },
+  opts: {
+    locale: Locale
+    status: FetchStatus
+    outDir: string
+    force?: boolean
+    http?: HttpGet
+    pauseMs?: number
+    sleep?: Sleep
+    onWait?: (ms: number, url: string) => void
+  },
 ): Promise<Fetched[]> {
-  const http = opts.http ?? httpGet
-  const pauseMs = opts.pauseMs ?? DEFAULT_PAUSE_MS
+  const sleep = opts.sleep ?? realSleep
+  const polite: Polite = { http: opts.http ?? httpGet, sleep, ...(opts.onWait ? { onWait: opts.onWait } : {}) }
+  const pauseMs = opts.pauseMs ?? EXPORT_PAUSE_MS
   await mkdir(opts.outDir, { recursive: true })
 
   const results: Fetched[] = []
@@ -211,9 +280,10 @@ export async function fetchProjects(
     first = false
     const url = exportUrl(p.type, p.slug, p.branch, opts.locale, opts.status)
     try {
-      const res = await http(url, { timeoutMs: EXPORT_TIMEOUT_MS })
+      const res = await politeGet(polite, url, { timeoutMs: EXPORT_TIMEOUT_MS })
       if (res.status !== 200) {
-        results.push({ input: p.input, state: 'failed', reason: `export answered ${res.status}` })
+        const reason = res.status === 429 ? refusedReason(url, 429, res.refusals) : `export answered ${res.status}`
+        results.push({ input: p.input, state: 'failed', reason })
         continue
       }
       if (!/^msgid /m.test(res.body)) {

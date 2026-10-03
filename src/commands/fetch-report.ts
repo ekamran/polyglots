@@ -57,6 +57,12 @@ export function endOfJob(outcome: ProjectOutcome<BatchSummary>, wporgUsername: s
   return s.stopped ? { tally: 'stopped', detail: `${counts}, stopped: ${s.stopped}` } : { tally: 'done', detail: counts }
 }
 
+// Said whenever wp.org refuses and the fetch backs off. A wait of up to two
+// minutes with nothing on screen reads as a hang, and a hang gets killed.
+export function waitNotice(ms: number): string {
+  return `translate.wordpress.org asked to slow down; waiting ${Math.round(ms / 1000)}s before trying again.`
+}
+
 export function tallyOf(ends: ProjectEnd[]): Tally {
   const tally: Tally = { done: 0, failed: 0, skipped: 0, stopped: 0 }
   for (const end of ends) tally[end.tally] += 1

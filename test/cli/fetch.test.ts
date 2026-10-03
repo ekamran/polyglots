@@ -245,4 +245,20 @@ describe('fetch', () => {
     })
     expect(wporg.fetchOpts[0]).toEqual({ outDir: home, force: true })
   })
+
+  // A 45-second backoff with nothing on screen looks like a hang.
+  it('says when wp.org asked it to wait, and for how long', async () => {
+    const wporg = fakeWporg()
+    const resolveProjects: CliDeps['resolveProjects'] = async (refs, opts) => {
+      opts.onWait?.(15_000, 'https://translate.wordpress.org/locale/tr/default/wp-themes/koji/')
+      return wporg.resolveProjects!(refs, opts)
+    }
+    const r = await run(['fetch', 'koji', '--get', 'waiting', '--out-dir', home], {
+      ...wporg,
+      resolveProjects,
+      reviewFile: async (opts) => reviewSummary(opts.file),
+    })
+    expect(r.stderr).toMatch(/asked to slow down.*waiting 15s/)
+  })
 })
+

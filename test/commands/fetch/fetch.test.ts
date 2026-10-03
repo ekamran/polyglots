@@ -67,8 +67,12 @@ describe('resolveProjects', () => {
    */
   it('keeps a server failure apart from not found', async () => {
     const http = serve({ [localePageUrl('wp-themes', 'koji', 'tr')]: { status: 503, body: 'busy' } })
-    const [r] = await resolveProjects(parseProjectLines('koji'), { ...opts, http })
-    expect(r).toMatchObject({ state: 'unreachable' })
+    const waits: number[] = []
+    const sleep = async (ms: number) => void waits.push(ms)
+    const [r] = await resolveProjects(parseProjectLines('koji'), { ...opts, http, sleep })
+    expect(r).toMatchObject({ state: 'unreachable', reason: expect.stringMatching(/answered 503/) })
+    // Retried like a 429 before it was given up on.
+    expect(waits).toHaveLength(3)
   })
 
   it('reports a network error as unreachable, not as a crash', async () => {
@@ -220,5 +224,102 @@ describe('fetchProjects', () => {
 
   it('defaults to the Downloads folder the rest of the workflow uses', () => {
     expect(defaultOutDir()).toMatch(/Downloads[/\\]polyglots$/)
+  })
+})
+
+// wp.org answers a burst of requests with 429. Giving up on the first one
+// reported real projects as unreachable, so a refusal is waited out and asked
+// again before anything is reported.
+describe('rate limiting', () => {
+  // Answers 429 for the first `refusals` requests to each URL, then serves.
+  function throttled(routes: Record<string, string>, refusals: number, retryAfter?: string) {
+    const seen = new Map<string, number>()
+    const http: HttpGet = async (url) => {
+      const n = (seen.get(url) ?? 0) + 1
+      seen.set(url, n)
+      if (n <= refusals) return { status: 429, body: 'Too Many Requests', ...(retryAfter ? { retryAfter } : {}) }
+      return routes[url] === undefined ? { status: 404, body: '' } : { status: 200, body: routes[url]! }
+    }
+    return { http, seen }
+  }
+  const recorder = () => {
+    const waits: number[] = []
+    return { waits, sleep: async (ms: number) => void waits.push(ms) }
+  }
+
+  it('waits out a 429 on a page and asks again', async () => {
+    const { http } = throttled({ [localePageUrl('wp-themes', 'koji', 'tr')]: fixture('theme-page.html') }, 1, '7')
+    const { waits, sleep } = recorder()
+    const [r] = await resolveProjects(parseProjectLines('koji'), { locale: 'tr', status: 'waiting', http, sleep })
+    expect(r).toMatchObject({ state: 'ready', count: 111 })
+    expect(waits).toContain(7_000)
+  })
+
+  it('backs off 5, 15 and 45 seconds when wp.org gives no Retry-After', async () => {
+    const { http, seen } = throttled({}, 99)
+    const { waits, sleep } = recorder()
+    const [r] = await resolveProjects([{ type: 'wp-themes', slug: 'koji' }], { locale: 'tr', status: 'waiting', http, sleep })
+    expect(waits).toEqual([5_000, 15_000, 45_000])
+    expect(seen.get(localePageUrl('wp-themes', 'koji', 'tr'))).toBe(4)
+    expect(r).toMatchObject({ state: 'unreachable', reason: expect.stringMatching(/rate limited/) })
+  })
+
+  // A server that asks for an hour would park the batch with no sign of life.
+  it('caps a long Retry-After at two minutes', async () => {
+    const { http } = throttled({ [localePageUrl('wp-themes', 'koji', 'tr')]: fixture('theme-page.html') }, 1, '3600')
+    const { waits, sleep } = recorder()
+    await resolveProjects(parseProjectLines('koji'), { locale: 'tr', status: 'waiting', http, sleep })
+    expect(waits).toEqual([120_000])
+  })
+
+  it('waits out a 429 on an export and saves it', async () => {
+    const out = await mkdtemp(join(tmpdir(), 'polyglots-fetch-'))
+    try {
+      const { http } = throttled({ [exportUrl('wp-themes', 'koji', undefined, 'tr', 'waiting')]: PO }, 2)
+      const { waits, sleep } = recorder()
+      const theme = { input: 'koji', state: 'ready' as const, type: 'wp-themes' as const, slug: 'koji', count: 1 }
+      const [f] = await fetchProjects([theme], { locale: 'tr', status: 'waiting', outDir: out, http, sleep })
+      expect(f).toMatchObject({ state: 'fetched' })
+      expect(waits).toEqual([5_000, 15_000])
+    } finally {
+      await rm(out, { recursive: true, force: true })
+    }
+  })
+
+  it('tells the caller it is waiting, and for how long', async () => {
+    const { http } = throttled({ [localePageUrl('wp-themes', 'koji', 'tr')]: fixture('theme-page.html') }, 1)
+    const { sleep } = recorder()
+    const told: number[] = []
+    await resolveProjects(parseProjectLines('koji'), {
+      locale: 'tr',
+      status: 'waiting',
+      http,
+      sleep,
+      onWait: (ms) => told.push(ms),
+    })
+    expect(told).toEqual([5_000])
+  })
+
+  // The courtesy pause between requests, which is what keeps a long list from
+  // being refused in the first place.
+  it('pauses 1.5 seconds between pages and 3 seconds between exports by default', async () => {
+    const routes = {
+      [localePageUrl('wp-themes', 'koji', 'tr')]: fixture('theme-page.html'),
+      [localePageUrl('wp-themes', 'twin', 'tr')]: fixture('theme-page.html').replaceAll('/wp-themes/koji/', '/wp-themes/twin/'),
+    }
+    const { http } = throttled(routes, 0)
+    const pages = recorder()
+    const ready = await resolveProjects(parseProjectLines('koji\ntwin'), { locale: 'tr', status: 'waiting', http, sleep: pages.sleep })
+    expect(pages.waits).toEqual([1_500])
+
+    const out = await mkdtemp(join(tmpdir(), 'polyglots-fetch-'))
+    try {
+      const exports = recorder()
+      const serveAll: HttpGet = async () => ({ status: 200, body: PO })
+      await fetchProjects(ready as any, { locale: 'tr', status: 'waiting', outDir: out, http: serveAll, sleep: exports.sleep })
+      expect(exports.waits).toEqual([3_000])
+    } finally {
+      await rm(out, { recursive: true, force: true })
+    }
   })
 })
