@@ -136,6 +136,100 @@ describe('LocaleRules: glossary match', () => {
   })
 })
 
+async function typeInto(view: View, text: string) {
+  view.stdin.write(text)
+  await tick()
+}
+
+describe('LocaleRules: common mistakes', () => {
+  it('adds a mistake with its right form and note, and saves it', async () => {
+    const view = mount()
+    await openLocale(view)
+    await select(view, /Common mistakes/)
+    await waitForText(view.lastFrame, /No mistakes yet/)
+    view.stdin.write('a')
+    await waitForText(view.lastFrame, /Wrong:/)
+    await typeInto(view, 'önizleme')
+    view.stdin.write(keys.tab)
+    await tick()
+    await typeInto(view, 'ön izleme')
+    view.stdin.write(keys.tab)
+    await tick()
+    await typeInto(view, 'TDK writes it as two words')
+    view.stdin.write(keys.enter)
+    await waitForText(view.lastFrame, /önizleme → ön izleme/)
+    view.stdin.write(keys.esc)
+    await tick(ESC_DELAY)
+    view.stdin.write('s')
+    await waitForText(view.lastFrame, /Saved/)
+    const p = loadLocaleRules('tr')!.patterns[0]!
+    expect(p).toMatchObject({ kind: 'mistake', text: 'önizleme', right: 'ön izleme', note: 'TDK writes it as two words' })
+  })
+
+  it('will not add a mistake with nothing to look for', async () => {
+    const view = mount()
+    await openLocale(view)
+    await select(view, /Common mistakes/)
+    view.stdin.write('a')
+    await waitForText(view.lastFrame, /Wrong:/)
+    view.stdin.write(keys.enter)
+    await waitForText(view.lastFrame, /Wrong is required/)
+  })
+
+  it('edits and deletes a mistake', async () => {
+    const file = localeRulesFile('tr')
+    await mkdir(dirname(file), { recursive: true })
+    await writeFile(file, 'mistakes:\n  - wrong: önizleme\n  - wrong: eposta\n', 'utf8')
+    const view = mount()
+    await openLocale(view)
+    await select(view, /Common mistakes/)
+    await waitForText(view.lastFrame, /eposta/)
+    view.stdin.write(keys.enter)
+    await waitForText(view.lastFrame, /Wrong:/)
+    view.stdin.write(keys.tab)
+    await tick()
+    await typeInto(view, 'e-posta')
+    view.stdin.write(keys.enter)
+    await waitForText(view.lastFrame, /önizleme → e-posta/)
+    view.stdin.write(keys.down)
+    await tick()
+    view.stdin.write('d')
+    await waitFor(() => !/eposta/.test(view.lastFrame()))
+    view.stdin.write(keys.esc)
+    await tick(ESC_DELAY)
+    view.stdin.write('s')
+    await waitForText(view.lastFrame, /Saved/)
+    expect(loadLocaleRules('tr')!.patterns.map((p) => [p.text, p.right])).toEqual([['önizleme', 'e-posta']])
+  })
+})
+
+describe('LocaleRules: proper nouns', () => {
+  it('starts from the built-in list and adds a name to it', async () => {
+    const view = mount()
+    await openLocale(view)
+    await select(view, /Proper nouns/)
+    await waitForText(view.lastFrame, /Always capitalized/)
+    view.stdin.write(keys.enter)
+    await waitForText(view.lastFrame, /Türkiye/)
+    view.stdin.write('a')
+    await waitForText(view.lastFrame, /Name:/)
+    await typeInto(view, 'Anadolu')
+    view.stdin.write(keys.enter)
+    await waitForText(view.lastFrame, /Anadolu/)
+    view.stdin.write(keys.esc)
+    await tick(ESC_DELAY)
+    view.stdin.write(keys.esc)
+    await tick(ESC_DELAY)
+    view.stdin.write('s')
+    await waitForText(view.lastFrame, /Saved/)
+    const always = loadLocaleRules('tr')!.properNouns!.always!
+    expect(always).toContain('Türkiye')
+    expect(always).toContain('Anadolu')
+    // The other list was not touched, so it stays built-in.
+    expect(loadLocaleRules('tr')!.properNouns!.dateOnly).toBeUndefined()
+  })
+})
+
 describe('LocaleRules: leaving', () => {
   it('asks before discarding unsaved changes, and discards on d', async () => {
     let back = 0

@@ -9,14 +9,24 @@ import { GUIDANCE_LIMIT } from '../../rules/schema.js'
 import { resolveLocale, wpCodeOf } from '../../wporg/locales.js'
 import { useConfig } from '../commands.js'
 import { Hint } from '../components/Hint.js'
+import { ListEditor } from '../components/ListEditor.js'
 
 export interface LocaleRulesProps {
   onBack: () => void
 }
 
-type Stage = 'pick' | 'overview' | 'rules' | 'ratio' | 'leave'
+type Stage = 'pick' | 'overview' | 'rules' | 'ratio' | 'nouns' | 'nounList' | 'mistakes' | 'leave'
 
-const SECTIONS = ['Built-in rules', 'Glossary match'] as const
+const SECTIONS = ['Built-in rules', 'Glossary match', 'Proper nouns', 'Common mistakes'] as const
+const SECTION_STAGE: Stage[] = ['rules', 'ratio', 'nouns', 'mistakes']
+type NounList = 'always' | 'dateOnly'
+const NOUN_LISTS: { key: NounList; label: string }[] = [
+  { key: 'always', label: 'Always capitalized' },
+  { key: 'dateOnly', label: 'Only in a specific date' },
+]
+type Mistake = RulesValue['mistakes'][number]
+
+const describeMistake = (m: Mistake) => `${m.wrong}${m.right ? ` → ${m.right}` : ''}${m.note ? `  (${m.note})` : ''}`
 const RATIO_STEP = 0.05
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err))
@@ -41,6 +51,7 @@ export function LocaleRules({ onBack }: LocaleRulesProps) {
   const [notice, setNotice] = useState<string>()
   const [cursor, setCursor] = useState(0)
   const [ruleCursor, setRuleCursor] = useState(0)
+  const [nounCursor, setNounCursor] = useState(0)
 
   const dirty = draft !== undefined && JSON.stringify(value) !== JSON.stringify(draft.value)
   const id = draft?.locale ?? ''
@@ -96,7 +107,24 @@ export function LocaleRules({ onBack }: LocaleRulesProps) {
     setNotice(undefined)
   }
 
+  const nouns = (list: NounList): string[] => value.properNouns?.[list] ?? draft?.builtIn.properNouns[list] ?? []
+  // A list edited for the first time is written out whole, built-in names
+  // included, since a list in the file replaces the built-in one. The other
+  // list stays out of the file and so stays built-in.
+  const setNouns = (list: NounList, names: string[]) => {
+    setValue({ ...value, properNouns: { ...(value.properNouns ?? {}), [list]: names } })
+    setNotice(undefined)
+  }
+
   useInput((ch, key) => {
+    // The list editors own their keys.
+    if (stage === 'mistakes' || stage === 'nounList') return
+    if (stage === 'nouns') {
+      if (key.escape) setStage('overview')
+      else if (key.upArrow || key.downArrow) setNounCursor((c) => (c === 0 ? 1 : 0))
+      else if (key.return) setStage('nounList')
+      return
+    }
     if (stage === 'pick') {
       if (key.escape) onBack()
       return
@@ -132,7 +160,7 @@ export function LocaleRules({ onBack }: LocaleRulesProps) {
       else onBack()
     } else if (key.upArrow) setCursor((c) => Math.max(0, c - 1))
     else if (key.downArrow) setCursor((c) => Math.min(SECTIONS.length - 1, c + 1))
-    else if (key.return) setStage(cursor === 0 ? 'rules' : 'ratio')
+    else if (key.return) setStage(SECTION_STAGE[cursor]!)
     else if (ch === 's' && dirty) void save()
   })
 
@@ -170,14 +198,13 @@ export function LocaleRules({ onBack }: LocaleRulesProps) {
           <Text>
             {marker(cursor === 1)}Glossary match     {ratio.toFixed(2)}
           </Text>
-          <Text dimColor>
-            {'  '}Proper nouns       {(value.properNouns?.always ?? draft.builtIn.properNouns.always).length} always ·{' '}
-            {(value.properNouns?.dateOnly ?? draft.builtIn.properNouns.dateOnly).length} date-only
+          <Text>
+            {marker(cursor === 2)}Proper nouns       {nouns('always').length} always · {nouns('dateOnly').length} date-only
           </Text>
-          <Text dimColor>{`  Common mistakes    ${value.mistakes.length}`}</Text>
+          <Text>{`${marker(cursor === 3)}Common mistakes    ${value.mistakes.length}`}</Text>
           <Text dimColor>{`  Patterns           ${value.patterns.length}`}</Text>
           <Text dimColor>{`  Guidance           ${value.guidance?.trim().length ?? 0} of ${GUIDANCE_LIMIT} characters`}</Text>
-          <Text dimColor>  The dimmed sections are edited with: polyglots rules edit {id}</Text>
+          <Text dimColor>  Patterns and guidance are edited with: polyglots rules edit {id}</Text>
           {dirty && (
             <Text color="yellow">
               Saving changes the rules for {id}: the next review of every {id} file starts over.
@@ -203,6 +230,60 @@ export function LocaleRules({ onBack }: LocaleRulesProps) {
           ))}
           <Hint>↑↓ move · space toggle · esc back to the overview</Hint>
         </>
+      )}
+
+      {draft && stage === 'nouns' && (
+        <>
+          {NOUN_LISTS.map((l, i) => (
+            <Text key={l.key}>
+              {marker(i === nounCursor)}
+              {l.label.padEnd(26)}
+              <Text dimColor>
+                {nouns(l.key).length} names{value.properNouns?.[l.key] ? '' : ', built-in'}
+              </Text>
+            </Text>
+          ))}
+          <Hint>↑↓ move · enter open · esc back to the overview</Hint>
+        </>
+      )}
+
+      {draft && stage === 'nounList' && (
+        <ListEditor<string>
+          title={NOUN_LISTS[nounCursor]!.label}
+          items={nouns(NOUN_LISTS[nounCursor]!.key)}
+          empty="No names."
+          describe={(n) => n}
+          fields={[{ key: 'name', label: 'Name', required: true }]}
+          toForm={(n) => ({ name: n })}
+          fromForm={(v) => v.name!.trim()}
+          onChange={(names) => setNouns(NOUN_LISTS[nounCursor]!.key, names)}
+          onBack={() => setStage('nouns')}
+        />
+      )}
+
+      {draft && stage === 'mistakes' && (
+        <ListEditor<Mistake>
+          title="Common mistakes"
+          items={value.mistakes}
+          empty="No mistakes yet. A match goes to the AI review with your note."
+          describe={describeMistake}
+          fields={[
+            { key: 'wrong', label: 'Wrong', required: true },
+            { key: 'right', label: 'Right' },
+            { key: 'note', label: 'Note' },
+          ]}
+          toForm={(m) => ({ wrong: m.wrong, right: m.right ?? '', note: m.note ?? '' })}
+          fromForm={(v) => ({
+            wrong: v.wrong!.trim(),
+            ...(v.right?.trim() ? { right: v.right.trim() } : {}),
+            ...(v.note?.trim() ? { note: v.note.trim() } : {}),
+          })}
+          onChange={(mistakes) => {
+            setValue({ ...value, mistakes })
+            setNotice(undefined)
+          }}
+          onBack={() => setStage('overview')}
+        />
       )}
 
       {draft && stage === 'ratio' && (
