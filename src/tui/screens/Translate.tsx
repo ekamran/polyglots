@@ -4,6 +4,7 @@ import { Box, Text, useInput } from 'ink'
 import TextInput from 'ink-text-input'
 import type { TranslateEvent, TranslateSummary } from '../../commands/translate.js'
 import { normalizeLocale } from '../../tmx/parse.js'
+import { resolveLocale } from '../../wporg/locales.js'
 import type { DraftEngineChoice } from '../../types.js'
 import { useCommands, useConfig } from '../commands.js'
 import { poEntryCount } from '../../po/count.js'
@@ -122,7 +123,7 @@ export function Translate({ cwd, onBack }: TranslateProps) {
       if (focus === FIELD_BATCH) setBatchSize((n) => next(batchSizeChoices(config.batchSize), n, step))
     } else if (key.return && focus !== FIELD_LOCALE) {
       if (focus === FIELD_START) {
-        const normalized = normalizeLocale(locale)
+        const normalized = resolveLocale(locale)?.id ?? normalizeLocale(locale)
         if (normalized.length > 0) {
           setLocale(normalized)
           // No second question, on either mode. Choosing `all` is the choice,

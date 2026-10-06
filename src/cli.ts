@@ -9,6 +9,8 @@ import { exportGlossary } from './commands/glossary-export.js'
 import { exportTm, type TmExportFormat } from './commands/tm-export.js'
 import { fetchProjects, resolveProjects } from './commands/fetch.js'
 import { runFetch, type FetchFlags } from './cli/fetch.js'
+import { copyRules, describeRules, editRules, openInEditor, type OpenEditor } from './cli/rules.js'
+import { loadLocaleRules, localeRulesFile } from './rules/load.js'
 import { syncGlossary } from './commands/glossary-sync.js'
 import { reviewFile } from './commands/review.js'
 import { splitPo } from './commands/split.js'
@@ -65,6 +67,7 @@ export interface CliDeps {
   writeStats?: typeof writeStats
   resolveProjects?: typeof resolveProjects
   fetchProjects?: typeof fetchProjects
+  openEditor?: OpenEditor
   runTui?: RunTui
 }
 
@@ -80,6 +83,7 @@ interface Cli {
   writeStats: typeof writeStats
   resolveProjects: typeof resolveProjects
   fetchProjects: typeof fetchProjects
+  openEditor: OpenEditor
   runTui: RunTui
   config: () => PolyglotsConfig
   out(line: string): void
@@ -111,6 +115,7 @@ function createCli(deps: CliDeps): Cli {
     writeStats: deps.writeStats ?? writeStats,
     resolveProjects: deps.resolveProjects ?? resolveProjects,
     fetchProjects: deps.fetchProjects ?? fetchProjects,
+    openEditor: deps.openEditor ?? openInEditor,
     runTui: deps.runTui ?? loadTui,
     config: () => (cached ??= loadConfig()),
     out: (line) => streams.stdout.write(`${line}\n`),
@@ -193,6 +198,7 @@ async function runTranslate(cli: Cli, patterns: string[], flags: TranslateFlags)
   const files = expandFileArgs(patterns)
   const config = cli.config()
   const locale = parseLocaleArg(flags.locale ?? config.defaultLocale)
+  loadLocaleRules(locale)
   const draftEngine = parseDraftEngine(flags.draftEngine ?? config.defaultDraftEngine)
   const batchSize = flags.batchSize === undefined ? config.batchSize : parsePositiveInt('--batch-size', flags.batchSize)
   const dryRun = flags.dryRun === true
@@ -409,6 +415,35 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
       setExitCode(await runTranslate(cli, files, flags))
     })
 
+  const rules = program.command('rules').description('Locale-specific rules: built-in switches, common mistakes, patterns, guidance')
+  rules
+    .command('edit [locale]')
+    .description('Open the locale rules file in $VISUAL or $EDITOR, creating it with the defaults if needed')
+    .action(async (raw: string | undefined) => {
+      const locale = parseLocaleArg(raw ?? cli.config().defaultLocale)
+      for (const line of await editRules(locale, cli.openEditor)) cli.out(line)
+    })
+  rules
+    .command('check [locale]')
+    .description('Validate the locale rules file and summarise what it sets')
+    .action((raw: string | undefined) => {
+      const locale = parseLocaleArg(raw ?? cli.config().defaultLocale)
+      for (const line of describeRules(locale)) cli.out(line)
+    })
+  rules
+    .command('copy <from> <to>')
+    .description('Duplicate one locale\'s rules file as another\'s, e.g. nl_NL to nl_BE')
+    .option('--force', 'Replace the target file if it exists')
+    .action(async (from: string, to: string, flags: { force?: boolean }) => {
+      for (const line of await copyRules(parseLocaleArg(from), parseLocaleArg(to), flags.force === true)) cli.out(line)
+    })
+  rules
+    .command('path [locale]')
+    .description('Print where the locale rules file lives')
+    .action((raw: string | undefined) => {
+      cli.out(localeRulesFile(parseLocaleArg(raw ?? cli.config().defaultLocale)))
+    })
+
   const tm = program.command('tm').description('Translation memory')
   tm.command('import <files...>')
     .description('Import TMX or .po exports into the local translation memory (additive)')
@@ -472,6 +507,9 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
       const [target] = expandFileArgs([raw])
       const config = cli.config()
       const locale = parseLocaleArg(flags.locale ?? config.defaultLocale)
+      // Before anything else: a review must not run on rules the person
+      // believes are in force when the file that says so cannot be read.
+      loadLocaleRules(locale)
       const batchSize =
         flags.batchSize === undefined ? config.batchSize : parsePositiveInt('--batch-size', flags.batchSize)
       const advice = batchAdvice(config.reviewProvider, batchSize)

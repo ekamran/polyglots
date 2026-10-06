@@ -1,6 +1,6 @@
 import { existsSync, globSync, statSync } from 'node:fs'
+import { resolveLocale, suggestLocales } from '../wporg/locales.js'
 import { resolve } from 'node:path'
-import { normalizeLocale } from '../tmx/parse.js'
 import type { CsvDelimiter } from '../commands/glossary-export.js'
 import { isReviewProvider, PROVIDERS } from '../agent/providers.js'
 import type { Locale, ReviewProvider, Secrets } from '../types.js'
@@ -51,19 +51,18 @@ export function parsePositiveInt(flag: string, raw: string): number {
   return value
 }
 
-// translate.wordpress.org slugs are "tr", "pt-br", "zh-cn"; a WordPress locale code such as
-// "tr_TR" would silently produce empty glossary/consistency results and a TM locale nobody imported.
+// Whatever a translator types (nl_NL_formal, nl-be, nl/formal) becomes the id
+// polyglots uses: the wp.org slug, plus the translation set when it is not the
+// default. The mapping is wp.org's own table, shipped with the build, because
+// it cannot be computed: nl_NL is "nl" while nl_BE is "nl-be".
 export function parseLocaleArg(raw: string): Locale {
-  const locale = normalizeLocale(raw)
-  if (!locale) throw new UsageError('--locale must not be empty')
-  const [language, region, ...rest] = locale.split('-')
-  const looksLikeWpCode = raw.includes('_') || (region !== undefined && region === language) || rest.length > 0
-  if (looksLikeWpCode) {
-    throw new UsageError(
-      `Locale "${raw.trim()}" is not a translate.wordpress.org slug; use "${language}" (or a regional slug such as pt-br)`,
-    )
-  }
-  return locale
+  if (raw.trim() === '') throw new UsageError('--locale must not be empty')
+  const resolved = resolveLocale(raw)
+  if (resolved) return resolved.id
+  const near = suggestLocales(raw)
+  throw new UsageError(
+    `Locale "${raw.trim()}" is not listed on translate.wordpress.org` + (near.length ? `; did you mean ${near.join(', ')}?` : ''),
+  )
 }
 
 const SECRET_NAMES: ReadonlyArray<keyof Secrets> = ['DEEPL_API_KEY', 'OPENAI_API_KEY']

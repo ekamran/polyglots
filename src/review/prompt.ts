@@ -1,13 +1,10 @@
+import { guidanceSection } from '../rules/guidance.js'
+import { localeDisplayName, splitLocale } from '../wporg/locales.js'
 import type { Locale, ReviewInput } from '../types.js'
 
 export function localeLabel(locale: Locale): string {
-  try {
-    const name = new Intl.DisplayNames(['en'], { type: 'language', fallback: 'none' }).of(locale)
-    if (name && name !== locale) return `${name} (${locale})`
-  } catch {
-    // RangeError for syntactically invalid tags; fall through to the bare code
-  }
-  return `locale ${locale}`
+  const name = localeDisplayName(locale)
+  return name !== splitLocale(locale).slug ? `${name} (${locale})` : `locale ${locale}`
 }
 
 export function buildReviewPrompt(inputs: ReviewInput[], locale: Locale, nplurals: number): string {
@@ -21,6 +18,8 @@ export function buildReviewPrompt(inputs: ReviewInput[], locale: Locale, nplural
         ...(input.msgidPlural !== undefined ? { msgidPlural: input.msgidPlural } : {}),
         comments: input.comments,
         drafts: input.drafts,
+        ...(input.automatedChecks?.length ? { automatedChecks: input.automatedChecks } : {}),
+        ...(input.control ? { control: true } : {}),
       }
       return `${i + 1}. ${JSON.stringify(entry)}`
     })
@@ -41,7 +40,9 @@ Rules:
 - Use the formal/neutral register that is standard in WordPress ${language}.
 - Do not translate brand names, product names, code, shortcodes, URLs, CSS classes or option keys.
 - Use the .po comments and msgctxt to disambiguate; they describe where and how the string is used.
-
+- An entry marked "control" is a setting WordPress code reads, not text: "on" or "off" for a font, "ltr" for text direction, a language tag, a number separator. Its draft is the source value. Set it to the value its translator comment says fits this locale. Never translate the English word.
+- Some entries carry "automatedChecks": findings from deterministic checks the draft failed. Fix the ones that are real problems in your text and ignore the ones that are not. A check about placeholders, HTML or the number of plural forms is always real.
+${guidanceSection(locale)}
 Fuzzy rule:
 - Set fuzzy=true ONLY when a competent human should double-check the entry: ambiguous source text, a glossary conflict, uncertain context, or uncertainty about placeholders or HTML.
 - Otherwise fuzzy=false. The goal is minimal human review, so do not over-flag. A confident, glossary-compliant translation is not fuzzy.

@@ -10,6 +10,30 @@ Entries say what changed. For why and how, read the commit.
 
 ## [Unreleased]
 
+### Added
+
+- Per-locale rules file (`polyglots rules edit|check|copy|path`): switch built-in rules, proper
+  nouns, common mistakes, patterns at hint, error or fix level, and guidance for the AI review.
+- Translation sets such as `nl/formal`, `pt/ao90` and `sr/latin`, in every wp.org lookup and file name.
+- `--locale` accepts WordPress codes (`nl_NL_formal`, `tr_TR`), mapped by a wp.org locale table
+  that every build refreshes.
+- DeepL drafts for a formal or informal set ask for that register.
+- A `control` rule for settings WordPress code reads (`on`/`off` font switches, `ltr`, word count
+  type, number separators): checked against the values the translator comment allows.
+- `translate` checks its drafts with the review rules: fix patterns applied, findings sent to
+  the AI pass, and an entry still failing an error-level check marked fuzzy.
+
+### Changed
+
+- An invalid locale rules file stops `review`, `translate` and `fetch` before they start.
+- A locale wp.org does not list is refused, with suggestions, instead of being used as typed.
+- Control strings skip the draft engine and every other rule, so `on` is never translated as a word.
+- Cached verdicts and draft reviews run again once on the next run.
+
+### Fixed
+
+- The requester link works for plugin readme sub-projects.
+
 ## [0.20.1] - 2026-10-03
 
 ### Changed

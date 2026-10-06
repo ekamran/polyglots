@@ -3,6 +3,7 @@ import { useRef, useState } from 'react'
 import { Box, Text, useInput } from 'ink'
 import TextInput from 'ink-text-input'
 import { normalizeLocale } from '../../tmx/parse.js'
+import { resolveLocale } from '../../wporg/locales.js'
 import type { ReviewEvent, ReviewSummary } from '../../types.js'
 import { batchAdvice } from '../../agent/providers.js'
 import { useCommands, useConfig } from '../commands.js'
@@ -116,7 +117,7 @@ export function Review({ cwd, onBack }: ReviewProps) {
       }
     } else if (key.return && focus !== FIELD_LOCALE) {
       if (focus === FIELD_START) {
-        const normalized = normalizeLocale(locale)
+        const normalized = resolveLocale(locale)?.id ?? normalizeLocale(locale)
         if (normalized.length > 0) {
           setLocale(normalized)
           start(normalized)

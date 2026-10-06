@@ -179,7 +179,9 @@ describe('glossaryUrl', () => {
 
   it('encodes locale slugs', () => {
     expect(glossaryUrl('pt-br')).toBe('https://translate.wordpress.org/locale/pt-br/default/glossary/')
-    expect(glossaryUrl('a/b')).toBe('https://translate.wordpress.org/locale/a%2Fb/default/glossary/')
+    // A slash separates the translation set (nl/formal); anything else odd is encoded.
+    expect(glossaryUrl('nl/formal')).toBe('https://translate.wordpress.org/locale/nl/formal/glossary/')
+    expect(glossaryUrl('a b')).toBe('https://translate.wordpress.org/locale/a%20b/default/glossary/')
   })
 })
 

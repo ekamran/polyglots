@@ -1,3 +1,5 @@
+import { loadLocaleRules } from '../../rules/load.js'
+import { languageOf } from '../../wporg/locales.js'
 import type { Locale } from '../../types.js'
 
 // Categories TDK capitalizes that a brand allowlist does not cover: day and
@@ -78,6 +80,13 @@ const BY_LANGUAGE: Record<string, ProperNouns> = {
 // Suffixes attach directly to these (Mayıs'ta, Türkçeye), so a prefix match is
 // what identifies them, not equality.
 export function properNounsFor(locale: Locale): ProperNouns {
-  const language = locale.toLowerCase().split(/[-_]/)[0] ?? locale
-  return BY_LANGUAGE[language] ?? EMPTY
+  const base = builtInProperNounsFor(locale)
+  const file = loadLocaleRules(locale)?.properNouns
+  // Each list the file names replaces the built-in one; the other is kept, so
+  // a file can correct the month names without restating every language name.
+  return file ? { always: file.always ?? base.always, dateOnly: file.dateOnly ?? base.dateOnly } : base
+}
+
+export function builtInProperNounsFor(locale: Locale): ProperNouns {
+  return BY_LANGUAGE[languageOf(locale)] ?? EMPTY
 }

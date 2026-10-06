@@ -15,6 +15,7 @@ import {
 import type { reviewFile } from '../commands/review.js'
 import type { translateFile } from '../commands/translate.js'
 import { loadSecrets } from '../config.js'
+import { loadLocaleRules } from '../rules/load.js'
 import { createRunControl, type RunControl, type RunState } from '../run-control.js'
 import type { PolyglotsConfig } from '../types.js'
 import { parseProjectLines, type FetchStatus } from '../wporg/projects.js'
@@ -89,6 +90,7 @@ export async function runFetch(cli: FetchCli, names: string[], flags: FetchFlags
   }
   const config = cli.config()
   const locale = parseLocaleArg(flags.locale ?? config.defaultLocale)
+  loadLocaleRules(locale)
   const batchSize = flags.batchSize === undefined ? config.batchSize : parsePositiveInt('--batch-size', flags.batchSize)
   const outDir = flags.outDir ?? defaultOutDir()
   const review = status === 'waiting'

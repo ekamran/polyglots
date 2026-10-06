@@ -139,6 +139,8 @@ export function normalizeLocale(locale: string): string {
 }
 
 export function localeMatches(wanted: string, actual: string): boolean {
+  // A file never names a translation set (nl/formal); its language decides.
+  wanted = wanted.split('/')[0] ?? wanted
   if (!wanted || !actual) return false
   if (wanted === actual) return true
   const wantedLang = wanted.split('-')[0]

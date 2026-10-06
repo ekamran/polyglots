@@ -1,4 +1,5 @@
 import * as cheerio from 'cheerio'
+import { splitLocale } from './locales.js'
 import type { CheerioAPI } from 'cheerio'
 import type { GlossaryEntry, Locale } from '../types.js'
 import { fetchHtml } from './http.js'
@@ -14,7 +15,9 @@ export interface GlossaryPage {
 }
 
 export function glossaryUrl(locale: Locale): string {
-  return `${ORIGIN}/locale/${encodeURIComponent(locale)}/default/glossary/`
+  // A variant set has its own glossary: nl/formal differs from nl.
+  const { slug, set } = splitLocale(locale)
+  return `${ORIGIN}/locale/${encodeURIComponent(slug)}/${encodeURIComponent(set)}/glossary/`
 }
 
 const clean = (text: string): string => text.replace(/\s+/g, ' ').trim()

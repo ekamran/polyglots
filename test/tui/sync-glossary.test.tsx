@@ -53,8 +53,8 @@ describe('SyncGlossary', () => {
     stdin.write('_TR ')
     await waitForText(lastFrame, 'tr_TR')
     stdin.write(keys.enter)
-    await waitForText(lastFrame, 'Synced 42 glossary entries for tr-tr.')
-    expect(vi.mocked(commands.syncGlossary).mock.calls[0]![0]).toMatchObject({ locale: 'tr-tr' })
+    await waitForText(lastFrame, 'Synced 42 glossary entries for tr.')
+    expect(vi.mocked(commands.syncGlossary).mock.calls[0]![0]).toMatchObject({ locale: 'tr' })
   })
 
   it('shows a failure and lets the user fix the locale and retry without leaving the screen', async () => {

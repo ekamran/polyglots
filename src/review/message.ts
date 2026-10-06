@@ -15,6 +15,7 @@
  * to a 404 under the reviewer's name.
  */
 import { basename } from 'node:path'
+import { localeFileTag, splitLocale } from '../wporg/locales.js'
 
 export interface ReportGroup {
   key: string
@@ -143,19 +144,21 @@ const CORE_PROJECTS: Record<string, string> = {
 export function translationsUrl(file: string, locale: string, username: string): string | undefined {
   if (!username) return undefined
   const name = basename(file).replace(/\.po$/i, '').replace(OWN_SUFFIX, '')
-  const suffix = `-${locale}`
+  // A file name cannot hold the slash of nl/formal, so it is written nl-formal.
+  const suffix = `-${localeFileTag(locale)}`
   if (!name.toLowerCase().endsWith(suffix.toLowerCase())) return undefined
   const body = name.slice(0, -suffix.length)
-  const localeSlug = name.slice(-locale.length)
+  const { slug, set } = splitLocale(locale)
+  const at = `${slug}/${set}`
 
-  const plugin = /^wp-plugins-(.+)-(dev|stable)$/.exec(body)
-  if (plugin) return `${WPORG_BASE}/wp-plugins/${plugin[1]!}/${plugin[2]!}/${localeSlug}/default/?${FILTERS}${username}`
+  const plugin = /^wp-plugins-(.+)-(dev-readme|stable-readme|dev|stable)$/.exec(body)
+  if (plugin) return `${WPORG_BASE}/wp-plugins/${plugin[1]!}/${plugin[2]!}/${at}/?${FILTERS}${username}`
 
   const theme = /^wp-themes-(.+)$/.exec(body)
-  if (theme) return `${WPORG_BASE}/wp-themes/${theme[1]!}/${localeSlug}/default/?${FILTERS}${username}`
+  if (theme) return `${WPORG_BASE}/wp-themes/${theme[1]!}/${at}/?${FILTERS}${username}`
 
   const core = CORE_PROJECTS[body]
-  if (core) return `${WPORG_BASE}/${core}/${localeSlug}/default/?${FILTERS}${username}`
+  if (core) return `${WPORG_BASE}/${core}/${at}/?${FILTERS}${username}`
 
   return undefined
 }

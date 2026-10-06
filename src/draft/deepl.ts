@@ -1,4 +1,5 @@
 import { DeepLClient, QuotaExceededError, TooManyRequestsError } from 'deepl-node'
+import { splitLocale } from '../wporg/locales.js'
 import type { SourceLanguageCode, TargetLanguageCode, TranslateTextOptions } from 'deepl-node'
 import { chunk } from '../batch.js'
 import type { DraftEngine, DraftResult, Locale, TranslationUnit } from '../types.js'
@@ -25,7 +26,8 @@ export const DEEPL_MAX_TEXTS_PER_REQUEST = 50
 
 // DeepL rejects a region on every target except these families, and rejects the bare en/pt/zh codes.
 export function toDeepLTarget(locale: Locale): TargetLanguageCode {
-  const [lang = '', region] = locale.toLowerCase().split(/[-_]/, 2)
+  // The slug only: nl/formal asks DeepL for nl, with the register as an option.
+  const [lang = '', region] = splitLocale(locale).slug.toLowerCase().split(/[-_]/, 2)
   switch (lang) {
     case 'en':
       return region === 'us' || region === undefined ? 'en-US' : 'en-GB'
@@ -56,12 +58,19 @@ export function createDeepLEngine(opts: DeepLEngineOptions): DraftEngine {
 
       const texts = units.flatMap((u) => (u.msgidPlural === undefined ? [u.msgid] : [u.msgid, u.msgidPlural]))
       const target = toDeepLTarget(locale)
+      // A formal or informal set is exactly what DeepL's formality option is
+      // for. "prefer_" so a language DeepL has no formality for still works.
+      const { set } = splitLocale(locale)
+      const options: TranslateTextOptions = {
+        preserveFormatting: true,
+        ...(set === 'formal' ? { formality: 'prefer_more' as const } : set === 'informal' ? { formality: 'prefer_less' as const } : {}),
+      }
 
       const translated: string[] = []
       for (const part of chunk(texts, DEEPL_MAX_TEXTS_PER_REQUEST)) {
         let out: ReadonlyArray<{ readonly text: string }>
         try {
-          out = await client.translateText(part, 'en', target, { preserveFormatting: true })
+          out = await client.translateText(part, 'en', target, options)
         } catch (err) {
           throw mapDeepLError(err)
         }

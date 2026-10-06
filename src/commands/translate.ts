@@ -1,4 +1,8 @@
 import type Database from 'better-sqlite3'
+import { controlSpec } from '../audit/control.js'
+import { createDraftChecker } from '../translate/checks.js'
+import { configuredProperNouns } from './review.js'
+import { intlTag } from '../wporg/locales.js'
 import { chunk } from '../batch.js'
 import type { RunControl } from '../run-control.js'
 import { loadConfig, loadSecrets } from '../config.js'
@@ -25,7 +29,7 @@ import {
 import { MCP_ENV, writeMcpConfig } from '../mcp/config.js'
 import { loadPo, type ApplyResult, type PoFile } from '../po/po-file.js'
 import { reviewBatch } from '../review/draft-review.js'
-import { findMemory, openDb } from '../storage/index.js'
+import { allGlossary, findMemory, openDb } from '../storage/index.js'
 import { normalizeLocale } from '../tmx/parse.js'
 import type {
   DraftEngine,
@@ -128,7 +132,7 @@ function resolveBatchSize(requested: number | undefined): number {
  * choice; two different wordings are, and filling an entry has to pick one.
  */
 function ambiguous(alternatives: readonly { target: string }[], locale: Locale): boolean {
-  return new Set(alternatives.map((a) => a.target.toLocaleLowerCase(locale))).size > 1
+  return new Set(alternatives.map((a) => a.target.toLocaleLowerCase(intlTag(locale)))).size > 1
 }
 
 // A TM row per msgid/msgidPlural only maps onto exactly two plural forms; other counts go through the engine.
@@ -171,6 +175,13 @@ async function draft(
   const drafts: Drafts = new Map()
   const missing: TranslationUnit[] = []
   for (const unit of units) {
+    // A setting the code reads never goes to a machine engine, which would
+    // turn "on" into "açık". Its draft is the source value; the AI pass sets
+    // it from the translator comment.
+    if (controlSpec(unit)) {
+      drafts.set(unit.key, unit.msgidPlural === undefined ? [unit.msgid] : Array.from({ length: nplurals }, () => unit.msgid))
+      continue
+    }
     const hit = cache?.get(unit)
     if (hit) drafts.set(unit.key, hit)
     else missing.push(unit)
@@ -280,22 +291,32 @@ async function reviewDrafts(
   nplurals: number,
   mcpConfigPath: string,
   cache?: ReviewCache,
+  checks?: Map<string, string[]>,
 ): Promise<ReviewResult[]> {
   const byKey = new Map(units.map((u) => [u.key, u]))
-  const inputs: ReviewInput[] = units.map((u) => ({
-    key: u.key,
-    msgid: u.msgid,
-    ...(u.msgctxt !== undefined ? { msgctxt: u.msgctxt } : {}),
-    ...(u.msgidPlural !== undefined ? { msgidPlural: u.msgidPlural } : {}),
-    comments: u.comments,
-    drafts: drafts.get(u.key) ?? [],
-  }))
+  const inputs: ReviewInput[] = units.map((u) => {
+    const failed = checks?.get(u.key) ?? []
+    return {
+      key: u.key,
+      msgid: u.msgid,
+      ...(u.msgctxt !== undefined ? { msgctxt: u.msgctxt } : {}),
+      ...(u.msgidPlural !== undefined ? { msgidPlural: u.msgidPlural } : {}),
+      comments: u.comments,
+      drafts: drafts.get(u.key) ?? [],
+      ...(failed.length > 0 ? { automatedChecks: failed } : {}),
+      ...(controlSpec(u) ? { control: true } : {}),
+    }
+  })
+  // The checks are part of what the AI was asked, so they key its answer: a
+  // glossary or rule edit that changes one entry's checks re-asks for that
+  // entry alone. A clean draft keys exactly as it did before checks existed.
+  const asked = (input: ReviewInput) => [...input.drafts, ...(input.automatedChecks ?? []).map((c) => `\u0000check ${c}`)]
 
   const cached: ReviewResult[] = []
   const missing: ReviewInput[] = []
   for (const input of inputs) {
     const unit = byKey.get(input.key)
-    const hit = unit && cache?.get(unit, input.drafts)
+    const hit = unit && cache?.get(unit, asked(input))
     if (hit) cached.push({ key: input.key, text: hit.text, fuzzy: hit.fuzzy, reason: hit.reason })
     else missing.push(input)
   }
@@ -312,10 +333,11 @@ async function reviewDrafts(
         })
       : []
 
+  const askedByKey = new Map(missing.map((input) => [input.key, asked(input)]))
   for (const result of fresh) {
     const unit = byKey.get(result.key)
     if (unit) {
-      cache?.put(unit, drafts.get(result.key) ?? [], {
+      cache?.put(unit, askedByKey.get(result.key) ?? drafts.get(result.key) ?? [], {
         text: result.text,
         fuzzy: result.fuzzy,
         reason: result.reason,
@@ -370,8 +392,9 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
   // opened, nor leave history claiming the run is still going.
   let runId: number | undefined
   try {
-    // Translate runs no rules and its review prompt inlines no glossary, so the
-    // only thing that can invalidate a draft review is that prompt itself. The
+    // The prompt is what this hash covers. The rules' findings on each draft
+    // are part of that entry's own cache key instead (see reviewDrafts), so a
+    // rule or glossary edit re-asks only the entries it changes. The
     // draft has its own configuration, the draft engine's prompt, and its own
     // pruning: a cached draft is written straight into the user's .po, so it
     // must not outlive the instructions that produced it.
@@ -442,6 +465,16 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
       const review = opts.review ?? reviewBatch
       const mcpConfigPath = opts.mcpConfigPath ?? (await writeMcpConfig({ env: { [MCP_ENV.locale]: locale } }))
 
+      // Review's rules, on translate's own drafts: built once for the file.
+      const checker = createDraftChecker({
+        locale,
+        nplurals: po.nplurals,
+        glossary: allGlossary(db, locale),
+        properNouns: configuredProperNouns(locale),
+        units: rest,
+      })
+      const unitOf = new Map(rest.map((u) => [u.key, u]))
+
       let consecutiveSkips = 0
 
       batchLoop: for (const [i, batch] of batches.entries()) {
@@ -461,8 +494,18 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
         for (let attempt = 0; attempt < 2 && results === undefined; attempt++) {
           try {
             drafts ??= await draft(batch, engine, locale, po.nplurals, draftCache)
+            // Fixed after the draft cache, never before it: editing a fix
+            // pattern must not throw away what the engine was paid to write.
+            const prepared = new Map(batch.map((u) => [u.key, checker.prepare(u, drafts!.get(u.key) ?? [])]))
+            const fixedDrafts: Drafts = new Map([...prepared].map(([k, p]) => [k, p.drafts]))
+            const checks = new Map([...prepared].map(([k, p]) => [k, p.checks]))
             emit({ type: 'batch-phase', index, phase: 'reviewing', at: Date.now() })
-            results = await reviewDrafts(batch, drafts, review, opts, locale, po.nplurals, mcpConfigPath, reviewCache)
+            results = (
+              await reviewDrafts(batch, fixedDrafts, review, opts, locale, po.nplurals, mcpConfigPath, reviewCache, checks)
+            ).map((r) => {
+              const unit = unitOf.get(r.key)
+              return unit ? checker.finalize(unit, r) : r
+            })
           } catch (err) {
             if (isStopError(err)) {
               summary.stopped = err.message

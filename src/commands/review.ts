@@ -160,7 +160,7 @@ function addTally(into: Record<string, number>, from: Record<string, number>): R
 
 // Names the locale team maintains in config.json, keyed by language subtag so a
 // regional locale (pt-br) still picks up the language's list.
-function configuredProperNouns(locale: Locale): string[] {
+export function configuredProperNouns(locale: Locale): string[] {
   let all: Record<string, string[]>
   try {
     all = loadConfig().properNouns

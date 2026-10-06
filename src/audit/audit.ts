@@ -1,4 +1,5 @@
 import { chunk } from '../batch.js'
+import { controlSpec } from './control.js'
 import type { RunControl } from '../run-control.js'
 import { runAgent, type AgentRunOptions } from '../agent/run.js'
 import { auditSrcHash } from '../jobs/hash.js'
@@ -6,6 +7,7 @@ import type { CachedVerdict, VerdictKey } from '../jobs/verdicts.js'
 import type { AuditEntry, Finding, GlossaryEntry, Locale } from '../types.js'
 import { buildAuditPrompt, type AuditCandidate } from './prompt.js'
 import { judgeFix, repairMechanically } from './repair.js'
+import { applyFixPatterns } from '../rules/custom.js'
 import { auditBatchJsonSchema, mapAuditResults, type AuditResult } from './schema.js'
 import {
   buildRuleContext,
@@ -146,11 +148,16 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
     // Repair what needs no judgment first, then let the rules judge the result.
     // An entry whose only fault was whitespace comes out clean here and takes
     // the ordinary path, rather than being condemned to a file nobody can fix.
-    const repaired = repairMechanically(original)
+    const restored = repairMechanically(original)
+    // Then the locale file's fix patterns, on the restored text: both are
+    // mechanical, and the rules should judge what the two produced together.
+    const fixed = applyFixPatterns({ msgid: original.msgid, msgstr: restored ?? original.msgstr }, ctx.customPatterns ?? [], ctx.locale)
+    const repaired = fixed?.forms ?? restored
     const entry = repaired ? { ...original, msgstr: repaired } : original
-    const mechanical: Finding[] = repaired
-      ? [{ rule: 'repaired', severity: 'suspect', message: 'whitespace restored to match the source' }]
-      : []
+    const mechanical: Finding[] = [
+      ...(restored ? [{ rule: 'repaired', severity: 'suspect' as const, message: 'whitespace restored to match the source' }] : []),
+      ...(fixed ? [{ rule: 'repaired', severity: 'suspect' as const, message: `locale rule: ${fixed.notes.join('; ')}` }] : []),
+    ]
     const base = repaired ? { text: repaired, repairedBy: 'rules' as const } : {}
 
     const findings = [...mechanical, ...runRules(entry, ctx)]
@@ -219,8 +226,12 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
     }
     // Resolved once per entry, from the same matcher the glossary rule uses, so
     // the prompt states the binding terms instead of making the model ask.
-    const terms = glossaryFor(entry.msgid, ctx)
-    const memory = opts.tm?.get(key)
+    // A setting the code reads takes no glossary term or memory wording: the
+    // translator comment decides its value, and "kapalı" for "off" is exactly
+    // the mistake a glossary match would invite.
+    const control = controlSpec(entry) !== undefined
+    const terms = control ? [] : glossaryFor(entry.msgid, ctx)
+    const memory = control ? undefined : opts.tm?.get(key)
     candidates.push({
       id: 0,
       key: entry.key,
@@ -235,6 +246,7 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
       ...(memory ? { memory } : {}),
       ...(errors.length > 0 ? { condemned: findings } : {}),
       ...(repaired ? { repaired: { text: repaired, repairedBy: 'rules' as const } } : {}),
+      ...(control ? { control: true } : {}),
     })
   }
 

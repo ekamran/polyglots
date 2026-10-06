@@ -3,6 +3,7 @@ import { Box, Text } from 'ink'
 import TextInput from 'ink-text-input'
 import type { SyncGlossaryResult } from '../../commands/glossary-sync.js'
 import { normalizeLocale } from '../../tmx/parse.js'
+import { resolveLocale } from '../../wporg/locales.js'
 import { useCommands, useConfig } from '../commands.js'
 import { DONE_HINT, Hint } from '../components/Hint.js'
 import { useBackKeys } from '../hooks/useBackKeys.js'
@@ -26,7 +27,7 @@ export function SyncGlossary({ onBack }: SyncGlossaryProps) {
   useBackKeys(onBack, { enabled: !running, allowQ: !editing, onEnter: failed ? task.reset : finished ? onBack : undefined })
 
   const submit = (value: string) => {
-    const normalized = normalizeLocale(value)
+    const normalized = resolveLocale(value)?.id ?? normalizeLocale(value)
     if (normalized.length === 0) return
     setLocale(normalized)
     task.run(() => commands.syncGlossary({ locale: normalized }))

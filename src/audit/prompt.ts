@@ -1,7 +1,9 @@
 import type { Finding, Locale } from '../types.js'
+import { localeDisplayName } from '../wporg/locales.js'
 import type { GlossaryMatch } from './rules/index.js'
 import { AUDIT_CATEGORIES } from './schema.js'
 import { profileFor } from './rules/profiles.js'
+import { guidanceSection } from '../rules/guidance.js'
 
 const GLOSSARY_LIMIT = 12
 
@@ -33,14 +35,12 @@ export interface AuditCandidate {
   // Set when the deterministic rules already proved this entry wrong. Its
   // verdict is settled; the model is being asked for a fix, not an opinion.
   condemned?: Finding[]
+  // A setting WordPress code reads ("on" for a font switch), not text.
+  control?: boolean
 }
 
 function languageName(locale: Locale): string {
-  try {
-    return new Intl.DisplayNames(['en'], { type: 'language' }).of(locale) ?? locale
-  } catch {
-    return locale
-  }
+  return localeDisplayName(locale)
 }
 
 /**
@@ -98,6 +98,7 @@ export function buildAuditPrompt(candidates: AuditCandidate[], locale: Locale, n
       // Carried as a field rather than named as a list of rules in the guidance
       // below, so adding an error rule keeps the instruction true on its own.
       if (c.condemned) payload.condemned = true
+      if (c.control) payload.control = true
       return JSON.stringify(payload)
     })
     .join('\n')
@@ -113,7 +114,7 @@ ${capitalization}- Each entry's "references" are the source file and line the st
 - Placeholders (%s, %1$s, %d, {x}), HTML tags, and leading/trailing whitespace must match the source exactly.
 - Use the formal, neutral register standard in WordPress ${language}. No slang, no over-familiar address.
 - An entry's "memory" lists how this exact source has been translated and approved before, and every wording in it is already approved. Prefer one of them unless the source means something different here, or it breaks one of the standards above; where there are several, they are alternatives the locale accepts and any of them is a correct answer. You do not need tm_lookup for an entry that has one; call it only for near matches to an entry that has none. Call consistency_lookup to see how WordPress core already translates a string. Prefer established usage over a fresh invention.
-
+${guidanceSection(locale)}
 Some entries carry an "automatedChecks" list: findings from deterministic checks that could not be decided mechanically. ${language} may inflect a glossary term so it no longer matches the dictionary form exactly, and a check may be wrong on that basis. Adjudicate each one: confirm it only if it is a real problem, and clear it otherwise. Entries with no automatedChecks still need your own judgment on meaning, register and fluency.
 
 An entry marked "alreadyRepaired" had its leading and trailing whitespace restored to match the source before it reached you. That part is settled and is not yours to weigh: judge the translation as it now stands.
@@ -124,6 +125,7 @@ Categories: ${AUDIT_CATEGORIES.join(', ')}. Use an empty array when problem is f
 
 - When an entry is a problem, also return "fix": the corrected translation, as an array with one string per plural form. It must obey every standard above: the glossary, this locale's capitalization rules, the source's placeholders and HTML exactly, and the formal register.
 - If you are not confident what the entry should say, leave "fix" out entirely. An honest "I do not know" is worth more than a confident wrong translation, which a human then has to catch.
+- An entry marked "control" is a setting WordPress code reads, not text a person reads: "on" or "off" for a font, "ltr" for text direction, a language tag, a number separator. Its translator comment says which value to use. Never translate the English word; a fix is one of the values the comment names.
 - An entry marked "condemned" has been proved wrong by a deterministic check, so it is already known to be broken whatever you think of it. Do not argue about whether it is wrong; return the fix.
 
 There are ${candidates.length} entries below, with ids 1 to ${candidates.length}. Return exactly that many results, one per id. The count is stated so that nothing has to work it out: this prompt and the three lookup tools are everything you have. There is no shell and no filesystem, and reaching for one ends the batch with no output at all.

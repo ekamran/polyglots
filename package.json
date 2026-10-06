@@ -14,8 +14,9 @@
     "typecheck": "tsc -p tsconfig.test.json",
     "test": "vitest run",
     "dev": "tsx src/cli.ts",
-    "prepare": "node scripts/no-live-run.mjs && tsc",
-    "prebuild": "node scripts/no-live-run.mjs"
+    "prepare": "node scripts/no-live-run.mjs && node scripts/update-locales.mjs && tsc",
+    "prebuild": "node scripts/no-live-run.mjs && node scripts/update-locales.mjs",
+    "update-locales": "node scripts/update-locales.mjs"
   },
   "license": "MIT",
   "dependencies": {
@@ -32,6 +33,7 @@
     "ink-text-input": "^6.0.0",
     "openai": "^7.10.0",
     "react": "^19.2.8",
+    "yaml": "^2.9.1",
     "zod": "^4.5.4"
   },
   "devDependencies": {

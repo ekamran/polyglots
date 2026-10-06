@@ -105,7 +105,7 @@ describe('Translate run', () => {
     await waitForText(lastFrame, 'enter/q back to menu')
 
     expect(calls).toHaveLength(1)
-    expect(calls[0]).toMatchObject({ file: poFile, mode: 'all', draftEngine: 'deepl', locale: 'tr-tr' })
+    expect(calls[0]).toMatchObject({ file: poFile, mode: 'all', draftEngine: 'deepl', locale: 'tr' })
     expect(typeof calls[0]!.onProgress).toBe('function')
 
     stdin.write(keys.enter)

@@ -80,12 +80,19 @@ describe('parseLocaleArg', () => {
     expect(() => parseLocaleArg('  ')).toThrow(UsageError)
   })
 
-  it('rejects WordPress locale codes that are not translate.wordpress.org slugs', () => {
-    for (const bad of ['tr_TR', 'tr-TR', 'de_DE']) {
-      expect(() => parseLocaleArg(bad)).toThrow(UsageError)
-      expect(() => parseLocaleArg(bad)).toThrow(/translate\.wordpress\.org/)
-    }
-    expect(() => parseLocaleArg('tr_TR')).toThrow(/"tr"/)
+  // Translators say nl_NL_formal, not nl/formal; both must work.
+  it('accepts WordPress locale codes and maps them through the wp.org table', () => {
+    expect(parseLocaleArg('tr_TR')).toBe('tr')
+    expect(parseLocaleArg('tr-TR')).toBe('tr')
+    expect(parseLocaleArg('nl_BE')).toBe('nl-be')
+    expect(parseLocaleArg('nl_NL_formal')).toBe('nl/formal')
+    expect(parseLocaleArg('nl/formal')).toBe('nl/formal')
+  })
+
+  it('refuses a locale translate.wordpress.org does not list, suggesting real ones', () => {
+    expect(() => parseLocaleArg('nl_XX')).toThrow(UsageError)
+    expect(() => parseLocaleArg('nl_XX')).toThrow(/nl_NL/)
+    expect(() => parseLocaleArg('zz')).toThrow(/translate\.wordpress\.org/)
   })
 })
 

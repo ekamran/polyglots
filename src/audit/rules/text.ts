@@ -1,11 +1,12 @@
 import { BRACE_PLACEHOLDER, PRINTF_PLACEHOLDER } from '../../draft/placeholders.js'
+import { intlTag } from '../../wporg/locales.js'
 import type { Locale } from '../../types.js'
 
 // Turkish casing is not the invariant mapping: I lowercases to ı, İ to i. Every
 // case comparison in the rules goes through these so the dotted/dotless pairs
 // behave, whatever locale is being reviewed.
 export function lower(value: string, locale: Locale): string {
-  return value.toLocaleLowerCase(locale)
+  return value.toLocaleLowerCase(intlTag(locale))
 }
 
 export function isUpperFirst(word: string, locale: Locale): boolean {

@@ -1,4 +1,5 @@
 import * as cheerio from 'cheerio'
+import { localeFileTag, splitLocale } from './locales.js'
 import type { Locale } from '../types.js'
 
 const ORIGIN = 'https://translate.wordpress.org'
@@ -90,7 +91,11 @@ export function readSubProjects(html: string, type: ProjectType): SubProject[] {
   $('tr').each((_, tr) => {
     const href = $(tr).find('td.set-name a').attr('href')
     if (!href) return
-    const path = new RegExp(`/projects/${type}/[^/]+/(?:([^/]+)/)?[^/]+/default/`).exec(href)
+    // /projects/<type>/<slug>[/<branch>]/<locale>/<set>/: a plugin has a branch
+    // segment and a theme does not, and the set is whatever the run is in.
+    const path = new RegExp(
+      type === 'wp-plugins' ? '/projects/wp-plugins/[^/]+/([^/]+)/[^/]+/[^/]+/' : '/projects/wp-themes/[^/]+/[^/]+/[^/]+/',
+    ).exec(href)
     if (!path) return
     rows.push({
       branch: type === 'wp-plugins' ? path[1] : undefined,
@@ -102,7 +107,8 @@ export function readSubProjects(html: string, type: ProjectType): SubProject[] {
 }
 
 export function localePageUrl(type: ProjectType, slug: string, locale: Locale): string {
-  return `${ORIGIN}/locale/${locale}/default/${type}/${slug}/`
+  const { slug: localeSlug, set } = splitLocale(locale)
+  return `${ORIGIN}/locale/${localeSlug}/${set}/${type}/${slug}/`
 }
 
 export function exportUrl(
@@ -113,11 +119,13 @@ export function exportUrl(
   status: FetchStatus,
 ): string {
   const path = branch ? `${type}/${slug}/${branch}` : `${type}/${slug}`
-  return `${ORIGIN}/projects/${path}/${locale}/default/export-translations/?filters%5Bstatus%5D=${status}&format=po`
+  const { slug: localeSlug, set } = splitLocale(locale)
+  return `${ORIGIN}/projects/${path}/${localeSlug}/${set}/export-translations/?filters%5Bstatus%5D=${status}&format=po`
 }
 
 // The shape `translationsUrl` reads a project back out of, so a fetched file's
 // requester message links to the right page without anyone renaming it.
 export function projectFileName(type: ProjectType, slug: string, branch: string | undefined, locale: Locale): string {
-  return branch ? `${type}-${slug}-${branch}-${locale}.po` : `${type}-${slug}-${locale}.po`
+  const tag = localeFileTag(locale)
+  return branch ? `${type}-${slug}-${branch}-${tag}.po` : `${type}-${slug}-${tag}.po`
 }

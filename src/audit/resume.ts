@@ -4,6 +4,7 @@ import { VERSION } from '../version.js'
 import { buildAuditPrompt } from './prompt.js'
 import { REPAIRABLE_RULES } from './repair.js'
 import { profileFor } from './rules/profiles.js'
+import { loadLocaleRules, rulesFingerprint } from '../rules/load.js'
 
 // A long review is hours of `claude -p` calls. Resume itself now lives in the
 // job store, keyed by what each entry looked like, but the marker is still
@@ -94,6 +95,10 @@ function hash(...parts: string[]): string {
 // verdict for the locale rather than letting old and new answers mix.
 export function fingerprintReview(input: FingerprintInput): Fingerprint {
   const profile = profileFor(input.locale)
+  // Added only when the locale has a rules file. Hashing an empty part would
+  // still change the joined string, and with it every cached verdict of
+  // everyone who never writes a file.
+  const localeRules = rulesFingerprint(loadLocaleRules(input.locale))
   return {
     source: hash(input.source),
     glossary: hash(
@@ -110,6 +115,7 @@ export function fingerprintReview(input: FingerprintInput): Fingerprint {
       // The guidance itself, so editing the prompt invalidates a resume without
       // anyone having to remember to bump a version number.
       buildAuditPrompt([], input.locale, 2),
+      ...(localeRules ? [localeRules] : []),
     ),
     batchSize: input.batchSize,
     ai: !input.noAi,

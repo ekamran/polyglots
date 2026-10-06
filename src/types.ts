@@ -36,6 +36,11 @@ export interface ReviewInput {
   msgidPlural?: string
   comments: string[]
   drafts: string[]
+  // What the draft still fails after mechanical repairs, as "rule: message".
+  // Absent for a clean draft, which keeps its cache key as it always was.
+  automatedChecks?: string[]
+  // A setting WordPress code reads, decided by the translator comment.
+  control?: boolean
 }
 
 export interface ReviewResult {

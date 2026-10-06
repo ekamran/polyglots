@@ -1,21 +1,14 @@
 import type { Locale } from '../types.js'
+import { localeDisplayName, splitLocale } from '../wporg/locales.js'
 
 // The draft engine's own prompt, kept apart from the client that sends it so
 // that hashing it does not drag the OpenAI SDK into every command's module
 // graph. `draftConfigHash` reads it: changing a word here invalidates every
 // cached draft, which is the point of giving the draft table a config_hash.
 
-const languageNames = new Intl.DisplayNames(['en'], { type: 'language' })
-
 export function describeLocale(locale: Locale): string {
-  const tag = locale.replaceAll('_', '-')
-  let name: string | undefined
-  try {
-    name = languageNames.of(tag)
-  } catch {
-    name = undefined
-  }
-  return name && name !== tag ? `${name} (${locale})` : locale
+  const name = localeDisplayName(locale.replaceAll('_', '-'))
+  return name !== splitLocale(locale).slug ? `${name} (${locale})` : locale
 }
 
 export function draftSystemPrompt(locale: Locale, nplurals: number): string {
