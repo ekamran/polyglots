@@ -230,6 +230,88 @@ describe('LocaleRules: proper nouns', () => {
   })
 })
 
+describe('LocaleRules: patterns', () => {
+  it('adds a regex fix pattern and saves it', async () => {
+    const view = mount()
+    await openLocale(view)
+    await select(view, /Patterns/)
+    await waitForText(view.lastFrame, /No patterns yet/)
+    view.stdin.write('a')
+    await waitForText(view.lastFrame, /Text:/)
+    view.stdin.write(keys.tab) // Text stays empty
+    await tick()
+    await typeInto(view, '\\.\\.\\.')
+    view.stdin.write(keys.tab) // Ignore case
+    await tick()
+    view.stdin.write(keys.tab) // Replace
+    await tick()
+    await typeInto(view, '…')
+    view.stdin.write(keys.tab) // Level
+    await tick()
+    await typeInto(view, 'fix')
+    view.stdin.write(keys.enter)
+    await waitForText(view.lastFrame, /fix/)
+    view.stdin.write(keys.esc)
+    await tick(ESC_DELAY)
+    view.stdin.write('s')
+    await waitForText(view.lastFrame, /Saved/)
+    expect(loadLocaleRules('tr')!.patterns[0]).toMatchObject({ kind: 'pattern', find: '\\.\\.\\.', replace: '…', level: 'fix' })
+  })
+
+  // Seen while typing, not when the save is refused.
+  it('shows a bad regex as it is typed', async () => {
+    const view = mount()
+    await openLocale(view)
+    await select(view, /Patterns/)
+    view.stdin.write('a')
+    await waitForText(view.lastFrame, /Text:/)
+    view.stdin.write(keys.tab)
+    await tick()
+    await typeInto(view, '(unclosed')
+    await waitForText(view.lastFrame, /not a valid regular expression/)
+  })
+
+  it('refuses a fix pattern without a replacement', async () => {
+    const view = mount()
+    await openLocale(view)
+    await select(view, /Patterns/)
+    view.stdin.write('a')
+    await waitForText(view.lastFrame, /Text:/)
+    await typeInto(view, 'x')
+    for (let i = 0; i < 4; i++) {
+      view.stdin.write(keys.tab)
+      await tick()
+    }
+    await typeInto(view, 'fix')
+    view.stdin.write(keys.enter)
+    await waitForText(view.lastFrame, /fix needs a replacement/)
+  })
+})
+
+describe('LocaleRules: trying the rules', () => {
+  it('shows what fires on a sample under the unsaved rules', async () => {
+    const view = mount()
+    await openLocale(view)
+    await select(view, /Common mistakes/)
+    view.stdin.write('a')
+    await waitForText(view.lastFrame, /Wrong:/)
+    await typeInto(view, 'önizleme')
+    view.stdin.write(keys.enter)
+    await tick()
+    view.stdin.write(keys.esc)
+    await tick(ESC_DELAY)
+    await select(view, /Try the rules/)
+    await waitForText(view.lastFrame, /Source:/)
+    await typeInto(view, 'Preview')
+    view.stdin.write(keys.tab)
+    await tick()
+    await typeInto(view, 'Önizleme')
+    view.stdin.write(keys.enter)
+    await waitForText(view.lastFrame, /custom/)
+    expect(flat(view.lastFrame())).toMatch(/"önizleme"/)
+  })
+})
+
 describe('LocaleRules: leaving', () => {
   it('asks before discarding unsaved changes, and discards on d', async () => {
     let back = 0

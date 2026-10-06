@@ -10,21 +10,92 @@ import { resolveLocale, wpCodeOf } from '../../wporg/locales.js'
 import { useConfig } from '../commands.js'
 import { Hint } from '../components/Hint.js'
 import { ListEditor } from '../components/ListEditor.js'
+import { Form } from '../components/Form.js'
+import { tryRules, type TryResult } from '../../rules/try.js'
+import { allGlossary, openDb } from '../../storage/index.js'
+import type { GlossaryEntry } from '../../types.js'
 
 export interface LocaleRulesProps {
   onBack: () => void
 }
 
-type Stage = 'pick' | 'overview' | 'rules' | 'ratio' | 'nouns' | 'nounList' | 'mistakes' | 'leave'
+type Stage = 'pick' | 'overview' | 'rules' | 'ratio' | 'nouns' | 'nounList' | 'mistakes' | 'patterns' | 'try' | 'leave'
 
-const SECTIONS = ['Built-in rules', 'Glossary match', 'Proper nouns', 'Common mistakes'] as const
-const SECTION_STAGE: Stage[] = ['rules', 'ratio', 'nouns', 'mistakes']
+const SECTIONS = ['Built-in rules', 'Glossary match', 'Proper nouns', 'Common mistakes', 'Patterns', 'Try the rules'] as const
+const SECTION_STAGE: Stage[] = ['rules', 'ratio', 'nouns', 'mistakes', 'patterns', 'try']
 type NounList = 'always' | 'dateOnly'
 const NOUN_LISTS: { key: NounList; label: string }[] = [
   { key: 'always', label: 'Always capitalized' },
   { key: 'dateOnly', label: 'Only in a specific date' },
 ]
 type Mistake = RulesValue['mistakes'][number]
+
+type Pattern = RulesValue['patterns'][number]
+
+const compiles = (source: string) => {
+  try {
+    new RegExp(source, 'u')
+    return true
+  } catch {
+    return false
+  }
+}
+
+const describePattern = (p: Pattern) =>
+  `${p.text !== undefined ? `"${p.text}"` : `/${p.find}/`}  ${p.level ?? 'hint'}` +
+  `${p.replace !== undefined ? ` → ${p.replace}` : ''}` +
+  `${p.when ? `  when the source has "${p.when.source}"` : ''}${p.note ? `  (${p.note})` : ''}`
+
+const PATTERN_FIELDS = [
+  {
+    key: 'text',
+    label: 'Text',
+    validate: (v: string, all: Record<string, string>) =>
+      v.trim() === '' && (all.find ?? '').trim() === ''
+        ? 'needs Text or Regex'
+        : v.trim() !== '' && (all.find ?? '').trim() !== ''
+          ? 'Text or Regex, not both'
+          : undefined,
+  },
+  { key: 'find', label: 'Regex', validate: (v: string) => (v !== '' && !compiles(v) ? 'not a valid regular expression' : undefined) },
+  { key: 'ignoreCase', label: 'Ignore case (y/n)', validate: (v: string) => (/^[yn]?$/i.test(v.trim()) ? undefined : 'y or n') },
+  { key: 'replace', label: 'Replace' },
+  {
+    key: 'level',
+    label: 'Level',
+    validate: (v: string, all: Record<string, string>) =>
+      !['', 'hint', 'error', 'fix'].includes(v.trim())
+        ? 'hint, error or fix'
+        : v.trim() === 'fix' && (all.replace ?? '') === ''
+          ? 'fix needs a replacement'
+          : undefined,
+  },
+  { key: 'when', label: 'When source contains' },
+  { key: 'note', label: 'Note' },
+]
+
+const patternToForm = (p: Pattern): Record<string, string> => ({
+  text: p.text ?? '',
+  find: p.find ?? '',
+  ignoreCase: p.ignoreCase ? 'y' : '',
+  replace: p.replace ?? '',
+  level: p.level ?? '',
+  when: p.when?.source ?? '',
+  note: p.note ?? '',
+})
+
+const patternFromForm = (v: Record<string, string>): Pattern => {
+  const has = (k: string) => (v[k] ?? '').trim() !== ''
+  return {
+    ...(has('text') ? { text: v.text!.trim() } : {}),
+    ...(has('find') ? { find: v.find! } : {}),
+    ...(/^y$/i.test((v.ignoreCase ?? '').trim()) ? { ignoreCase: true } : {}),
+    ...((v.replace ?? '') !== '' ? { replace: v.replace! } : {}),
+    ...(has('level') ? { level: v.level!.trim() as 'hint' | 'error' | 'fix' } : {}),
+    ...(has('when') ? { when: { source: v.when!.trim() } } : {}),
+    ...(has('note') ? { note: v.note!.trim() } : {}),
+  }
+}
 
 const describeMistake = (m: Mistake) => `${m.wrong}${m.right ? ` → ${m.right}` : ''}${m.note ? `  (${m.note})` : ''}`
 const RATIO_STEP = 0.05
@@ -52,6 +123,8 @@ export function LocaleRules({ onBack }: LocaleRulesProps) {
   const [cursor, setCursor] = useState(0)
   const [ruleCursor, setRuleCursor] = useState(0)
   const [nounCursor, setNounCursor] = useState(0)
+  const [trial, setTrial] = useState<TryResult | string>()
+  const [glossary, setGlossary] = useState<GlossaryEntry[]>()
 
   const dirty = draft !== undefined && JSON.stringify(value) !== JSON.stringify(draft.value)
   const id = draft?.locale ?? ''
@@ -118,7 +191,7 @@ export function LocaleRules({ onBack }: LocaleRulesProps) {
 
   useInput((ch, key) => {
     // The list editors own their keys.
-    if (stage === 'mistakes' || stage === 'nounList') return
+    if (stage === 'mistakes' || stage === 'nounList' || stage === 'patterns' || stage === 'try') return
     if (stage === 'nouns') {
       if (key.escape) setStage('overview')
       else if (key.upArrow || key.downArrow) setNounCursor((c) => (c === 0 ? 1 : 0))
@@ -160,7 +233,26 @@ export function LocaleRules({ onBack }: LocaleRulesProps) {
       else onBack()
     } else if (key.upArrow) setCursor((c) => Math.max(0, c - 1))
     else if (key.downArrow) setCursor((c) => Math.min(SECTIONS.length - 1, c + 1))
-    else if (key.return) setStage(SECTION_STAGE[cursor]!)
+    else if (key.return) {
+      const next = SECTION_STAGE[cursor]!
+      if (next === 'try') {
+        setTrial(undefined)
+        // The locale's glossary, read once, so the glossary rule fires in a trial too.
+        if (glossary === undefined) {
+          try {
+            const db = openDb()
+            try {
+              setGlossary(allGlossary(db, id))
+            } finally {
+              db.close()
+            }
+          } catch {
+            setGlossary([])
+          }
+        }
+      }
+      setStage(next)
+    }
     else if (ch === 's' && dirty) void save()
   })
 
@@ -202,9 +294,10 @@ export function LocaleRules({ onBack }: LocaleRulesProps) {
             {marker(cursor === 2)}Proper nouns       {nouns('always').length} always · {nouns('dateOnly').length} date-only
           </Text>
           <Text>{`${marker(cursor === 3)}Common mistakes    ${value.mistakes.length}`}</Text>
-          <Text dimColor>{`  Patterns           ${value.patterns.length}`}</Text>
+          <Text>{`${marker(cursor === 4)}Patterns           ${value.patterns.length}`}</Text>
           <Text dimColor>{`  Guidance           ${value.guidance?.trim().length ?? 0} of ${GUIDANCE_LIMIT} characters`}</Text>
-          <Text dimColor>  Patterns and guidance are edited with: polyglots rules edit {id}</Text>
+          <Text>{`${marker(cursor === 5)}Try the rules      check a sample against the rules as edited`}</Text>
+          <Text dimColor>  Guidance is edited with: polyglots rules edit {id}</Text>
           {dirty && (
             <Text color="yellow">
               Saving changes the rules for {id}: the next review of every {id} file starts over.
@@ -284,6 +377,55 @@ export function LocaleRules({ onBack }: LocaleRulesProps) {
           }}
           onBack={() => setStage('overview')}
         />
+      )}
+
+      {draft && stage === 'patterns' && (
+        <ListEditor<Pattern>
+          title="Patterns"
+          items={value.patterns}
+          empty="No patterns yet. hint: the AI judges · error: always wrong · fix: replaced automatically."
+          describe={describePattern}
+          fields={PATTERN_FIELDS}
+          toForm={patternToForm}
+          fromForm={patternFromForm}
+          onChange={(patterns) => {
+            setValue({ ...value, patterns })
+            setNotice(undefined)
+          }}
+          onBack={() => setStage('overview')}
+        />
+      )}
+
+      {draft && stage === 'try' && (
+        <>
+          <Text>Try the rules as edited, saved or not</Text>
+          <Form
+            fields={[
+              { key: 'source', label: 'Source', required: true },
+              { key: 'translation', label: 'Translation', required: true },
+            ]}
+            onCancel={() => setStage('overview')}
+            onSubmit={(v) => {
+              try {
+                setTrial(tryRules(draft, value, { source: v.source!, translation: v.translation! }, glossary ?? []))
+              } catch (err) {
+                setTrial(errorText(err))
+              }
+            }}
+          />
+          {typeof trial === 'string' && <Text color="red">{trial}</Text>}
+          {trial && typeof trial !== 'string' && (
+            <Box flexDirection="column">
+              {trial.fixed !== undefined && <Text color="green">{`Fixed to: ${trial.fixed}`}</Text>}
+              {trial.findings.length === 0 && <Text color="green">Nothing fires.</Text>}
+              {trial.findings.map((f, i) => (
+                <Text key={i} color={f.severity === 'error' ? 'red' : 'yellow'}>
+                  {`${f.rule} (${f.severity}): ${f.message}`}
+                </Text>
+              ))}
+            </Box>
+          )}
+        </>
       )}
 
       {draft && stage === 'ratio' && (

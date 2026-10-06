@@ -80,8 +80,10 @@ const BY_LANGUAGE: Record<string, ProperNouns> = {
 // Suffixes attach directly to these (Mayıs'ta, Türkçeye), so a prefix match is
 // what identifies them, not equality.
 export function properNounsFor(locale: Locale): ProperNouns {
-  const base = builtInProperNounsFor(locale)
-  const file = loadLocaleRules(locale)?.properNouns
+  return mergeProperNouns(builtInProperNounsFor(locale), loadLocaleRules(locale)?.properNouns)
+}
+
+export function mergeProperNouns(base: ProperNouns, file: { always?: string[]; dateOnly?: string[] } | undefined): ProperNouns {
   // Each list the file names replaces the built-in one; the other is kept, so
   // a file can correct the month names without restating every language name.
   return file ? { always: file.always ?? base.always, dateOnly: file.dateOnly ?? base.dateOnly } : base

@@ -1,4 +1,5 @@
 import { loadLocaleRules } from '../../rules/load.js'
+import type { LocaleRules } from '../../rules/schema.js'
 import { languageOf } from '../../wporg/locales.js'
 import { CUSTOM_RULE } from '../../rules/names.js'
 import type { Locale } from '../../types.js'
@@ -74,8 +75,12 @@ export const UNIVERSAL_RULES: readonly string[] = UNIVERSAL
  * patterns, since writing one is the request to have it checked.
  */
 export function profileFor(locale: Locale): RuleProfile {
-  const base = builtInProfileFor(locale)
-  const file = loadLocaleRules(locale)
+  return mergeProfile(builtInProfileFor(locale), loadLocaleRules(locale))
+}
+
+// The rules file over the built-in profile. Separate so the menu editor can
+// preview unsaved rules through exactly the logic a review will apply.
+export function mergeProfile(base: RuleProfile, file: LocaleRules | undefined): RuleProfile {
   if (!file) return base
   const rules = file.rules
     ? new Set([...UNIVERSAL, ...file.rules.enable].filter((name) => !file.rules!.disable.includes(name)))
