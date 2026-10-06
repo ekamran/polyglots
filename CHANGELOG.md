@@ -14,6 +14,7 @@ Entries say what changed. For why and how, read the commit.
 
 - Per-locale rules file (`polyglots rules edit|check|copy|path`): switch built-in rules, proper
   nouns, common mistakes, patterns at hint, error or fix level, and guidance for the AI review.
+- A "Locale rules" menu entry: turn built-in rules on or off and set the glossary match tolerance.
 - Translation sets such as `nl/formal`, `pt/ao90` and `sr/latin`, in every wp.org lookup and file name.
 - `--locale` accepts WordPress codes (`nl_NL_formal`, `tr_TR`), mapped by a wp.org locale table
   that every build refreshes.

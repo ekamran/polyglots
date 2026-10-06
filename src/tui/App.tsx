@@ -8,6 +8,7 @@ import { ConfigureKeys } from './screens/ConfigureKeys.js'
 import { Fetch } from './screens/Fetch.js'
 import { ExportTm } from './screens/ExportTm.js'
 import { ImportTm } from './screens/ImportTm.js'
+import { LocaleRules } from './screens/LocaleRules.js'
 import { Menu, type MenuAction } from './screens/Menu.js'
 import { Review } from './screens/Review.js'
 import { Split } from './screens/Split.js'
@@ -77,6 +78,7 @@ export function App({ commands = defaultCommands, cwd = process.cwd(), activity,
         {screen === 'export-tm' && <ExportTm onBack={back} />}
         {screen === 'stats' && <Stats cwd={cwd} onBack={back} />}
         {screen === 'sync-glossary' && <SyncGlossary onBack={back} />}
+        {screen === 'locale-rules' && <LocaleRules onBack={back} />}
         {screen === 'configure-keys' && <ConfigureKeys onBack={back} />}
       </CommandsProvider>
     </ActivityProvider>

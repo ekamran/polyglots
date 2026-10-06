@@ -18,6 +18,7 @@ export type MenuAction =
   | 'import-tm'
   | 'export-tm'
   | 'sync-glossary'
+  | 'locale-rules'
   | 'configure-keys'
 
 export const MENU_ITEMS: { label: string; value: MenuAction }[] = [
@@ -29,6 +30,7 @@ export const MENU_ITEMS: { label: string; value: MenuAction }[] = [
   { label: 'Import Translation Memory (.tmx or .po)', value: 'import-tm' },
   { label: 'Export Translation Memory', value: 'export-tm' },
   { label: 'Sync WordPress.org glossary', value: 'sync-glossary' },
+  { label: 'Locale rules', value: 'locale-rules' },
   { label: 'Configure API keys', value: 'configure-keys' },
 ]
 

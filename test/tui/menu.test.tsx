@@ -37,6 +37,7 @@ const EXPECTED_LABELS = [
   'Import Translation Memory (.tmx or .po)',
   'Export Translation Memory',
   /Sync .*glossary/,
+  'Locale rules',
   'Configure API keys',
 ]
 
