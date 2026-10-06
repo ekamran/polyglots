@@ -11,6 +11,8 @@ import { useConfig } from '../commands.js'
 import { Hint } from '../components/Hint.js'
 import { ListEditor } from '../components/ListEditor.js'
 import { Form } from '../components/Form.js'
+import { MultilineInput } from '../components/MultilineInput.js'
+import { copyRules } from '../../cli/rules.js'
 import { tryRules, type TryResult } from '../../rules/try.js'
 import { allGlossary, openDb } from '../../storage/index.js'
 import type { GlossaryEntry } from '../../types.js'
@@ -19,10 +21,10 @@ export interface LocaleRulesProps {
   onBack: () => void
 }
 
-type Stage = 'pick' | 'overview' | 'rules' | 'ratio' | 'nouns' | 'nounList' | 'mistakes' | 'patterns' | 'try' | 'leave'
+type Stage = 'pick' | 'overview' | 'rules' | 'ratio' | 'nouns' | 'nounList' | 'mistakes' | 'patterns' | 'guidance' | 'try' | 'copy' | 'leave'
 
-const SECTIONS = ['Built-in rules', 'Glossary match', 'Proper nouns', 'Common mistakes', 'Patterns', 'Try the rules'] as const
-const SECTION_STAGE: Stage[] = ['rules', 'ratio', 'nouns', 'mistakes', 'patterns', 'try']
+const SECTIONS = ['Built-in rules', 'Glossary match', 'Proper nouns', 'Common mistakes', 'Patterns', 'Guidance', 'Try the rules', 'Copy to another locale'] as const
+const SECTION_STAGE: Stage[] = ['rules', 'ratio', 'nouns', 'mistakes', 'patterns', 'guidance', 'try', 'copy']
 type NounList = 'always' | 'dateOnly'
 const NOUN_LISTS: { key: NounList; label: string }[] = [
   { key: 'always', label: 'Always capitalized' },
@@ -125,6 +127,7 @@ export function LocaleRules({ onBack }: LocaleRulesProps) {
   const [nounCursor, setNounCursor] = useState(0)
   const [trial, setTrial] = useState<TryResult | string>()
   const [glossary, setGlossary] = useState<GlossaryEntry[]>()
+  const [copyResult, setCopyResult] = useState<{ ok: boolean; lines: string[] }>()
 
   const dirty = draft !== undefined && JSON.stringify(value) !== JSON.stringify(draft.value)
   const id = draft?.locale ?? ''
@@ -191,7 +194,13 @@ export function LocaleRules({ onBack }: LocaleRulesProps) {
 
   useInput((ch, key) => {
     // The list editors own their keys.
-    if (stage === 'mistakes' || stage === 'nounList' || stage === 'patterns' || stage === 'try') return
+    // Copy shows a form only when there is a saved file and nothing unsaved;
+    // otherwise it is a notice, and esc has to come from here.
+    if (stage === 'copy' && (dirty || !draft?.exists)) {
+      if (key.escape) setStage('overview')
+      return
+    }
+    if (['mistakes', 'nounList', 'patterns', 'guidance', 'try', 'copy'].includes(stage)) return
     if (stage === 'nouns') {
       if (key.escape) setStage('overview')
       else if (key.upArrow || key.downArrow) setNounCursor((c) => (c === 0 ? 1 : 0))
@@ -235,6 +244,7 @@ export function LocaleRules({ onBack }: LocaleRulesProps) {
     else if (key.downArrow) setCursor((c) => Math.min(SECTIONS.length - 1, c + 1))
     else if (key.return) {
       const next = SECTION_STAGE[cursor]!
+      if (next === 'copy') setCopyResult(undefined)
       if (next === 'try') {
         setTrial(undefined)
         // The locale's glossary, read once, so the glossary rule fires in a trial too.
@@ -295,9 +305,9 @@ export function LocaleRules({ onBack }: LocaleRulesProps) {
           </Text>
           <Text>{`${marker(cursor === 3)}Common mistakes    ${value.mistakes.length}`}</Text>
           <Text>{`${marker(cursor === 4)}Patterns           ${value.patterns.length}`}</Text>
-          <Text dimColor>{`  Guidance           ${value.guidance?.trim().length ?? 0} of ${GUIDANCE_LIMIT} characters`}</Text>
-          <Text>{`${marker(cursor === 5)}Try the rules      check a sample against the rules as edited`}</Text>
-          <Text dimColor>  Guidance is edited with: polyglots rules edit {id}</Text>
+          <Text>{`${marker(cursor === 5)}Guidance           ${value.guidance?.length ?? 0} of ${GUIDANCE_LIMIT} characters`}</Text>
+          <Text>{`${marker(cursor === 6)}Try the rules      check a sample against the rules as edited`}</Text>
+          <Text>{`${marker(cursor === 7)}Copy to another locale`}</Text>
           {dirty && (
             <Text color="yellow">
               Saving changes the rules for {id}: the next review of every {id} file starts over.
@@ -394,6 +404,66 @@ export function LocaleRules({ onBack }: LocaleRulesProps) {
           }}
           onBack={() => setStage('overview')}
         />
+      )}
+
+      {draft && stage === 'guidance' && (
+        <>
+          <Text>Guidance for the AI review prompts</Text>
+          <MultilineInput
+            value={value.guidance ?? ''}
+            onChange={(text) => {
+              const { guidance: _, ...rest } = value
+              setValue(text === '' ? rest : { ...value, guidance: text })
+              setNotice(undefined)
+            }}
+            onDone={() => setStage('overview')}
+          />
+          <Text color={(value.guidance?.length ?? 0) > GUIDANCE_LIMIT ? 'red' : undefined} dimColor={(value.guidance?.length ?? 0) <= GUIDANCE_LIMIT}>
+            {`${value.guidance?.length ?? 0} of ${GUIDANCE_LIMIT} characters${(value.guidance?.length ?? 0) > GUIDANCE_LIMIT ? ': too long to save' : ''}`}
+          </Text>
+          <Hint>type to add · enter new line · backspace delete · esc back to the overview</Hint>
+        </>
+      )}
+
+      {draft && stage === 'copy' && (
+        <>
+          <Text>Copy the saved rules of {id} to another locale</Text>
+          {dirty ? (
+            <>
+              <Text color="yellow">Save first: copy takes the file on disk, which is not what is on screen.</Text>
+              <Hint>esc back to the overview</Hint>
+            </>
+          ) : !draft.exists ? (
+            <>
+              <Text color="yellow">{`There is no rules file for ${id} to copy yet.`}</Text>
+              <Hint>esc back to the overview</Hint>
+            </>
+          ) : (
+            <Form
+              fields={[
+                {
+                  key: 'to',
+                  label: 'To locale',
+                  required: true,
+                  validate: (v) => (v.trim() !== '' && !resolveLocale(v) ? 'not listed on translate.wordpress.org' : undefined),
+                },
+                { key: 'force', label: 'Replace if it exists (y/n)' },
+              ]}
+              onCancel={() => setStage('overview')}
+              onSubmit={(v) => {
+                const target = resolveLocale(v.to!)!.id
+                copyRules(id, target, /^y$/i.test((v.force ?? '').trim()))
+                  .then((lines) => setCopyResult({ ok: true, lines }))
+                  .catch((err: unknown) => setCopyResult({ ok: false, lines: [errorText(err)] }))
+              }}
+            />
+          )}
+          {copyResult?.lines.map((line, i) => (
+            <Text key={i} color={copyResult.ok ? (i === 0 ? 'green' : undefined) : 'red'}>
+              {line}
+            </Text>
+          ))}
+        </>
       )}
 
       {draft && stage === 'try' && (

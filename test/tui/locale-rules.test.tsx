@@ -312,6 +312,98 @@ describe('LocaleRules: trying the rules', () => {
   })
 })
 
+describe('LocaleRules: guidance', () => {
+  it('types guidance over several lines, counts it, and saves it', async () => {
+    const view = mount()
+    await openLocale(view)
+    await select(view, /Guidance/)
+    await waitForText(view.lastFrame, /0 of 1500/)
+    await typeInto(view, 'Button labels are imperative.')
+    view.stdin.write(keys.enter)
+    await tick()
+    await typeInto(view, 'Use siz.')
+    await waitForText(view.lastFrame, /38 of 1500/)
+    view.stdin.write(keys.backspace)
+    await waitForText(view.lastFrame, /37 of 1500/)
+    view.stdin.write(keys.esc)
+    await tick(ESC_DELAY)
+    view.stdin.write('s')
+    await waitForText(view.lastFrame, /Saved/)
+    expect(loadLocaleRules('tr')?.guidance).toBe('Button labels are imperative.\nUse siz')
+  })
+
+  it('warns past the cap', async () => {
+    const view = mount()
+    await openLocale(view)
+    await select(view, /Guidance/)
+    await typeInto(view, 'x'.repeat(1501))
+    await waitForText(view.lastFrame, /1501 of 1500/)
+    expect(flat(view.lastFrame())).toMatch(/too long/)
+  })
+})
+
+describe('LocaleRules: copying', () => {
+  async function saveOneMistake(view: View) {
+    await select(view, /Common mistakes/)
+    view.stdin.write('a')
+    await waitForText(view.lastFrame, /Wrong:/)
+    await typeInto(view, 'önizleme')
+    view.stdin.write(keys.enter)
+    await tick()
+    view.stdin.write(keys.esc)
+    await tick(ESC_DELAY)
+    view.stdin.write('s')
+    await waitForText(view.lastFrame, /Saved/)
+  }
+
+  it('copies the saved rules to another locale', async () => {
+    const view = mount()
+    await openLocale(view)
+    await saveOneMistake(view)
+    await select(view, /Copy to another locale/)
+    await waitForText(view.lastFrame, /To locale:/)
+    await typeInto(view, 'az_TR')
+    view.stdin.write(keys.enter)
+    await waitForText(view.lastFrame, /Copied tr to az-tr/)
+    expect(loadLocaleRules('az-tr')?.patterns.map((p) => p.text)).toEqual(['önizleme'])
+  })
+
+  // Copy takes the file on disk; with unsaved edits that is not what is on screen.
+  it('asks to save first when there are unsaved edits', async () => {
+    const view = mount()
+    await openLocale(view)
+    await select(view, /Glossary match/)
+    view.stdin.write(keys.right)
+    await tick()
+    view.stdin.write(keys.esc)
+    await tick(ESC_DELAY)
+    await select(view, /Copy to another locale/)
+    await waitForText(view.lastFrame, /Save first/)
+    view.stdin.write(keys.esc)
+    await waitForText(view.lastFrame, /Built-in rules/)
+  })
+
+  it('will not replace an existing file unless asked', async () => {
+    const view = mount()
+    await openLocale(view)
+    await saveOneMistake(view)
+    const file = localeRulesFile('az-tr')
+    await mkdir(dirname(file), { recursive: true })
+    await writeFile(file, 'guidance: Mine.\n', 'utf8')
+    await select(view, /Copy to another locale/)
+    await waitForText(view.lastFrame, /To locale:/)
+    await typeInto(view, 'az_TR')
+    view.stdin.write(keys.enter)
+    await waitForText(view.lastFrame, /already exists/)
+    expect(await readFile(file, 'utf8')).toBe('guidance: Mine.\n')
+    view.stdin.write(keys.tab)
+    await tick()
+    await typeInto(view, 'y')
+    view.stdin.write(keys.enter)
+    await waitForText(view.lastFrame, /Copied tr to az-tr/)
+  })
+})
+
 describe('LocaleRules: leaving', () => {
   it('asks before discarding unsaved changes, and discards on d', async () => {
     let back = 0
