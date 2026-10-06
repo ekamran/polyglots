@@ -10,6 +10,8 @@ Entries say what changed. For why and how, read the commit.
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-10-07
+
 ### Added
 
 - Per-locale rules file (`polyglots rules edit|check|copy|path`): switch built-in rules, proper
