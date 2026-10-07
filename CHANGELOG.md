@@ -10,6 +10,20 @@ Entries say what changed. For why and how, read the commit.
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-10-07
+
+### Fixed
+
+- Translate's draft review runs the configured `reviewProvider`; it always ran claude unless one
+  was passed explicitly.
+- Translate's review cache tells antigravity models apart, as review's already did.
+- Bedrock, Vertex and `CLAUDE_CODE_OAUTH_TOKEN` settings reach the spawned `claude`; only Claude
+  Code session markers are stripped.
+
+### Changed
+
+- Translate's antigravity review verdicts miss once and are re-reviewed on the next run.
+
 ## [0.23.0] - 2026-10-07
 
 ### Added
