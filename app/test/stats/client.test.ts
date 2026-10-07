@@ -156,6 +156,56 @@ describe('boot', () => {
     expect(tip.hidden).toBe(true)
   })
 
+  // The server stamps every payload with the time it was built, so a refresh
+  // whose numbers had not moved still looked like news and rebuilt the page:
+  // focus, a half-typed filter and scroll positions went with it.
+  it('leaves the page alone when a refresh brings the same numbers at a later time', async () => {
+    mount({ mode: 'server', range: 'all', lang: 'en', payloads: { all: demo.all } })
+    const later = { ...demo.all, generatedAt: demo.all.generatedAt + 30_000 }
+    const fetch = vi.fn(async () => new Response(JSON.stringify(later), { status: 200 }))
+    client = boot(document, window, { fetch })
+    const header = document.querySelector('#root > header')
+    document.dispatchEvent(new Event('visibilitychange'))
+    await client.idle()
+    expect(fetch).toHaveBeenCalled()
+    expect(document.querySelector('#root > header')).toBe(header)
+  })
+
+  it('keeps the reader in the filter box, mid-word, when a refresh does redraw', async () => {
+    mount({ mode: 'server', range: 'all', lang: 'en', payloads: { all: demo.all } })
+    const changed = structuredClone(demo.all)
+    changed.review.entries += 1
+    const fetch = vi.fn(async () => new Response(JSON.stringify(changed), { status: 200 }))
+    client = boot(document, window, { fetch })
+    document.querySelector<HTMLDetailsElement>('#projects details')!.open = true
+    const input = document.querySelector<HTMLInputElement>('#projects [data-filter]')!
+    input.focus()
+    input.value = 'har'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    document.dispatchEvent(new Event('visibilitychange'))
+    await client.idle()
+    const now = document.activeElement as HTMLInputElement
+    expect(now).not.toBe(input)
+    expect(now.matches('#projects [data-filter]')).toBe(true)
+    expect(now.value).toBe('har')
+  })
+
+  it('keeps focus on the sort button the reader pressed, in the right table, across a redraw', async () => {
+    mount({ mode: 'server', range: 'all', lang: 'en', payloads: { all: demo.all } })
+    const changed = structuredClone(demo.all)
+    changed.review.entries += 1
+    const fetch = vi.fn(async () => new Response(JSON.stringify(changed), { status: 200 }))
+    client = boot(document, window, { fetch })
+    const button = document.querySelectorAll<HTMLButtonElement>('#projects table.proj-all [data-sort]')[2]!
+    button.focus()
+    document.dispatchEvent(new Event('visibilitychange'))
+    await client.idle()
+    const now = document.activeElement as HTMLElement
+    expect(now).not.toBe(button)
+    expect(now.closest('table')?.classList.contains('proj-all')).toBe(true)
+    expect(now.getAttribute('data-sort')).toBe('2')
+  })
+
   it('remembers the theme the reader picked', () => {
     mount({ mode: 'static', range: 'all', lang: 'en', payloads: demo })
     client = boot(document, window)

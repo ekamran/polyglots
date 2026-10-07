@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3'
-import { RANGES, RANGE_DAYS, type Range, type StatsPayload } from './page/model.js'
+import { RANGES, RANGE_DAYS, heatmapStart, type Range, type StatsPayload } from './page/model.js'
 import { reviewStats, translateStats } from './query.js'
 
 const DAY = 86_400_000
@@ -29,7 +29,8 @@ function since(range: Range, now: Date, floor: number | undefined): number | und
 export function buildPayload(db: Database.Database, opts: PayloadOptions): StatsPayload {
   const at = since(opts.range, opts.now, opts.floor)
   const window = at === undefined ? {} : { since: at }
-  const lastYear = since('1y', opts.now, opts.floor)!
+  const firstHeatDay = heatmapStart(opts.now.getTime())
+  const heatSince = opts.floor === undefined ? firstHeatDay : Math.max(firstHeatDay, opts.floor)
   const lastMonth = since('30d', opts.now, opts.floor)!
   const month = reviewStats(db, { since: lastMonth })
   return {
@@ -37,7 +38,7 @@ export function buildPayload(db: Database.Database, opts: PayloadOptions): Stats
     generatedAt: opts.now.getTime(),
     review: reviewStats(db, window),
     translate: translateStats(db, window),
-    activity: reviewStats(db, { since: lastYear }).byDay,
+    activity: reviewStats(db, { since: heatSince }).byDay,
     recent: {
       submissions: month.submissions,
       entries: month.entries,

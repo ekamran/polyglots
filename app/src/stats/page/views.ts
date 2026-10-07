@@ -1,7 +1,7 @@
 import type { EngineRow, ProjectRow, ReviewStats, TranslateStats } from '../query.js'
 import { ENGLISH, type PhraseKey, type StatsLanguage } from '../i18n.js'
 import { flagDonut, heatmap, rateBar, turnaroundBars, weeklyBars } from './charts.js'
-import { esc, isoDay, sayer, type Say } from './html.js'
+import { esc, localDay, sayer, type Say } from './html.js'
 import { RANGES, flagRows, type Range, type StatsPayload } from './model.js'
 
 // The whole visible page as one string, from the payload and a language. The
@@ -48,7 +48,7 @@ function panel(heading: string, body: string): string {
 function span(stats: { from?: number; to?: number }, s: Say): string {
   return stats.from === undefined || stats.to === undefined
     ? s.t('noneYet')
-    : `${isoDay(stats.from)} ${s.t('rangeTo')} ${isoDay(stats.to)}`
+    : `${localDay(stats.from)} ${s.t('rangeTo')} ${localDay(stats.to)}`
 }
 
 function incomplete(n: number, s: Say): string {
@@ -270,7 +270,7 @@ export function renderRoot(ctx: PageContext): string {
     `<header class="top"><div class="brand"><span class="product">polyglots</span>` +
     `<h1>${s.t('title')}</h1></div>${controls(ctx, s)}</header>` +
     `<nav class="tabs" aria-label="${s.t('title')}">${nav}</nav>` +
-    `<p class="span muted">${span(p.review, s)} · ${s.t('generated')} ${isoDay(p.generatedAt)}</p>` +
+    `<p class="span muted">${span(p.review, s)} · ${s.t('generated')} ${localDay(p.generatedAt)}</p>` +
     (running === 0
       ? ''
       : `<p class="running" role="status">${s.tn(running === 1 ? 'runningOne' : 'runningMany', s.n(running))}</p>`) +
@@ -278,6 +278,6 @@ export function renderRoot(ctx: PageContext): string {
     VIEWS.map(
       (v) => `<section class="view" id="${v}" aria-labelledby="h-${v}"><h2 id="h-${v}">${s.t(NAV[v])}</h2>${sections[v]}</section>`,
     ).join('') +
-    `<footer class="muted small">polyglots · ${s.t('generated')} ${isoDay(p.generatedAt)}</footer>`
+    `<footer class="muted small">polyglots · ${s.t('generated')} ${localDay(p.generatedAt)}</footer>`
   )
 }

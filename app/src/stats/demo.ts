@@ -1,6 +1,6 @@
 import type { DayRow, EngineRow, ProjectRow, ReviewStats, TranslateStats, WeekRow } from './query.js'
 import { TURNAROUND_BUCKETS } from './query.js'
-import { RANGES, RANGE_DAYS, type Range, type StatsPayload } from './page/model.js'
+import { RANGES, RANGE_DAYS, heatmapStart, type Range, type StatsPayload } from './page/model.js'
 
 // A synthetic history for the website's sample page and for tests: invented
 // projects, invented numbers, no contributor anywhere. Deterministic, so a
@@ -245,7 +245,7 @@ export function demoPayloads(now: Date = new Date(Date.UTC(2026, 9, 7, 12))): Re
     flagged: pick(month, 'review').reduce((n, r) => n + r.flagged, 0),
     drafted: pick(month, 'translate').reduce((n, r) => n + r.entries, 0),
   }
-  const activity = roll(pick(after(365), 'review')).byDay
+  const activity = roll(pick(all.filter((r) => r.at >= heatmapStart(now.getTime())), 'review')).byDay
   return Object.fromEntries(
     RANGES.map((range) => {
       const runs = range === 'all' ? all : after(RANGE_DAYS[range])

@@ -6,7 +6,7 @@ import type Database from 'better-sqlite3'
 import { openJobsDb } from '../../src/jobs/db.js'
 import { finishRun, startRun } from '../../src/jobs/runs.js'
 import { buildPayload, buildPayloads } from '../../src/stats/payload.js'
-import { RANGES, flagRows, parseRange } from '../../src/stats/page/model.js'
+import { RANGES, flagRows, heatmapStart, parseRange } from '../../src/stats/page/model.js'
 
 let db: Database.Database
 let dir: string
@@ -65,6 +65,22 @@ describe('buildPayload', () => {
     reviewed(200, 20, 2)
     const p = buildPayload(db, { range: '30d', now: NOW })
     expect(p.activity.map((d) => d.entries)).toEqual([20, 10])
+  })
+
+  // The heatmap is 53 whole weeks, so it starts up to six days more than a
+  // year back. Activity cut at exactly 365 days left that first column empty.
+  it('carries activity from the first day the heatmap draws', () => {
+    const start = heatmapStart(NOW.getTime())
+    expect(new Date(start).getDay()).toBe(1)
+    expect(NOW.getTime() - start).toBeGreaterThan(364 * DAY)
+    const at = start + 3_600_000
+    const id = startRun(
+      db,
+      { file: '/tmp/p-tr.po', project: 'Alpha', command: 'review', locale: 'tr', nplurals: 2, batchSize: 25, engine: 'claude' },
+      () => at,
+    )
+    finishRun(db, id, { entries: 9, flagged: 0, repaired: 0, unreviewed: 0, approvable: 9, byCategory: {} }, () => at + 1000)
+    expect(buildPayload(db, { range: '30d', now: NOW }).activity.map((d) => d.entries)).toEqual([9])
   })
 
   it('carries the last thirty days for the context lines under each figure', () => {

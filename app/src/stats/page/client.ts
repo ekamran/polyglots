@@ -178,21 +178,34 @@ export function boot(doc: Document, win: Window, deps: Deps = {}): Client {
       const s = sorts.get(tableKey(table))
       if (s) applySort(table, s.col, s.dir)
     }
-    if (focused) root.querySelector<HTMLElement>(focused)?.focus()
+    if (focused) root.querySelectorAll<HTMLElement>(focused.selector)[focused.index]?.focus()
     doc.documentElement.lang = lang.tag
     doc.title = `polyglots · ${root.querySelector('h1')?.textContent ?? ''}`
     applyTheme()
     showView()
   }
 
-  // A selector that finds the same control after a redraw, for the controls a
-  // reader is likely to be on when one happens.
-  function focusKey(el: Element): string | undefined {
-    for (const attr of ['data-range', 'data-lang', 'data-theme-set', 'data-view', 'data-share']) {
+  // Where the focused control sits, as a selector and its position among the
+  // matches, so the same control can be found after a redraw. The position
+  // matters: every projects table has a [data-sort="2"], and both views with a
+  // long project list have a [data-filter]. A redraw from the same kind of
+  // payload produces the same structure, so the nth match is the same control.
+  function focusKey(el: Element): { selector: string; index: number } | undefined {
+    for (const attr of ['data-filter', 'data-sort', 'data-range', 'data-lang', 'data-theme-set', 'data-view', 'data-share']) {
       const v = el.getAttribute(attr)
-      if (v !== null) return v === '' ? `[${attr}]` : `[${attr}="${v}"]`
+      if (v === null) continue
+      const selector = v === '' ? `[${attr}]` : `[${attr}="${v}"]`
+      return { selector, index: [...root.querySelectorAll(selector)].indexOf(el) }
     }
     return undefined
+  }
+
+  // Equal apart from when the server built them. Every payload carries its
+  // build time, so comparing them whole made every refresh look like news and
+  // rebuilt the page every thirty seconds, taking the reader's place with it.
+  function sameNumbers(a: StatsPayload | undefined, b: StatsPayload): boolean {
+    if (!a) return false
+    return JSON.stringify({ ...a, generatedAt: 0 }) === JSON.stringify({ ...b, generatedAt: 0 })
   }
 
   function syncUrl(): void {
@@ -219,7 +232,7 @@ export function boot(doc: Document, win: Window, deps: Deps = {}): Client {
       if (!res.ok) return false
       const next = (await res.json()) as StatsPayload
       retry = 2_000
-      const changed = JSON.stringify(next) !== JSON.stringify(payloads[want])
+      const changed = !sameNumbers(payloads[want], next)
       payloads[want] = next
       setBusy(false)
       return changed

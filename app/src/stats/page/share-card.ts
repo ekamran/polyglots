@@ -1,6 +1,6 @@
 import { WEB_PALETTE } from '../../ui/web-palette.js'
 import { count, percent, phrase, type PhraseKey, type StatsLanguage } from '../i18n.js'
-import { esc, isoDay } from './html.js'
+import { esc, localDay } from './html.js'
 import type { StatsPayload } from './model.js'
 
 // The image people post: a card drawn for the purpose, not a screenshot of
@@ -71,7 +71,7 @@ export function shareCard(p: StatsPayload, lang: StatsLanguage): string {
     })
     .join('')
 
-  const span = r.from === undefined || r.to === undefined ? t('noneYet') : `${isoDay(r.from)} ${t('rangeTo')} ${isoDay(r.to)}`
+  const span = r.from === undefined || r.to === undefined ? t('noneYet') : `${localDay(r.from)} ${t('rangeTo')} ${localDay(r.to)}`
 
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${SHARE_WIDTH}" height="${SHARE_HEIGHT}" viewBox="0 0 ${SHARE_WIDTH} ${SHARE_HEIGHT}" font-family="${FONT}">` +

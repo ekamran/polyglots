@@ -35,7 +35,13 @@ export function sayer(lang: StatsLanguage): Say {
   }
 }
 
-/** YYYY-MM-DD in UTC, for a timestamp. */
-export function isoDay(at: number): string {
-  return new Date(at).toISOString().slice(0, 10)
+/**
+ * YYYY-MM-DD in local time, for a timestamp. Local because the heatmap's days
+ * are local, and a span printed in UTC above it would disagree with it for
+ * anyone far from Greenwich.
+ */
+export function localDay(at: number): string {
+  const d = new Date(at)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }

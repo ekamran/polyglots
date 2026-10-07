@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { demoPayloads } from '../../src/stats/demo.js'
 import { ENGLISH, type StatsLanguage } from '../../src/stats/i18n.js'
-import type { StatsPayload } from '../../src/stats/page/model.js'
+import { heatmapStart, type StatsPayload } from '../../src/stats/page/model.js'
 import { PROJECTS_SHOWN, VIEWS, renderRoot } from '../../src/stats/page/views.js'
 import { STATS_TRANSLATIONS } from '../../src/stats/translations-data.js'
 
@@ -110,6 +110,37 @@ describe('renderRoot', () => {
     const html = render(emptyPayload())
     expect(html).toContain('No finished reviews have been recorded yet.')
     expect(html).not.toContain('NaN')
+  })
+
+  // The heatmap is in local time, so the dates printed above it have to be
+  // too, or the two disagree for anyone far from UTC.
+  it('prints the span and the generated date in local time, like the heatmap', () => {
+    const previous = process.env.TZ
+    process.env.TZ = 'Pacific/Kiritimati'
+    try {
+      const p = emptyPayload()
+      p.generatedAt = Date.UTC(2026, 9, 7, 12)
+      p.review.from = Date.UTC(2026, 8, 1, 12)
+      p.review.to = Date.UTC(2026, 9, 6, 12)
+      const html = flat(render(p))
+      expect(html).toContain('2026-09-02 to 2026-10-07 · generated 2026-10-08')
+    } finally {
+      if (previous === undefined) delete process.env.TZ
+      else process.env.TZ = previous
+    }
+  })
+
+  it('fills the heatmap from its first column when there is data there', () => {
+    const p = emptyPayload()
+    p.generatedAt = Date.UTC(2026, 9, 7, 12)
+    const start = new Date(heatmapStart(p.generatedAt))
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const day = `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`
+    p.activity = [{ day, runs: 1, entries: 5 }]
+    p.review.submissions = 1
+    const html = render(p)
+    const heat = html.slice(html.indexOf('class="heat"'))
+    expect(heat).toMatch(/<rect class="h4" x="0" y="0"/)
   })
 
   it('never ranks contributors, and says so', () => {

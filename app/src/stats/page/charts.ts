@@ -1,6 +1,6 @@
 import type { DayRow, WeekRow } from '../query.js'
 import { ruleText } from '../i18n.js'
-import type { FlagRow } from './model.js'
+import { heatmapStart, type FlagRow } from './model.js'
 import { esc, type Say } from './html.js'
 
 // Charts are SVG strings built here rather than a charting library: a library
@@ -43,18 +43,14 @@ export function weeklyBars(weeks: WeekRow[], s: Say): string {
 }
 
 /**
- * A year of review days, GitHub style: 53 columns of weeks, Monday on top.
- * The year ends on the day the payload was generated, so the rightmost column
- * is this week.
+ * A year of review days, GitHub style: 53 columns of whole weeks, Monday on
+ * top, starting at heatmapStart. The rightmost column is this week.
  */
 export function heatmap(days: DayRow[], generatedAt: number, s: Say): string {
   const byDay = new Map(days.map((d) => [d.day, d.entries]))
   const end = new Date(generatedAt)
-  // Local midnight of the last day, then back to the Monday 52 weeks before
-  // the week it falls in, so every column is a whole week.
   const last = new Date(end.getFullYear(), end.getMonth(), end.getDate())
-  const back = (last.getDay() + 6) % 7
-  const first = new Date(last.getFullYear(), last.getMonth(), last.getDate() - back - 52 * 7)
+  const first = new Date(heatmapStart(generatedAt))
   const values = [...byDay.values()].filter((v) => v > 0)
   const peak = values.length === 0 ? 0 : Math.max(...values)
   const level = (v: number) => (v === 0 || peak === 0 ? 0 : Math.min(4, Math.ceil((v / peak) * 4)))
