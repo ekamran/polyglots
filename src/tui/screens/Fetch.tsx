@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { Box, Text, useInput } from 'ink'
-import { batchAdvice } from '../../agent/providers.js'
+import { agentBinOverride, batchAdvice } from '../../agent/providers.js'
 import { MAX_PARALLEL, runProjects, withSharedDbs } from '../../commands/batch.js'
 import { defaultOutDir, type Ready, type Resolution } from '../../commands/fetch.js'
 import {
@@ -145,6 +145,10 @@ export function Fetch({ onBack }: FetchProps) {
         }
       }
 
+      // Translate's review pass and a review both run the configured provider,
+      // so every project spawns the binary discovery checked, as the CLI's
+      // fetch does, rather than whatever is first on PATH.
+      const bin = agentBinOverride(config.reviewProvider, process.env)
       if (toRun.length > 0) {
         const outcomes = await withSharedDbs(({ db, jobsDb }) =>
           runProjects<BatchSummary>(
@@ -161,6 +165,7 @@ export function Fetch({ onBack }: FetchProps) {
                       file,
                       locale,
                       batchSize,
+                      ...(bin === undefined ? {} : { bin }),
                       ...(noAi ? { noAi: true } : {}),
                       ...(fresh ? { fresh: true } : {}),
                       onProgress: onProgress(file),
@@ -174,6 +179,7 @@ export function Fetch({ onBack }: FetchProps) {
                       mode: 'pending',
                       draftEngine: engine,
                       batchSize,
+                      ...(bin === undefined ? {} : { bin }),
                       ...(fresh ? { fresh: true } : {}),
                       onProgress: onProgress(file),
                     }),

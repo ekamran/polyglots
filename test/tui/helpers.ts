@@ -14,7 +14,8 @@ import type { TmImportOptions } from '../../src/commands/tm-import.js'
 import type { TranslateEvent, TranslateOptions, TranslateSummary } from '../../src/commands/translate.js'
 import type { ReviewFileOptions, TuiCommands } from '../../src/tui/commands.js'
 import { MENU_ITEMS, type MenuAction } from '../../src/tui/screens/Menu.js'
-import type { ReviewSummary } from '../../src/types.js'
+import type { AgentStatus } from '../../src/agent/discover.js'
+import type { ReviewProvider, ReviewSummary } from '../../src/types.js'
 import type { FetchStatus, ProjectRef } from '../../src/wporg/projects.js'
 
 const ANSI = /\[[0-9;]*m/g
@@ -190,6 +191,32 @@ export function reviewSummaryOf(file: string, patch: Partial<ReviewSummary> = {}
   }
 }
 
+// A ready agent unless the patch says otherwise. The default fake discovery
+// reports both providers usable, so every test that does not care about
+// discovery sees the menu behave as it did before discovery existed.
+export function agentStatus(provider: ReviewProvider, patch: Partial<AgentStatus> = {}): AgentStatus {
+  const bin = provider === 'claude' ? 'claude' : 'agy'
+  return {
+    provider,
+    bin,
+    binSource: 'default',
+    path: `/opt/bin/${bin}`,
+    version: `${bin} 1.0.0`,
+    auth: { state: 'signed-in' },
+    setup: { state: 'ok' },
+    usable: true,
+    notes: [],
+    ...patch,
+  }
+}
+
+export function unusableAgent(provider: ReviewProvider, reason: string): AgentStatus {
+  const status = agentStatus(provider, { usable: false, reason, auth: { state: 'unknown', detail: 'not checked' } })
+  delete status.path
+  delete status.version
+  return status
+}
+
 export function fakeCommands(overrides: Partial<TuiCommands> = {}): TuiCommands {
   return {
     writeStats: vi.fn(async (opts: StatsOptions = {}) => ({
@@ -240,6 +267,9 @@ export function fakeCommands(overrides: Partial<TuiCommands> = {}): TuiCommands 
       text: '',
       ...(opts.file === undefined ? {} : { file: opts.file }),
     })),
+    // Never the real discovery: a TUI test must not spawn whatever agent CLI
+    // happens to be installed.
+    discoverAgents: vi.fn(async () => [agentStatus('claude'), agentStatus('antigravity')]),
     loadConfig,
     saveConfig,
     loadSecrets,

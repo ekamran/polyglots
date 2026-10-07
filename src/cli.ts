@@ -36,7 +36,8 @@ import {
 import { createProgressReporter, createReviewProgressReporter } from './cli/progress.js'
 import { loadPo } from './po/po-file.js'
 import { buildReport } from './review/message.js'
-import { batchAdvice } from './agent/providers.js'
+import { agentBinOverride, batchAdvice } from './agent/providers.js'
+import { discoverAgents, type AgentStatus } from './agent/discover.js'
 import type { RunTuiOptions } from './tui/index.js'
 import type { Locale, PolyglotsConfig } from './types.js'
 import { VERSION } from './version.js'
@@ -69,6 +70,7 @@ export interface CliDeps {
   fetchProjects?: typeof fetchProjects
   openEditor?: OpenEditor
   runTui?: RunTui
+  discoverAgents?: typeof discoverAgents
 }
 
 interface Cli {
@@ -85,6 +87,7 @@ interface Cli {
   fetchProjects: typeof fetchProjects
   openEditor: OpenEditor
   runTui: RunTui
+  discoverAgents: typeof discoverAgents
   config: () => PolyglotsConfig
   out(line: string): void
   err(line: string): void
@@ -117,6 +120,7 @@ function createCli(deps: CliDeps): Cli {
     fetchProjects: deps.fetchProjects ?? fetchProjects,
     openEditor: deps.openEditor ?? openInEditor,
     runTui: deps.runTui ?? loadTui,
+    discoverAgents: deps.discoverAgents ?? discoverAgents,
     config: () => (cached ??= loadConfig()),
     out: (line) => streams.stdout.write(`${line}\n`),
     err: (line) => streams.stderr.write(`${line}\n`),
@@ -243,7 +247,7 @@ async function runTranslate(cli: Cli, patterns: string[], flags: TranslateFlags)
         batchSize,
         model: flags.model,
         secrets,
-        bin: process.env.POLYGLOTS_AGENT_BIN || process.env.POLYGLOTS_CLAUDE_BIN || undefined,
+        bin: agentBinOverride(config.reviewProvider, process.env),
         onProgress: report,
       })
     } catch (error) {
@@ -375,6 +379,59 @@ async function configSetKey(cli: Cli, rawName: string, value: string | undefined
   return EXIT_OK
 }
 
+const ENVIRONMENT_HELP = [
+  '',
+  'Environment:',
+  '  POLYGLOTS_AGENT_BIN   agent executable for the review pass, whichever provider is set (default: claude or agy on PATH)',
+  '  POLYGLOTS_CLAUDE_BIN  the older name, applied to claude only',
+  '  POLYGLOTS_HOME        root for config/ and data/ instead of the XDG directories',
+].join('\n')
+
+const LIVE_WARNING = 'Sends one prompt to each usable agent; this spends a request on metered plans.'
+
+function authText(status: AgentStatus): string {
+  if (status.auth.state === 'signed-in') return status.auth.detail ? `signed in (${status.auth.detail})` : 'signed in'
+  if (status.auth.state === 'signed-out') return 'signed out'
+  return 'sign-in unknown'
+}
+
+function liveText(live: AgentStatus['live']): string | undefined {
+  if (!live) return undefined
+  return live.ok ? `live ok ${(live.ms / 1000).toFixed(1)}s` : `live failed: ${live.error ?? 'no reason given'}`
+}
+
+/**
+ * The configured provider decides the exit code, not every provider: a
+ * machine without agy is a fine machine for someone who reviews with claude,
+ * and a scheduled review gated on this must not fail over an agent it never
+ * runs.
+ */
+async function runDoctor(cli: Cli, flags: { json?: boolean; live?: boolean }): Promise<number> {
+  const configured = cli.config().reviewProvider
+  const live = flags.live === true
+  if (live) cli.err(LIVE_WARNING)
+  const agents = await cli.discoverAgents({ refresh: true, ...(live ? { live: true } : {}) })
+  const mine = agents.find((a) => a.provider === configured)
+  const ok = mine !== undefined && mine.usable && (!live || mine.live?.ok === true)
+  if (flags.json) {
+    cli.out(JSON.stringify({ configured, agents }, null, 2))
+    return ok ? EXIT_OK : EXIT_ERROR
+  }
+  const nameWidth = Math.max(...agents.map((a) => a.provider.length)) + 2
+  for (const a of agents) {
+    const facts = a.usable
+      ? [a.path ?? a.bin, a.version, authText(a), a.model].filter((x): x is string => Boolean(x))
+      : [a.reason ?? 'unavailable']
+    const liveLine = liveText(a.live)
+    if (liveLine) facts.push(liveLine)
+    cli.out(`${a.provider.padEnd(nameWidth)}${(a.usable ? 'ready' : 'unavailable').padEnd(13)}${facts.join('  ')}`)
+    for (const note of a.notes) cli.out(`${' '.repeat(nameWidth)}note: ${note}`)
+  }
+  const state = !mine ? 'unknown' : mine.usable ? 'ready' : `unavailable: ${mine.reason ?? 'no reason given'}`
+  cli.out(`Review provider: ${configured} (${state})`)
+  return ok ? EXIT_OK : EXIT_ERROR
+}
+
 function helpConfig(cli: Cli): PolyglotsConfig {
   try {
     return cli.config()
@@ -407,10 +464,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
     .option('--batch-size <n>', `Entries per draft/review batch (default: ${shown.batchSize})`)
     .option('--model <model>', 'Claude model for the review pass')
     .option('--yes', 'Skip the --all confirmation prompt (required with --all when stdin is not a terminal)')
-    .addHelpText(
-      'after',
-      '\nEnvironment:\n  POLYGLOTS_CLAUDE_BIN  claude executable used for the review pass (default: claude on PATH)\n  POLYGLOTS_HOME        root for config/ and data/ instead of the XDG directories',
-    )
+    .addHelpText('after', ENVIRONMENT_HELP)
     .action(async (files: string[], flags: TranslateFlags) => {
       setExitCode(await runTranslate(cli, files, flags))
     })
@@ -503,6 +557,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
     .option('--no-ai', 'Run the deterministic checks only, skipping AI adjudication')
     .option('--batch-size <n>', `Entries per AI batch (default: ${shown.batchSize})`)
     .option('--fresh', 'Ignore the cached verdicts for this file and review it again')
+    .addHelpText('after', ENVIRONMENT_HELP)
     .action(async (raw: string, flags: ReviewFlags) => {
       const [target] = expandFileArgs([raw])
       const config = cli.config()
@@ -537,7 +592,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
         ...(flags.ai === false ? { noAi: true } : {}),
         batchSize,
         ...(flags.fresh ? { fresh: true } : {}),
-        bin: process.env.POLYGLOTS_AGENT_BIN || process.env.POLYGLOTS_CLAUDE_BIN || undefined,
+        bin: agentBinOverride(config.reviewProvider, process.env),
         onProgress: report,
       }).finally(() => {
         unsubscribe()
@@ -582,6 +637,16 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
       // nothing has looked at, and saying they look approvable invites exactly
       // the bulk approval this tool exists to make safe.
       else if (summary.pending === 0) cli.out('Nothing flagged; the whole submission looks approvable.')
+    })
+
+  program
+    .command('doctor')
+    .description('Check which agent CLIs are installed, signed in and set up, without sending a prompt')
+    .option('--json', 'Print the result as JSON')
+    .option('--live', 'Also send one short prompt to each usable agent (spends a request on metered plans)')
+    .addHelpText('after', '\nExits 1 when the configured review provider cannot be used (or, with --live, fails its prompt).')
+    .action(async (flags: { json?: boolean; live?: boolean }) => {
+      setExitCode(await runDoctor(cli, flags))
     })
 
   program

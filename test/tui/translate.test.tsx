@@ -189,6 +189,29 @@ describe('Translate starting a run', () => {
     expect((commands.translateFile as ReturnType<typeof vi.fn>).mock.calls[0]![0]).toMatchObject({ mode: 'pending' })
   })
 
+  // The review pass of a translate run spawns the configured provider, so it
+  // must run the binary discovery checked, not whatever is first on PATH.
+  it('runs the agent binary named by POLYGLOTS_AGENT_BIN', async () => {
+    vi.stubEnv('POLYGLOTS_AGENT_BIN', '/opt/claude/bin/claude')
+    try {
+      const commands = fakeCommands()
+      const { lastFrame, stdin } = mount(commands)
+      await pickFile(stdin, lastFrame)
+      for (let i = 0; i < 4; i++) {
+        stdin.write(keys.down)
+        await tick()
+      }
+      stdin.write(keys.enter)
+
+      await waitFor(() => (commands.translateFile as ReturnType<typeof vi.fn>).mock.calls.length > 0)
+      expect((commands.translateFile as ReturnType<typeof vi.fn>).mock.calls[0]![0]).toMatchObject({
+        bin: '/opt/claude/bin/claude',
+      })
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   /**
    * `all` does not ask either. Choosing it is the choice, and it is spelled out
    * on the screen where it is made: re-translating entries that already have a

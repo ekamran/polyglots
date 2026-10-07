@@ -209,6 +209,33 @@ describe('Fetch run', () => {
     expect(calls[0]!.control).toBe(calls[1]!.control)
   })
 
+  // Every project in a fetch run spawns the configured provider, so each one
+  // must run the binary discovery checked, not whatever is first on PATH.
+  it('runs the agent binary named by POLYGLOTS_AGENT_BIN for every project', async () => {
+    vi.stubEnv('POLYGLOTS_AGENT_BIN', '/opt/claude/bin/claude')
+    try {
+      const calls: ReviewFileOptions[] = []
+      const view = mount({
+        reviewFile: vi.fn(async (opts: ReviewFileOptions) => {
+          calls.push(opts)
+          return reviewSummaryOf(opts.file)
+        }),
+      })
+      await enterList(view, ['koji', 'sydney'])
+      await chooseAndResolve(view, 'waiting')
+      await toOptions(view)
+      for (let i = 0; i < 4; i++) {
+        view.stdin.write(keys.down)
+        await tick()
+      }
+      view.stdin.write(keys.enter)
+      await waitForText(view.lastFrame, /2 done/)
+      expect(calls.map((c) => c.bin)).toEqual(['/opt/claude/bin/claude', '/opt/claude/bin/claude'])
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('translates in pending mode with the chosen engine', async () => {
     const calls: TranslateOptions[] = []
     const view = mount({

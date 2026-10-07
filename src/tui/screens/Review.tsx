@@ -5,7 +5,7 @@ import TextInput from 'ink-text-input'
 import { normalizeLocale } from '../../tmx/parse.js'
 import { resolveLocale } from '../../wporg/locales.js'
 import type { ReviewEvent, ReviewSummary } from '../../types.js'
-import { batchAdvice } from '../../agent/providers.js'
+import { agentBinOverride, batchAdvice } from '../../agent/providers.js'
 import { useCommands, useConfig } from '../commands.js'
 import { poEntryCount } from '../../po/count.js'
 import { FilePicker } from '../components/FilePicker.js'
@@ -61,6 +61,10 @@ export function Review({ cwd, onBack }: ReviewProps) {
   const start = (chosenLocale: string) => {
     setEvents([])
     setPhase('running')
+    // The binary the Check AI agents screen and the menu gate reported on, so a
+    // run spawns what discovery checked rather than whatever is first on PATH.
+    // Resolved at start rather than at mount, the moment the CLI resolves it.
+    const bin = agentBinOverride(config.reviewProvider, process.env)
     const run = createRunControl()
     control.current = run
     const unsubscribe = run.subscribe((state) => {
@@ -79,6 +83,7 @@ export function Review({ cwd, onBack }: ReviewProps) {
         noAi,
         fresh,
         batchSize,
+        ...(bin === undefined ? {} : { bin }),
         onProgress: (e) => setEvents((prev) => [...prev, e]),
       }).finally(unsubscribe),
     )

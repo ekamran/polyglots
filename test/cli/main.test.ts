@@ -7,6 +7,7 @@ import { PassThrough } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 import { main, type CliDeps } from '../../src/cli.js'
 import type { TranslateOptions, TranslateSummary } from '../../src/commands/translate.js'
+import type { AgentStatus, DiscoverOptions } from '../../src/agent/discover.js'
 
 const samplePo = fileURLToPath(new URL('../fixtures/po/sample.po', import.meta.url))
 const pkg = createRequire(import.meta.url)('../../package.json') as { version: string }
@@ -849,6 +850,7 @@ describe('corrupt config file', () => {
     const sub = harness()
     expect(await sub.run(['translate', '--help'])).toBe(0)
     expect(sub.stdout.text).toContain('default: tr')
+    expect(sub.stdout.text).toContain('POLYGLOTS_AGENT_BIN')
     expect(sub.stdout.text).toContain('POLYGLOTS_CLAUDE_BIN')
   })
 
@@ -895,5 +897,132 @@ describe('usage errors through injected streams', () => {
     expect(code).toBe(2)
     expect(h.stderr.text).toMatch(/unknown option/i)
     expect(h.stdout.text).toBe('')
+  })
+})
+
+describe('doctor', () => {
+  function agent(provider: AgentStatus['provider'], patch: Partial<AgentStatus> = {}): AgentStatus {
+    const bin = provider === 'claude' ? 'claude' : 'agy'
+    return {
+      provider,
+      bin,
+      binSource: 'default',
+      path: `/opt/bin/${bin}`,
+      version: '2.1.292',
+      auth: { state: 'signed-in', ...(provider === 'claude' ? { detail: 'claude.ai' } : {}) },
+      setup: { state: 'ok' },
+      usable: true,
+      notes: [],
+      ...patch,
+    }
+  }
+
+  // Never the real discovery: what is installed on the machine running the
+  // suite must not decide whether it passes.
+  function fakeDiscover(statuses: AgentStatus[] | ((opts: DiscoverOptions) => AgentStatus[])) {
+    const calls: DiscoverOptions[] = []
+    const fn = async (opts: DiscoverOptions = {}) => {
+      calls.push(opts)
+      return typeof statuses === 'function' ? statuses(opts) : statuses
+    }
+    return { fn, calls }
+  }
+
+  const agyMissing = agent('antigravity', { usable: false, reason: 'agy not on PATH', auth: { state: 'unknown' } })
+  delete agyMissing.path
+  delete agyMissing.version
+
+  it('prints one line per provider and the configured one, and exits 0 when it is usable', async () => {
+    const h = harness()
+    const discover = fakeDiscover([agent('claude'), agyMissing])
+    const code = await h.run(['doctor'], { discoverAgents: discover.fn })
+    expect(code).toBe(0)
+    const lines = h.stdout.text.trim().split('\n')
+    expect(lines.find((l) => l.startsWith('claude'))).toMatch(/ready\s+\/opt\/bin\/claude\s+2\.1\.292\s+signed in \(claude\.ai\)/)
+    expect(lines.find((l) => l.startsWith('antigravity'))).toMatch(/unavailable\s+agy not on PATH/)
+    expect(h.stdout.text).toContain('Review provider: claude (ready)')
+    expect(discover.calls).toEqual([{ refresh: true }])
+  })
+
+  it('exits 1 when the configured provider is unusable', async () => {
+    const h = harness()
+    expect(await h.run(['config', 'set', 'reviewProvider', 'antigravity'])).toBe(0)
+    const d = harness()
+    const code = await d.run(['doctor'], { discoverAgents: fakeDiscover([agent('claude'), agyMissing]).fn })
+    expect(code).toBe(1)
+    expect(d.stdout.text).toContain('Review provider: antigravity (unavailable: agy not on PATH)')
+  })
+
+  it('prints notes beneath their provider', async () => {
+    const h = harness()
+    const statuses = [agent('claude'), agent('antigravity', { auth: { state: 'unknown' }, notes: ['sign-in unknown: no token file'] })]
+    await h.run(['doctor'], { discoverAgents: fakeDiscover(statuses).fn })
+    expect(h.stdout.text).toMatch(/antigravity[^\n]*\n\s+note: sign-in unknown: no token file/)
+  })
+
+  it('prints parseable JSON with --json', async () => {
+    const h = harness()
+    const code = await h.run(['doctor', '--json'], { discoverAgents: fakeDiscover([agent('claude'), agyMissing]).fn })
+    expect(code).toBe(0)
+    const parsed = JSON.parse(h.stdout.text) as { configured: string; agents: AgentStatus[] }
+    expect(parsed.configured).toBe('claude')
+    expect(parsed.agents.map((a) => a.provider)).toEqual(['claude', 'antigravity'])
+    expect(parsed.agents[1]!.reason).toBe('agy not on PATH')
+  })
+
+  it('warns on stderr before --live and passes live through', async () => {
+    const h = harness()
+    const discover = fakeDiscover((opts) => [
+      agent('claude', opts.live ? { live: { ok: true, ms: 4200 } } : {}),
+      agyMissing,
+    ])
+    const code = await h.run(['doctor', '--live'], { discoverAgents: discover.fn })
+    expect(code).toBe(0)
+    expect(h.stderr.text).toContain('Sends one prompt to each usable agent; this spends a request on metered plans.')
+    expect(discover.calls).toEqual([{ refresh: true, live: true }])
+    expect(h.stdout.text).toMatch(/claude[^\n]*live ok 4\.2s/)
+  })
+
+  it('exits 1 with --live when the configured provider fails its prompt', async () => {
+    const h = harness()
+    const discover = fakeDiscover([agent('claude', { live: { ok: false, ms: 300, error: 'claude reported an error: quota' } }), agyMissing])
+    const code = await h.run(['doctor', '--live'], { discoverAgents: discover.fn })
+    expect(code).toBe(1)
+    expect(h.stdout.text).toContain('live failed: claude reported an error: quota')
+  })
+})
+
+describe('which agent binary a run is given', () => {
+  async function binSeen(env: Record<string, string>): Promise<string | undefined> {
+    const setup = harness()
+    expect(await setup.run(['config', 'set', 'reviewProvider', 'antigravity'])).toBe(0)
+    Object.assign(process.env, env)
+    let bin: string | undefined = 'never called'
+    const h = harness()
+    await h.run(['review', file, '--no-ai'], {
+      reviewFile: async (opts) => {
+        bin = opts.bin
+        return {
+          file, locale: 'tr', total: 1, skipped: 0, reviewed: 1, problems: 0, needsReview: 0, approvable: 1,
+          unreviewed: 0, repaired: 0, written: 0, pending: 0, byRule: {}, byGroup: {},
+        }
+      },
+    })
+    return bin
+  }
+
+  beforeEach(() => {
+    delete process.env.POLYGLOTS_AGENT_BIN
+    delete process.env.POLYGLOTS_CLAUDE_BIN
+  })
+
+  // It used to win for antigravity too, and drove the claude binary with
+  // antigravity's argv.
+  it('does not hand POLYGLOTS_CLAUDE_BIN to an antigravity review', async () => {
+    expect(await binSeen({ POLYGLOTS_CLAUDE_BIN: '/x/claude' })).toBeUndefined()
+  })
+
+  it('hands POLYGLOTS_AGENT_BIN to an antigravity review', async () => {
+    expect(await binSeen({ POLYGLOTS_AGENT_BIN: '/x/agent' })).toBe('/x/agent')
   })
 })

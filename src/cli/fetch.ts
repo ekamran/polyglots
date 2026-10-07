@@ -1,5 +1,5 @@
 import { text } from 'node:stream/consumers'
-import { batchAdvice } from '../agent/providers.js'
+import { agentBinOverride, batchAdvice } from '../agent/providers.js'
 import { runProjects, withSharedDbs, MAX_PARALLEL } from '../commands/batch.js'
 import { defaultOutDir, type fetchProjects, type resolveProjects, type Fetched, type Resolution } from '../commands/fetch.js'
 import {
@@ -190,7 +190,9 @@ async function runJobs(
     if (state === 'running') cli.err('Resumed.')
     if (state === 'stopping') cli.err('Stopping after the current batches. Projects not started yet will not start.')
   })
-  const bin = process.env.POLYGLOTS_AGENT_BIN || process.env.POLYGLOTS_CLAUDE_BIN || undefined
+  // Translate's review pass and a review both run the configured provider, so
+  // the override is resolved for that one, the same way the CLI does it.
+  const bin = agentBinOverride(cli.config().reviewProvider, process.env)
   const inputOf = new Map(toRun.map((f) => [f.file, f.input]))
   const kept = new Set(toRun.filter((f) => f.state === 'kept').map((f) => f.file))
   let finished = 0

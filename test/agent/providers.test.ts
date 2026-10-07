@@ -24,6 +24,18 @@ describe('provider registry', () => {
     expect(providerSpec(undefined).name).toBe('claude')
   })
 
+  // Discovery reads these off the spec, so a provider added later brings its
+  // own checks instead of being silently skipped.
+  it('gives every provider the facts discovery probes with', () => {
+    for (const name of PROVIDERS) {
+      const spec = providerSpec(name)
+      expect(spec.versionArgs).toEqual(['--version'])
+      expect(typeof spec.checkAuth).toBe('function')
+      expect(typeof spec.liveProbe.args).toBe('function')
+      expect(typeof spec.liveProbe.read).toBe('function')
+    }
+  })
+
   it('knows its own names and rejects anything else', () => {
     expect([...PROVIDERS]).toEqual(['claude', 'antigravity'])
     expect(isReviewProvider('antigravity')).toBe(true)

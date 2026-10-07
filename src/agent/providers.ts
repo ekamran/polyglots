@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ReviewProvider } from '../types.js'
@@ -59,9 +59,74 @@ export interface AgentRunOptions {
   killGraceMs?: number
 }
 
+/** Where the binary a provider runs came from. */
+export type BinSource = 'default' | 'POLYGLOTS_AGENT_BIN' | 'POLYGLOTS_CLAUDE_BIN'
+
+/**
+ * Whether the CLI is signed in, as far as can be told without asking it to do
+ * any work. `unknown` is a real answer, not a failure: it is what another
+ * tool's state looks like when it cannot be read, and it never hides a
+ * provider.
+ */
+export interface AuthStatus {
+  state: 'signed-in' | 'signed-out' | 'unknown'
+  detail?: string
+}
+
+/** Whether the one-off setup a provider needs is in place. */
+export interface SetupStatus {
+  state: 'ok' | 'missing' | 'unknown'
+  detail?: string
+}
+
+export interface ProbeResult {
+  // null when the process never started or was killed.
+  code: number | null
+  stdout: string
+  stderr: string
+  timedOut: boolean
+}
+
+/**
+ * Runs one probe to completion. Never rejects: a spawn error is `code: null`,
+ * so every check can be written as a reading of a result rather than a
+ * try/catch around a process.
+ *
+ * The env is passed in rather than read, because the caller has already
+ * stripped the Claude Code session markers from it, and a fake needs to be
+ * able to see that it did.
+ */
+export type ProbeExec = (
+  cmd: string,
+  args: string[],
+  opts: { timeoutMs: number; env: NodeJS.ProcessEnv; input?: string },
+) => Promise<ProbeResult>
+
+export interface ProbeContext {
+  // The resolved path of the binary, so a probe runs what discovery found.
+  bin: string
+  home: string
+  env: NodeJS.ProcessEnv
+  exec: ProbeExec
+  timeoutMs: number
+}
+
 export interface ProviderSpec {
   name: ReviewProvider
   bin: string
+  /** Arguments that make the CLI print its version and exit, doing nothing else. */
+  versionArgs: string[]
+  /** A local, free sign-in check. Must never send a prompt. */
+  checkAuth(ctx: ProbeContext): Promise<AuthStatus>
+  /** The one-off setup the provider needs, for a provider that needs any. */
+  checkSetup?(home: string): SetupStatus
+  /**
+   * The one check that spends a request, behind `doctor --live` only. The
+   * prompt goes on stdin; `read` throws AgentError when the answer is not a
+   * success. It does not reuse readEnvelope, because no schema is involved
+   * and the answer is plain text.
+   */
+  liveProbe: { args(timeoutMs: number): string[]; read(stdout: string): void }
   /**
    * How the JSON schema reaches the CLI.
    *
@@ -110,6 +175,49 @@ const claude: ProviderSpec = {
   bin: 'claude',
   schemaAs: 'inline',
   defaultTimeoutMs: 300_000,
+  versionArgs: ['--version'],
+  /**
+   * `claude auth status --json` reads local state and costs nothing. Its exit
+   * code is not trusted, because a signed-out CLI may exit non-zero while still
+   * printing the answer, so stdout is read whatever the code. Anything that
+   * does not parse, such as an older build printing usage for a subcommand it
+   * lacks, is unknown rather than signed out: it says nothing about sign-in.
+   */
+  async checkAuth(ctx) {
+    const result = await ctx.exec(ctx.bin, ['auth', 'status', '--json'], { timeoutMs: ctx.timeoutMs, env: ctx.env })
+    if (result.timedOut) return { state: 'unknown', detail: 'auth status timed out' }
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(result.stdout)
+    } catch {
+      return { state: 'unknown', detail: 'auth status gave no readable answer' }
+    }
+    const loggedIn = (parsed as { loggedIn?: unknown } | null)?.loggedIn
+    if (loggedIn === false) return { state: 'signed-out', detail: 'not logged in (run: claude auth login)' }
+    if (loggedIn !== true) return { state: 'unknown', detail: 'auth status gave no readable answer' }
+    const method = (parsed as { authMethod?: unknown }).authMethod
+    return typeof method === 'string' && method.length > 0 ? { state: 'signed-in', detail: method } : { state: 'signed-in' }
+  },
+  // No tools at all: strict MCP with no config means no servers, so the probe
+  // is one model turn and nothing else.
+  liveProbe: {
+    args: () => [
+      '-p',
+      '--output-format',
+      'json',
+      '--no-session-persistence',
+      '--strict-mcp-config',
+      '--restricted',
+      '--permission-prompts',
+      'none',
+    ],
+    read(stdout) {
+      const env = envelopeOf(stdout, 'claude')
+      if (env.is_error === true) {
+        throw new AgentError(`claude reported an error: ${String(env.result ?? env.subtype ?? 'unknown')}`)
+      }
+    },
+  },
   // The prompt is sent on stdin, never as argv: --allowedTools and --mcp-config
   // are variadic on the real CLI and would swallow a trailing positional, and
   // a batch with long .po comments can exceed ARG_MAX. Each variadic flag is
@@ -162,6 +270,57 @@ const antigravity: ProviderSpec = {
   // every one that needed more than about 28 tool calls hit the old 300s
   // ceiling. Twenty minutes is room for the tail rather than an expectation.
   defaultTimeoutMs: 1_200_000,
+  versionArgs: ['--version'],
+  /**
+   * There is no status subcommand, so the token file stands in for one. Its
+   * absence is unknown, not signed out: the storage is antigravity's, not
+   * ours, and could move in any release. A missing file must not hide a
+   * provider that works.
+   */
+  async checkAuth(ctx) {
+    return existsSync(join(antigravityDir(ctx.home), 'antigravity-oauth-token'))
+      ? { state: 'signed-in' }
+      : { state: 'unknown', detail: 'no token file where antigravity used to keep it' }
+  },
+  /**
+   * Checked because its failure is the silent one: without these rules every
+   * tool call is denied, the CLI exits zero, and the run is worse than
+   * useless (docs/antigravity.md). A readable file without them is missing; a
+   * file that cannot be read or has an unexpected shape is unknown, and fails
+   * open the way configuredModel does.
+   */
+  checkSetup(home) {
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(readFileSync(join(antigravityDir(home), 'settings.json'), 'utf8'))
+    } catch {
+      return { state: 'unknown', detail: 'could not read antigravity settings.json' }
+    }
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return { state: 'unknown', detail: 'antigravity settings.json is not an object' }
+    }
+    // No permissions block at all is a readable file that allows nothing,
+    // which is the ordinary state before the documented setup step.
+    const permissions = (parsed as { permissions?: unknown }).permissions ?? {}
+    if (typeof permissions !== 'object' || permissions === null || Array.isArray(permissions)) {
+      return { state: 'unknown', detail: 'permissions in antigravity settings.json is not an object' }
+    }
+    const allow = (permissions as { allow?: unknown }).allow ?? []
+    if (!Array.isArray(allow)) return { state: 'unknown', detail: 'permissions.allow is not a list' }
+    const missing = ANTIGRAVITY_RULES.filter((rule) => !allow.includes(rule))
+    if (missing.length === 0) return { state: 'ok' }
+    return { state: 'missing', detail: `missing permission rules: ${missing.join(', ')} (see docs/antigravity.md)` }
+  },
+  liveProbe: {
+    args: (timeoutMs) => ['--output-format', 'json', '--print-timeout', printTimeout(timeoutMs)],
+    read(stdout) {
+      const env = envelopeOf(stdout, 'antigravity')
+      const status = typeof env.status === 'string' ? env.status : 'unknown'
+      if (status !== 'SUCCESS') {
+        throw new AgentError(`antigravity reported ${status}: ${String(env.error ?? 'no error given')}`)
+      }
+    },
+  },
   /**
    * No `-p`. Its `-p` requires its value inline, which would put a whole batch
    * of source strings and comments into argv; omitting it makes the CLI read
@@ -180,8 +339,7 @@ const antigravity: ProviderSpec = {
     // the process is signalled before it can write anything, and every timeout
     // was reported with an empty stderr. Its own default is 0, meaning wait
     // forever, so leaving the flag off would put the whole burden on the kill.
-    const budget = opts.timeoutMs ?? antigravity.defaultTimeoutMs
-    args.push('--print-timeout', `${Math.max(30, Math.floor(budget / 1000) - GRACE_SECONDS)}s`)
+    args.push('--print-timeout', printTimeout(opts.timeoutMs ?? antigravity.defaultTimeoutMs))
     if (opts.model) args.push('--model', opts.model)
     return args
   },
@@ -212,6 +370,51 @@ const antigravity: ProviderSpec = {
 
 const SPECS: Record<ReviewProvider, ProviderSpec> = { claude, antigravity }
 
+function antigravityDir(home: string): string {
+  return join(home, '.gemini', 'antigravity-cli')
+}
+
+function printTimeout(budgetMs: number): string {
+  return `${Math.max(30, Math.floor(budgetMs / 1000) - GRACE_SECONDS)}s`
+}
+
+// Derived from MCP_TOOLS rather than written out, so a fourth tool cannot be
+// added to the review without discovery asking for its rule too. The target
+// is server/tool: mcp__polyglots__tm_lookup becomes mcp(polyglots/tm_lookup).
+export const ANTIGRAVITY_RULES: readonly string[] = MCP_TOOLS.map(
+  (tool) => `mcp(${tool.replace(/^mcp__/, '').replace('__', '/')})`,
+)
+
+/**
+ * Which binary a provider runs, and why.
+ *
+ * POLYGLOTS_AGENT_BIN applies to whichever provider is in use.
+ * POLYGLOTS_CLAUDE_BIN is the older name and applies to claude only: it used
+ * to win for antigravity too, which drove the claude binary with
+ * antigravity's argv and failed in a way that named neither variable. An
+ * empty value counts as unset, as `||` treated it before this existed.
+ */
+export function resolveAgentBin(
+  provider: ReviewProvider,
+  env: NodeJS.ProcessEnv,
+): { bin: string; source: BinSource } {
+  if (env.POLYGLOTS_AGENT_BIN) return { bin: env.POLYGLOTS_AGENT_BIN, source: 'POLYGLOTS_AGENT_BIN' }
+  if (provider === 'claude' && env.POLYGLOTS_CLAUDE_BIN) {
+    return { bin: env.POLYGLOTS_CLAUDE_BIN, source: 'POLYGLOTS_CLAUDE_BIN' }
+  }
+  return { bin: SPECS[provider].bin, source: 'default' }
+}
+
+/**
+ * The `bin` a run should be given: the override, or undefined so the spec's
+ * own default applies. Undefined rather than the default name, so a run with
+ * no override passes exactly what it passed before.
+ */
+export function agentBinOverride(provider: ReviewProvider, env: NodeJS.ProcessEnv): string | undefined {
+  const { bin, source } = resolveAgentBin(provider, env)
+  return source === 'default' ? undefined : bin
+}
+
 /**
  * The model a provider will actually use, when the choice is not ours.
  *
@@ -237,7 +440,7 @@ const SPECS: Record<ReviewProvider, ProviderSpec> = { claude, antigravity }
 export function configuredModel(provider: ReviewProvider, home: string = homedir()): string | undefined {
   if (provider !== 'antigravity') return undefined
   try {
-    const raw = readFileSync(join(home, '.gemini', 'antigravity-cli', 'settings.json'), 'utf8')
+    const raw = readFileSync(join(antigravityDir(home), 'settings.json'), 'utf8')
     const model: unknown = (JSON.parse(raw) as { model?: unknown }).model
     return typeof model === 'string' && model.trim().length > 0 ? model : undefined
   } catch {

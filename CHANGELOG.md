@@ -10,6 +10,21 @@ Entries say what changed. For why and how, read the commit.
 
 ## [Unreleased]
 
+### Added
+
+- `polyglots doctor` reports which agent CLIs are installed, signed in and set up, with an opt-in
+  `--live` prompt.
+- A "Check AI agents" menu screen.
+
+### Changed
+
+- `p` on the menu switches only between usable agents, and says why the others are missing.
+
+### Fixed
+
+- `POLYGLOTS_CLAUDE_BIN` no longer replaces the antigravity binary.
+- TUI review, translate and fetch runs honour `POLYGLOTS_AGENT_BIN` and `POLYGLOTS_CLAUDE_BIN`.
+
 ## [0.21.0] - 2026-10-07
 
 ### Added

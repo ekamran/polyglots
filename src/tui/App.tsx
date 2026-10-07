@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useApp } from 'ink'
 import { CommandsProvider, defaultCommands, errorMessage, type TuiCommands } from './commands.js'
+import type { AgentStatus } from '../agent/discover.js'
 import { DEFAULT_PROVIDER } from '../agent/providers.js'
 import type { ReviewProvider } from '../types.js'
 import { ActivityProvider, createActivity, type Activity } from './hooks/activity.js'
+import { Agents } from './screens/Agents.js'
 import { ConfigureKeys } from './screens/ConfigureKeys.js'
 import { Fetch } from './screens/Fetch.js'
 import { ExportTm } from './screens/ExportTm.js'
@@ -39,7 +41,36 @@ export function App({ commands = defaultCommands, cwd = process.cwd(), activity,
       return DEFAULT_PROVIDER
     }
   })
+  const [configured] = useState(provider)
   const [providerError, setProviderError] = useState<string | undefined>(undefined)
+  // Discovery is held here, not in the menu or the agents screen, so a re-check
+  // on one is what the other shows. It never blocks: the menu renders at once
+  // and treats "not known yet" as "every provider is a candidate".
+  const [agents, setAgents] = useState<AgentStatus[] | undefined>(undefined)
+  const [checking, setChecking] = useState(true)
+  const [agentsError, setAgentsError] = useState<string | undefined>(undefined)
+  const check = (refresh: boolean) => {
+    setChecking(true)
+    let wanted = true
+    commands
+      .discoverAgents(refresh ? { refresh: true } : undefined)
+      .then(
+        (result) => {
+          if (!wanted) return
+          setAgents(result)
+          setAgentsError(undefined)
+        },
+        // A failed discovery falls back to the menu as it was before discovery
+        // existed. Clearing the last answer would be wrong: it was true when
+        // read, and a failed re-check does not make it less so.
+        (err: unknown) => wanted && setAgentsError(errorMessage(err)),
+      )
+      .finally(() => wanted && setChecking(false))
+    return () => {
+      wanted = false
+    }
+  }
+  useEffect(() => check(false), [])
   // The display only moves once the setting is written. A run reads the saved
   // config, so showing a provider that failed to save would name an agent no
   // review is going to use.
@@ -68,6 +99,18 @@ export function App({ commands = defaultCommands, cwd = process.cwd(), activity,
             provider={provider}
             onProvider={switchProvider}
             {...(providerError === undefined ? {} : { providerError })}
+            {...(agents === undefined ? {} : { agents })}
+            checking={checking}
+            configured={configured}
+          />
+        )}
+        {screen === 'agents' && (
+          <Agents
+            {...(agents === undefined ? {} : { agents })}
+            checking={checking}
+            {...(agentsError === undefined ? {} : { error: agentsError })}
+            onRecheck={() => check(true)}
+            onBack={back}
           />
         )}
         {screen === 'translate' && <Translate cwd={cwd} onBack={back} />}

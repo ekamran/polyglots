@@ -13,7 +13,7 @@ import { BACK_HINT, DONE_HINT, Hint } from '../components/Hint.js'
 import { Progress } from '../components/Progress.js'
 import { useTask } from '../hooks/useTask.js'
 import { createRunControl, type RunControl } from '../../run-control.js'
-import { batchAdvice } from '../../agent/providers.js'
+import { agentBinOverride, batchAdvice } from '../../agent/providers.js'
 import { batchSizeChoices } from '../batch-size.js'
 
 export interface TranslateProps {
@@ -68,6 +68,10 @@ export function Translate({ cwd, onBack }: TranslateProps) {
   const start = (chosenLocale: string) => {
     setEvents([])
     setPhase('running')
+    // The binary the Check AI agents screen and the menu gate reported on, so a
+    // run spawns what discovery checked rather than whatever is first on PATH.
+    // Resolved at start rather than at mount, the moment the CLI resolves it.
+    const bin = agentBinOverride(config.reviewProvider, process.env)
     const run = createRunControl()
     control.current = run
     const unsubscribe = run.subscribe((state) => {
@@ -86,6 +90,7 @@ export function Translate({ cwd, onBack }: TranslateProps) {
         mode,
         draftEngine: engine,
         batchSize,
+        ...(bin === undefined ? {} : { bin }),
         onProgress: (e) => setEvents((prev) => [...prev, e]),
       }).finally(unsubscribe),
     )

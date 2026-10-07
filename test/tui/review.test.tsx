@@ -583,6 +583,31 @@ describe('Review screen', () => {
     expect(reviewFile.mock.calls[0]?.[0]).toMatchObject({ fresh: false })
   })
 
+  // Discovery reports on the binary the override names, so a TUI run that
+  // ignored it would spawn bare claude from PATH: the menu would say ready and
+  // batch one would fail with ENOENT, the failure discovery exists to catch.
+  it('runs the agent binary named by POLYGLOTS_AGENT_BIN', async () => {
+    vi.stubEnv('POLYGLOTS_AGENT_BIN', '/opt/claude/bin/claude')
+    try {
+      const reviewFile = vi.fn<ReviewFile>(async (opts) => {
+        opts.onProgress?.({ type: 'done', summary: reviewSummaryOf(opts.file) })
+        return reviewSummaryOf(opts.file)
+      })
+      const view = await openReview(fakeCommands({ reviewFile }))
+      await pickFile(view)
+      for (let i = 0; i < 4; i++) {
+        view.stdin.write(keys.down)
+        await tick()
+      }
+      view.stdin.write(keys.enter)
+
+      await waitFor(() => reviewFile.mock.calls.length > 0)
+      expect(reviewFile.mock.calls[0]?.[0]).toMatchObject({ bin: '/opt/claude/bin/claude' })
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('shows the summary when the run finishes', async () => {
     const view = await openReview()
     await pickFile(view)
