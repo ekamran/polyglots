@@ -1,0 +1,150 @@
+[
+  {
+    "msgid": "Save All Changes",
+    "findings": [
+      {
+        "rule": "title-case",
+        "severity": "suspect",
+        "message": "title case mirrors the English source (Değişiklikleri, Kaydet); Turkish capitalizes only the first word and proper nouns"
+      }
+    ]
+  },
+  {
+    "msgid": "Show the sidebar widget",
+    "findings": [
+      {
+        "rule": "title-case",
+        "severity": "suspect",
+        "message": "capitalizes Bileşenini mid-string; Turkish capitalizes only the first word and proper nouns"
+      }
+    ]
+  },
+  {
+    "msgid": "Connect to WordPress now",
+    "findings": [
+      {
+        "rule": "apostrophe",
+        "severity": "suspect",
+        "message": "proper noun takes a suffix without an apostrophe: WordPressa"
+      }
+    ]
+  },
+  {
+    "msgid": "Date & Time",
+    "findings": [
+      {
+        "rule": "ampersand",
+        "severity": "suspect",
+        "message": "the translation keeps \"&\" where Turkish writes the conjunction as a word"
+      },
+      {
+        "rule": "title-case",
+        "severity": "suspect",
+        "message": "title case mirrors the English source (Saat); Turkish capitalizes only the first word and proper nouns"
+      }
+    ]
+  },
+  {
+    "msgid": "Progress: 25%",
+    "findings": [
+      {
+        "rule": "number-format",
+        "severity": "suspect",
+        "message": "Turkish writes the percent sign closed up to its number, as %25"
+      }
+    ]
+  },
+  {
+    "msgid": "Edit the author",
+    "findings": [
+      {
+        "rule": "glossary",
+        "severity": "suspect",
+        "message": "glossary term not used: \"author\" -> \"yazar\""
+      }
+    ]
+  },
+  {
+    "msgid": "Published on %s May",
+    "findings": [
+      {
+        "rule": "apostrophe",
+        "severity": "suspect",
+        "message": "proper noun takes a suffix without an apostrophe: Mayıs"
+      }
+    ]
+  },
+  {
+    "msgid": "Every month, in May",
+    "findings": [
+      {
+        "rule": "title-case",
+        "severity": "suspect",
+        "message": "capitalizes Mayıs mid-string; Turkish capitalizes only the first word and proper nouns"
+      },
+      {
+        "rule": "apostrophe",
+        "severity": "suspect",
+        "message": "proper noun takes a suffix without an apostrophe: Mayıs"
+      }
+    ]
+  },
+  {
+    "msgid": "Translate into Turkish",
+    "findings": []
+  },
+  {
+    "msgid": "Post type",
+    "findings": [
+      {
+        "rule": "tm-conflict",
+        "severity": "suspect",
+        "message": "the translation memory has a different approved translation: \"Yazı türü\""
+      }
+    ]
+  },
+  {
+    "msgid": "Categories",
+    "findings": [
+      {
+        "rule": "tm-conflict",
+        "severity": "suspect",
+        "message": "the translation memory has a different approved translation: \"Kategoriler\""
+      }
+    ]
+  },
+  {
+    "msgid": "Read more",
+    "findings": [
+      {
+        "rule": "untranslated",
+        "severity": "suspect",
+        "message": "translation is identical to the source"
+      }
+    ]
+  },
+  {
+    "msgid": "%s comments",
+    "findings": [
+      {
+        "rule": "placeholder",
+        "severity": "error",
+        "message": "translation is missing placeholder(s) %s"
+      }
+    ]
+  },
+  {
+    "msgid": "Hello ",
+    "findings": [
+      {
+        "rule": "whitespace",
+        "severity": "error",
+        "message": "leading or trailing whitespace differs from the source"
+      }
+    ]
+  },
+  {
+    "msgid": "Settings",
+    "findings": []
+  }
+]

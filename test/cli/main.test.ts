@@ -1259,3 +1259,41 @@ describe('local models', () => {
     })
   })
 })
+
+// A locale with only the universal checks used to be reviewed in silence, so
+// nobody could tell an absent finding from a passed check. Told once, before
+// the run, and never a refusal.
+describe('universal-only notice', () => {
+  const NOTICE = 'Note: no locale rules for de; only the universal checks run. Add some with: polyglots rules edit de'
+
+  it('is printed to stderr before a review of a locale with no rules of its own', async () => {
+    const h = harness()
+    const calls: string[] = []
+    const code = await h.run(['review', file, '--locale', 'de', '--no-ai'], {
+      reviewFile: async (opts) => {
+        calls.push(h.stderr.text)
+        return {
+          file: opts.file, locale: opts.locale, total: 1, skipped: 0, reviewed: 1, problems: 0, needsReview: 0,
+          approvable: 1, unreviewed: 0, repaired: 0, written: 0, pending: 0, byRule: {}, byGroup: {},
+        }
+      },
+    })
+    expect(code).toBe(0)
+    expect(calls[0]).toContain(NOTICE)
+  })
+
+  it('is printed before a translate too', async () => {
+    const h = harness()
+    const translate = fakeTranslate()
+    await h.run(['translate', file, '--locale', 'de'], { translate: translate.fn })
+    expect(h.stderr.text).toContain(NOTICE)
+  })
+
+  it('is not printed for Turkish or Swedish', async () => {
+    for (const locale of ['tr', 'sv']) {
+      const h = harness()
+      await h.run(['translate', file, '--locale', locale], { translate: fakeTranslate().fn })
+      expect(h.stderr.text).not.toContain('Note: no locale rules')
+    }
+  })
+})

@@ -1,4 +1,5 @@
-import type { AuditEntry } from '../types.js'
+import type { AuditEntry, Locale } from '../types.js'
+import { lower } from './rules/text.js'
 import { matchSourceEscaping } from '../po/escapes.js'
 
 /**
@@ -33,9 +34,13 @@ export type MemoryDecision = { kind: 'approve' } | { kind: 'repair'; text: strin
  * by the locale team's own rule and the memory cannot tell a label from prose,
  * so the locale manager's ruling was that either casing is acceptable. The
  * contributor's is kept rather than rewritten to the memory's, since nothing
- * is gained by changing one acceptable text into another. Compared the Turkish
- * way, where I and İ lower to ı and i: a comparison that ignored that would
- * match words that differ and miss words that do not.
+ * is gained by changing one acceptable text into another. Compared the way
+ * the locale's own language folds case, through the same lower() every rule
+ * uses: for Turkish that is I and İ lowering to ı and i, and a comparison that
+ * ignored it would match words that differ and miss words that do not. For
+ * every other language it is the ordinary mapping. Folding everyone the
+ * Turkish way made "Ix" and "ıx" one word in German, and lowered "DIE" to
+ * "dıe" so it no longer matched "die".
  *
  * Different wording is a judgement even when the memory looks better, which on
  * the sampled file it nearly always did, because the same source can mean
@@ -54,11 +59,12 @@ export function decideFromMemory(
   entry: AuditEntry,
   memory: readonly string[],
   exact: boolean,
+  locale: Locale,
 ): MemoryDecision | undefined {
   if (memory.length === 0 || !exact) return undefined
   if (entry.msgidPlural !== undefined || entry.msgstr.length !== 1) return undefined
   const submitted = entry.msgstr[0]!
-  const fold = (s: string) => s.toLocaleLowerCase('tr')
+  const fold = (s: string) => lower(s, locale)
 
   // A submission left in English is never approved from the memory, even when
   // the memory holds the same English. The memory carries English for

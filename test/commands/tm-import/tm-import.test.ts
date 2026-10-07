@@ -318,6 +318,36 @@ msgstr "Çalışma gerekiyor"
     expect(findExactTm(db, '%d items', 'tr')?.target).toBe('%d öge')
   })
 
+  // With three forms msgstr[1] is the "few" form, not the plural of the
+  // source, and writing it as the translation of msgid_plural taught the
+  // memory a wrong wording. translate reads plurals back only for two forms.
+  it('stores only the singular of a plural entry when the catalogue has three forms', async () => {
+    const ru = join(home, 'wp-dev-ru.po')
+    await writeFile(
+      ru,
+      PO.replace('Language: tr', 'Language: ru').replace(
+        'nplurals=2; plural=n > 1;',
+        'nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);',
+      ).replace('msgstr[1] "%d öge"', 'msgstr[1] "%d öge few"\nmsgstr[2] "%d öge many"'),
+      'utf8',
+    )
+    await importTmx([ru], { locale: 'ru', db })
+
+    expect(findExactTm(db, '%d item', 'ru')?.target).toBe('%d öge')
+    expect(findExactTm(db, '%d items', 'ru')).toBeUndefined()
+  })
+
+  // No header says how many forms there are, so nothing says which one is
+  // the plural.
+  it('stores only the singular of a plural entry when the catalogue has no Plural-Forms header', async () => {
+    const bare = join(home, 'wp-dev-bare.po')
+    await writeFile(bare, PO.replace('"Plural-Forms: nplurals=2; plural=n > 1;\\n"\n', ''), 'utf8')
+    await importTmx([bare], { locale: 'tr', db })
+
+    expect(findExactTm(db, '%d item', 'tr')?.target).toBe('%d öge')
+    expect(findExactTm(db, '%d items', 'tr')).toBeUndefined()
+  })
+
   // An export filtered to current strings should carry neither, but a file
   // saved from an editor will.
   it('skips what nobody approved: empty and fuzzy entries', async () => {

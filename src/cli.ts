@@ -11,6 +11,7 @@ import { fetchProjects, resolveProjects } from './commands/fetch.js'
 import { runFetch, type FetchFlags } from './cli/fetch.js'
 import { copyRules, describeRules, editRules, openInEditor, type OpenEditor } from './cli/rules.js'
 import { loadLocaleRules, localeRulesFile } from './rules/load.js'
+import { supportNotice } from './rules/support.js'
 import { syncGlossary } from './commands/glossary-sync.js'
 import { reviewFile } from './commands/review.js'
 import { splitPo } from './commands/split.js'
@@ -221,6 +222,7 @@ async function runTranslate(cli: Cli, patterns: string[], flags: TranslateFlags)
   const config = cli.config()
   const locale = parseLocaleArg(flags.locale ?? config.defaultLocale)
   loadLocaleRules(locale)
+  warnUniversalOnly(cli, locale)
   const draftEngine = parseDraftEngine(flags.draftEngine ?? config.defaultDraftEngine)
   const batchSize = flags.batchSize === undefined ? config.batchSize : parsePositiveInt('--batch-size', flags.batchSize)
   const dryRun = flags.dryRun === true
@@ -286,6 +288,14 @@ async function runTranslate(cli: Cli, patterns: string[], flags: TranslateFlags)
     }
   }
   return failed > 0 ? EXIT_ERROR : EXIT_OK
+}
+
+// Before the run, on stderr, and never a refusal: the universal checks are
+// worth running on their own, but whoever reads the result should know an
+// absent finding is not a passed language check.
+function warnUniversalOnly(cli: Cli, locale: Locale): void {
+  const notice = supportNotice(locale)
+  if (notice) cli.err(notice)
 }
 
 async function warnAboutLocalModel(cli: Cli, ollama: PolyglotsConfig['ollama']): Promise<void> {
@@ -704,6 +714,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
       // Before anything else: a review must not run on rules the person
       // believes are in force when the file that says so cannot be read.
       loadLocaleRules(locale)
+      warnUniversalOnly(cli, locale)
       const batchSize =
         flags.batchSize === undefined ? config.batchSize : parsePositiveInt('--batch-size', flags.batchSize)
       const advice = batchAdvice(config.reviewProvider, batchSize)

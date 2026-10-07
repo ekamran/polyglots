@@ -18,17 +18,29 @@ Entries say what changed. For why and how, read the commit.
 - `polyglots models` lists local model servers (Ollama, LM Studio, llama.cpp) and their models.
 - A "Local models" menu screen that sets the Ollama draft model.
 - `config set` and `config get` take `ollama.model`, `ollama.baseUrl` and `localModelServers`.
+- Built-in Swedish rules, marked as defaults for the sv locale team to confirm.
+- `rules check` and the Locale rules screen say which built-in pack a locale has.
 
 ### Changed
 
 - `p` on the menu switches only between usable agents, and says why the others are missing.
 - Translate with the qwen engine warns before starting when Ollama is down or the model is not
   pulled, on the CLI and the Translate screen.
+- Review and translate prompts say when only the universal checks run, and carry the
+  catalogue's `Plural-Forms` header above two forms.
+- `review` and `translate` print a note before running a locale with only the universal checks.
+- The `rules edit` template's examples follow the locale.
 
 ### Fixed
 
 - `POLYGLOTS_CLAUDE_BIN` no longer replaces the antigravity binary.
 - TUI review, translate and fetch runs honour `POLYGLOTS_AGENT_BIN` and `POLYGLOTS_CLAUDE_BIN`.
+- Memory matching folds case by the locale, not as Turkish.
+- The Turkish capitalization paragraph no longer reaches other locales that enable `title-case`.
+- Review and translate refuse a catalogue with plural entries but no `Plural-Forms` header.
+- `tm import` stores plural rows only for two-form catalogues.
+- `nl/formal` and other sets pick up the language's proper nouns from `config.json`.
+- `ampersand` and `number-format` name the locale's language instead of Turkish.
 
 ## [0.21.0] - 2026-10-07
 

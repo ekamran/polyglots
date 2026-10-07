@@ -19,6 +19,8 @@ export { childEnv }
 export interface ReviewOptions extends AgentRunOptions {
   locale: Locale
   nplurals: number
+  // The catalogue's Plural-Forms header, only above two forms.
+  pluralForms?: string
 }
 
 export class ReviewError extends Error {
@@ -81,7 +83,7 @@ export function mapResults(inputs: ReviewInput[], payload: unknown, nplurals: nu
 
 export async function reviewBatch(inputs: ReviewInput[], opts: ReviewOptions): Promise<ReviewResult[]> {
   if (inputs.length === 0) return []
-  const prompt = buildReviewPrompt(inputs, opts.locale, opts.nplurals)
+  const prompt = buildReviewPrompt(inputs, opts.locale, opts.nplurals, opts.pluralForms)
   try {
     const output = await spawnAgent(buildReviewArgs(opts), prompt, opts)
     return mapResults(inputs, readAgentOutput(output, opts), opts.nplurals)

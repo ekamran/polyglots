@@ -1,0 +1,39 @@
+# polyglots rules for tr_TR (tr)
+#
+# Every section is optional. A section left out keeps the built-in behaviour.
+# The built-in values are shown commented out; uncomment a section to change it.
+# Any change re-reviews files of this locale from scratch on their next run.
+# Check the file with: polyglots rules check tr
+
+# Rules that always run unless disabled: placeholder, html, plural-count, whitespace, untranslated, escaping, line-breaks, punctuation, glossary, inconsistent, tm-conflict, control
+# rules:
+#   enable: ["title-case", "apostrophe", "ampersand", "number-format"]
+#   disable: []
+
+# How much of a glossary term must match an inflected form, between 0 and 1.
+# glossaryStemRatio: 0.7
+
+# Names capitalized everywhere (always), and only inside a specific date (dateOnly).
+# properNouns:
+#   always: ["Türk", "Türkçe", "Türkiye", "İngiliz", "İngilizce", "Almanca", "Alman", "Fransızca", "Fransız", "İspanyolca", "İspanyol", "İtalyanca", "İtalyan", "Rusça", "Rus", "Arapça", "Arap", "Japonca", "Japon", "Çince", "Çin", "Korece", "Portekizce", "Hollandaca", "Lehçe", "İbranice", "Farsça", "Yunanca", "Yunan", "Kürtçe", "Kürt"]
+#   dateOnly: ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar", "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
+
+# Common mistakes: found anywhere in a translation, case-insensitive.
+# The AI review weighs each match with your note.
+mistakes: []
+#  - wrong: önizleme
+#    right: ön izleme
+#    note: TDK writes it as two words
+
+# Patterns: "text" (a literal) or "find" (a regular expression).
+# level: hint (the AI judges), error (always wrong, the AI must fix) or fix (replaced automatically).
+# "when: { source: ... }" applies a pattern only when the English source contains that text.
+patterns: []
+#  - find: '\.\.\.'
+#    replace: '…'
+#    level: fix
+#    note: Use the ellipsis character
+
+# Guidance added to the AI review prompts, at most 1500 characters.
+# guidance: |
+#   Button labels are verbs in the imperative.

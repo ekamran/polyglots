@@ -33,6 +33,7 @@ import { writeMcpConfig, MCP_ENV } from '../mcp/config.js'
 import { loadPo, type Annotation } from '../po/po-file.js'
 import type { RunControl } from '../run-control.js'
 import { loadConfig } from '../config.js'
+import { languageOf } from '../wporg/locales.js'
 import { tmKey } from '../audit/rules/index.js'
 import { allGlossary, findMemory, openDb } from '../storage/index.js'
 import type { AuditEntry, Locale, ReviewEvent, ReviewSummary } from '../types.js'
@@ -158,8 +159,10 @@ function addTally(into: Record<string, number>, from: Record<string, number>): R
   return into
 }
 
-// Names the locale team maintains in config.json, keyed by language subtag so a
-// regional locale (pt-br) still picks up the language's list.
+// Names the locale team maintains in config.json, keyed by language so a
+// regional locale (pt-br) or a translation set (nl/formal) still picks up the
+// language's list. languageOf rather than a split on - and _, which left
+// nl/formal reading only its own key.
 export function configuredProperNouns(locale: Locale): string[] {
   let all: Record<string, string[]>
   try {
@@ -167,7 +170,7 @@ export function configuredProperNouns(locale: Locale): string[] {
   } catch {
     return []
   }
-  const language = locale.toLowerCase().split(/[-_]/)[0] ?? locale
+  const language = languageOf(locale)
   return [...(all[locale] ?? []), ...(language === locale ? [] : (all[language] ?? []))]
 }
 
@@ -190,6 +193,10 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
   }
 
   const po = await loadPo(opts.file)
+  // Before the job row and before any agent: a run that would write the wrong
+  // number of forms is refused, not recorded as one that failed.
+  po.requirePluralForms(opts.locale)
+  const pluralForms = po.promptPluralForms()
   const all = po.auditEntries()
   const reviewable = all.filter(submitted)
   const emit = opts.onProgress ?? (() => {})
@@ -328,6 +335,7 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
       memoryExact: remembered.exact,
       locale: opts.locale,
       nplurals: po.nplurals,
+      ...(pluralForms === undefined ? {} : { pluralForms }),
       glossary,
       properNouns,
       mcpConfigPath,

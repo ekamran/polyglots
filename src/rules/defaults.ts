@@ -1,6 +1,8 @@
 import { builtInProfileFor, UNIVERSAL_RULES } from '../audit/rules/profiles.js'
 import { wpCodeOf } from '../wporg/locales.js'
 import { builtInProperNounsFor } from '../audit/rules/proper-nouns.js'
+import { packFor } from './packs/index.js'
+import { packLine } from './support.js'
 import type { Locale } from '../types.js'
 import { GUIDANCE_LIMIT } from './schema.js'
 
@@ -8,6 +10,13 @@ import { GUIDANCE_LIMIT } from './schema.js'
 export const rulesHeader = (locale: Locale) => `# polyglots rules for ${wpCodeOf(locale) ?? locale} (${locale})`
 
 const list = (items: readonly string[]) => `[${items.map((i) => JSON.stringify(i)).join(', ')}]`
+
+// For a locale with no pack: examples that name no language, so a German team
+// is not shown a Turkish spelling rule as the model of what to write.
+const NEUTRAL_EXAMPLES = {
+  mistakes: ['  - wrong: a wording your team rejects', '    right: the wording it uses instead', '    note: Why, for the reviewer'],
+  patterns: ["  - find: ' {2,}'", "    replace: ' '", '    level: fix', '    note: One space between words'],
+}
 
 /**
  * The file `rules edit` writes when a locale has none: today's built-in
@@ -24,9 +33,15 @@ export function renderDefaultRules(locale: Locale, opts: { commented?: boolean }
   const profile = builtInProfileFor(locale)
   const nouns = builtInProperNounsFor(locale)
   const extras = [...profile.rules].filter((r) => !UNIVERSAL_RULES.includes(r))
+  const pack = packFor(locale)
+  const examples = pack?.examples ?? NEUTRAL_EXAMPLES
 
   return [
     rulesHeader(locale),
+    // Said only when there is something to qualify. A maintained pack needs no
+    // caveat, and leaving the line out keeps the Turkish template exactly as
+    // every existing tr_TR.yaml was written from.
+    ...(pack?.status === 'maintained' ? [] : [`# ${packLine(locale)}`]),
     '#',
     '# Every section is optional. A section left out keeps the built-in behaviour.',
     '# The built-in values are shown commented out; uncomment a section to change it.',
@@ -49,18 +64,13 @@ export function renderDefaultRules(locale: Locale, opts: { commented?: boolean }
     '# Common mistakes: found anywhere in a translation, case-insensitive.',
     '# The AI review weighs each match with your note.',
     'mistakes: []',
-    '#  - wrong: önizleme',
-    '#    right: ön izleme',
-    '#    note: TDK writes it as two words',
+    ...examples.mistakes.map((line) => `#${line}`),
     '',
     '# Patterns: "text" (a literal) or "find" (a regular expression).',
     '# level: hint (the AI judges), error (always wrong, the AI must fix) or fix (replaced automatically).',
     '# "when: { source: ... }" applies a pattern only when the English source contains that text.',
     'patterns: []',
-    "#  - find: '\\.\\.\\.'",
-    "#    replace: '…'",
-    '#    level: fix',
-    '#    note: Use the ellipsis character',
+    ...examples.patterns.map((line) => `#${line}`),
     '',
     `# Guidance added to the AI review prompts, at most ${GUIDANCE_LIMIT} characters.`,
     '# guidance: |',

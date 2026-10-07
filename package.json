@@ -1,7 +1,7 @@
 {
   "name": "polyglots",
   "version": "0.21.0",
-  "description": "Translate WordPress .po files into Turkish with machine drafts and AI review",
+  "description": "Translate and review WordPress .po files with machine drafts and AI review",
   "type": "module",
   "bin": {
     "polyglots": "./dist/cli.js"

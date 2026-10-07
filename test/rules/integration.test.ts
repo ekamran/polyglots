@@ -44,8 +44,18 @@ const BEFORE = {
   // the prompt paragraphs on automatedChecks and control strings.
   trEmpty: '35c0131f7cc7515a',
   trGloss: '56423d5cfd39fbcc',
-  de: 'f9945579f6ae0d57',
+  // Moved by the universal-only note (#2): German runs only the universal
+  // rules, and both review prompts now say so. Every universal-only locale
+  // re-reviews once.
+  de: '96f764d0e675cd3f',
+  // Pinned with the note in place, which moved it too; it was not pinned
+  // before (#2).
+  deTranslate: '4675c41a315e6d33',
   trTranslate: '061889a3e01b0b39',
+  // The Swedish pack, pinned when it was added (#2), so later drift in its
+  // paragraph or register line is deliberate.
+  sv: '5254d5918a0c6460',
+  svTranslate: '8244647091197a1b',
 }
 
 describe('without a rules file', () => {
@@ -55,7 +65,10 @@ describe('without a rules file', () => {
       configHash({ locale: 'tr', glossary: [{ locale: 'tr', sourceTerm: 'post', translation: 'yazı' }], properNouns: ['Acme'] }),
     ).toBe(BEFORE.trGloss)
     expect(configHash({ locale: 'de', glossary: [], properNouns: [] })).toBe(BEFORE.de)
+    expect(translateConfigHash('de')).toBe(BEFORE.deTranslate)
     expect(translateConfigHash('tr')).toBe(BEFORE.trTranslate)
+    expect(configHash({ locale: 'sv', glossary: [], properNouns: [] })).toBe(BEFORE.sv)
+    expect(translateConfigHash('sv')).toBe(BEFORE.svTranslate)
   })
 
   it('keeps the built-in Turkish profile', () => {

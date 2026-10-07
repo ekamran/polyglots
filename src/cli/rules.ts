@@ -6,6 +6,7 @@ import { dirname } from 'node:path'
 import { renderDefaultRules, rulesHeader } from '../rules/defaults.js'
 import { loadLocaleRules, localeRulesFile } from '../rules/load.js'
 import { GUIDANCE_LIMIT } from '../rules/schema.js'
+import { packLine } from '../rules/support.js'
 import type { Locale } from '../types.js'
 
 export type OpenEditor = (file: string) => Promise<void>
@@ -26,8 +27,11 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 export function describeRules(locale: Locale): string[] {
   const file = localeRulesFile(locale)
   const rules = loadLocaleRules(locale)
+  // First, because it says what the file is layered over: a pack's profile,
+  // or nothing but the universal set.
+  const pack = packLine(locale)
   if (!rules) {
-    return [`No rules file for ${locale}; the built-in defaults apply.`, `Create one with: polyglots rules edit ${locale}`]
+    return [pack, `No rules file for ${locale}; the built-in defaults apply.`, `Create one with: polyglots rules edit ${locale}`]
   }
   const mistakes = rules.patterns.filter((p) => p.kind === 'mistake').length
   const patterns = rules.patterns.length - mistakes
@@ -36,6 +40,7 @@ export function describeRules(locale: Locale): string[] {
     .filter(([, n]) => n > 0)
     .map(([level, n]) => `${n} ${level}`)
   return [
+    pack,
     `${file} is valid.`,
     rules.rules
       ? `  rules: ${plural(rules.rules.enable.length, 'enabled extra')}, ${plural(rules.rules.disable.length, 'disabled')}`

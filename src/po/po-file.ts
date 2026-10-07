@@ -3,7 +3,7 @@ import { chmod, readFile, realpath, rename, stat, unlink, writeFile } from 'node
 import { basename, dirname, join } from 'node:path'
 import { po } from 'gettext-parser'
 import type { GetTextTranslation, GetTextTranslations } from 'gettext-parser'
-import type { AuditEntry, TranslationUnit } from '../types.js'
+import type { AuditEntry, Locale, TranslationUnit } from '../types.js'
 
 export type UnitMode = 'pending' | 'all'
 
@@ -33,10 +33,14 @@ function splitKey(key: string): { msgctxt: string; msgid: string } {
   return at === -1 ? { msgctxt: '', msgid: key } : { msgctxt: key.slice(0, at), msgid: key.slice(at + 1) }
 }
 
-function parseNplurals(pluralForms: string | undefined): number {
+// What the header declares, or undefined when it says nothing usable. Kept
+// apart from the fallback so the callers that must not guess can tell the two
+// apart: review and translate refuse a plural catalogue without one, and the
+// memory import writes no plural row for it.
+function declaredNplurals(pluralForms: string | undefined): number | undefined {
   const match = /nplurals\s*=\s*(\d+)/.exec(pluralForms ?? '')
   const n = match ? Number(match[1]) : NaN
-  return Number.isInteger(n) && n > 0 ? n : 2
+  return Number.isInteger(n) && n > 0 ? n : undefined
 }
 
 function flagList(entry: GetTextTranslation): string[] {
@@ -169,14 +173,50 @@ function decode(buffer: Buffer, charset: string): string {
 }
 
 export class PoFile {
+  // Still 2 when the header is missing, so a catalogue with no plural entries
+  // runs, and keys its cache, exactly as it always has. Whatever depends on
+  // the count being right checks declaredNplurals instead.
   readonly nplurals: number
+  readonly declaredNplurals: number | undefined
+  // The raw header, trimmed, for the prompts to carry above two forms.
+  readonly pluralForms: string | undefined
 
   constructor(
     readonly path: string,
     readonly raw: GetTextTranslations,
     readonly order: Map<string, number> = new Map(),
   ) {
-    this.nplurals = parseNplurals(raw.headers['Plural-Forms'])
+    const header = raw.headers['Plural-Forms']?.trim()
+    this.pluralForms = header ? header : undefined
+    this.declaredNplurals = declaredNplurals(header)
+    this.nplurals = this.declaredNplurals ?? 2
+  }
+
+  /** Whether any entry, translated or not, has a msgid_plural. */
+  hasPlurals(): boolean {
+    for (const entry of this.entries()) if (entry.msgid_plural !== undefined) return true
+    return false
+  }
+
+  /**
+   * Refuses a catalogue whose plural entries cannot be written correctly.
+   *
+   * Without a Plural-Forms header nothing says how many forms the locale has,
+   * and the old fallback of 2 wrote two forms into every plural entry of a
+   * Russian or Arabic catalogue. A per-locale table would be a second guess
+   * kept by hand, so the file has to say. A catalogue with no plural entries
+   * has nothing to get wrong and runs.
+   */
+  requirePluralForms(locale: Locale): void {
+    if (this.declaredNplurals !== undefined || !this.hasPlurals()) return
+    throw new Error(
+      `${this.path} has plural entries but no Plural-Forms header; polyglots will not guess how many forms ${locale} uses`,
+    )
+  }
+
+  /** The header as the review prompts render it: only above two forms. */
+  promptPluralForms(): string | undefined {
+    return this.nplurals > 2 ? this.pluralForms : undefined
   }
 
   get headers(): Record<string, string> {

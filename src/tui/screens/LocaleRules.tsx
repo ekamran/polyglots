@@ -13,6 +13,7 @@ import { ListEditor } from '../components/ListEditor.js'
 import { Form } from '../components/Form.js'
 import { MultilineInput } from '../components/MultilineInput.js'
 import { copyRules } from '../../cli/rules.js'
+import { packLine } from '../../rules/support.js'
 import { tryRules, type TryResult } from '../../rules/try.js'
 import { allGlossary, openDb } from '../../storage/index.js'
 import type { GlossaryEntry } from '../../types.js'
@@ -183,7 +184,7 @@ export function LocaleRules({ onBack }: LocaleRulesProps) {
     setNotice(undefined)
   }
 
-  const nouns = (list: NounList): string[] => value.properNouns?.[list] ?? draft?.builtIn.properNouns[list] ?? []
+  const nouns = (list: NounList): readonly string[] => value.properNouns?.[list] ?? draft?.builtIn.properNouns[list] ?? []
   // A list edited for the first time is written out whole, built-in names
   // included, since a list in the file replaces the built-in one. The other
   // list stays out of the file and so stays built-in.
@@ -294,6 +295,8 @@ export function LocaleRules({ onBack }: LocaleRulesProps) {
 
       {draft && (stage === 'overview' || stage === 'leave') && (
         <>
+          {/* What the file is layered over, in rules check's own words. */}
+          <Text dimColor>{packLine(draft.locale)}</Text>
           <Text>
             {marker(cursor === 0)}Built-in rules     {activeRules().size} on
           </Text>
@@ -353,7 +356,7 @@ export function LocaleRules({ onBack }: LocaleRulesProps) {
       {draft && stage === 'nounList' && (
         <ListEditor<string>
           title={NOUN_LISTS[nounCursor]!.label}
-          items={nouns(NOUN_LISTS[nounCursor]!.key)}
+          items={[...nouns(NOUN_LISTS[nounCursor]!.key)]}
           empty="No names."
           describe={(n) => n}
           fields={[{ key: 'name', label: 'Name', required: true }]}

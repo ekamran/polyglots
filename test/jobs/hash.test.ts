@@ -278,3 +278,26 @@ describe('engineId', () => {
     expect(engineId('opus', 'antigravity')).not.toBe(engineId('opus'))
   })
 })
+
+// Above two forms the prompts carry the catalogue's Plural-Forms header, so a
+// verdict formed without it must not be served once it is there. Below that
+// the part is absent and the joined string, so every existing key, is exactly
+// what it was: the fixed values were captured before the header existed (#2).
+describe('the plural expression in the per-entry keys', () => {
+  const plural = { msgid: '%d file', msgidPlural: '%d files', msgstr: ['%d файл', '%d файла', '%d файлов'] }
+  const RU = 'nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);'
+  const auditContext = { references: ['a.php:1'], comments: [], hints: [], nplurals: 3, repaired: false }
+  const draftContext = { comments: [], nplurals: 3 }
+
+  it('leaves both keys as they were without it', () => {
+    expect(auditSrcHash(plural, auditContext)).toBe('eeea14f0c245f248')
+    expect(draftSrcHash({ ...plural, msgstr: [] }, draftContext)).toBe('90aa6e5daf69f9c9')
+  })
+
+  it('moves both keys with it', () => {
+    expect(auditSrcHash(plural, { ...auditContext, pluralForms: RU })).not.toBe(auditSrcHash(plural, auditContext))
+    expect(draftSrcHash({ ...plural, msgstr: [] }, { ...draftContext, pluralForms: RU })).not.toBe(
+      draftSrcHash({ ...plural, msgstr: [] }, draftContext),
+    )
+  })
+})

@@ -64,6 +64,10 @@ export interface AuditContext {
   // different prompt and deserves a different key.
   memory?: readonly string[]
   nplurals: number
+  // The catalogue's Plural-Forms header, set only when the prompt renders it,
+  // which is above two forms. Appended as a part only when present, so every
+  // key for one or two forms is the joined string it always was.
+  pluralForms?: string
   // Whether a mechanical repair was applied before the model was asked. The
   // prompt says so, and the hash is taken after the repair, so without this an
   // entry whose whitespace was fixed and the same entry submitted already
@@ -98,6 +102,7 @@ export function auditSrcHash(entry: SourceText, context: AuditContext): string {
     // and the same entry submitted already clean hash the same, because the
     // hash is taken after the repair and the `repaired` hint is excluded.
     context.repaired ? 'repaired' : '',
+    ...(context.pluralForms === undefined ? [] : [context.pluralForms]),
   )
 }
 
@@ -109,10 +114,20 @@ export function auditSrcHash(entry: SourceText, context: AuditContext): string {
 export interface DraftContext {
   comments: string[]
   nplurals: number
+  // As in AuditContext: the header the draft review prompt renders above two
+  // forms, absent otherwise. Translate passes it for the draft review's key
+  // and not for the draft's, because the draft engines' own prompt does not
+  // carry it yet and a paid-for draft should not miss over a line it never saw.
+  pluralForms?: string
 }
 
 export function draftSrcHash(entry: SourceText, context: DraftContext): string {
-  return hash(srcHash(entry), context.comments.join(FIELD), String(context.nplurals))
+  return hash(
+    srcHash(entry),
+    context.comments.join(FIELD),
+    String(context.nplurals),
+    ...(context.pluralForms === undefined ? [] : [context.pluralForms]),
+  )
 }
 
 export interface ConfigHashInput {

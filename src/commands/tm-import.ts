@@ -75,16 +75,22 @@ async function loadEntries(file: string, targetLocale: Locale, project?: string)
  *
  * A plural entry becomes two rows, one per source form, because the memory
  * holds one string per source and `translate` reads a plural back by looking up
- * each form separately.
+ * each form separately. Only when the catalogue declares two forms, though.
+ * With three, msgstr[1] is Russian's "few" and not the plural of the source,
+ * and storing it as the translation of msgid_plural taught the memory a wrong
+ * wording; with one, or with no header to say, there is no form that is the
+ * plural. `translate` reads plurals back only for two forms, so this writes
+ * exactly what can be read.
  */
 async function poEntries(file: string, locale: Locale, project?: string): Promise<TmEntry[]> {
   const po = await loadPo(file)
   const rows: TmEntry[] = []
+  const twoForms = po.declaredNplurals === 2
   for (const entry of po.auditEntries()) {
     if (entry.fuzzy) continue
     const forms = [
       { source: entry.msgid, target: entry.msgstr[0] },
-      ...(entry.msgidPlural === undefined ? [] : [{ source: entry.msgidPlural, target: entry.msgstr[1] }]),
+      ...(entry.msgidPlural === undefined || !twoForms ? [] : [{ source: entry.msgidPlural, target: entry.msgstr[1] }]),
     ]
     for (const { source, target } of forms) {
       if (!target || target.trim() === '') continue

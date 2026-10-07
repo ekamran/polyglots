@@ -1,0 +1,122 @@
+import { mkdir, utimes, writeFile } from 'node:fs/promises'
+import { dirname } from 'node:path'
+import { describe, expect, it } from 'vitest'
+import { buildAuditPrompt } from '../../src/audit/prompt.js'
+import { buildRuleContext, runRules } from '../../src/audit/rules/index.js'
+import { buildReviewPrompt } from '../../src/review/prompt.js'
+import { localeRulesFile } from '../../src/rules/load.js'
+import type { ReviewInput } from '../../src/types.js'
+
+// Each write moves the mtime forward, so the loader's cache always sees it.
+let tick = 0
+async function writeRules(locale: string, text: string) {
+  const file = localeRulesFile(locale)
+  await mkdir(dirname(file), { recursive: true })
+  await writeFile(file, text, 'utf8')
+  const t = new Date(Date.now() + ++tick * 1000)
+  await utimes(file, t, t)
+}
+
+const audit = (locale: string, nplurals = 2, pluralForms?: string) => buildAuditPrompt([], locale, nplurals, pluralForms)
+const review = (locale: string, nplurals = 2, pluralForms?: string) => buildReviewPrompt([], locale, nplurals, pluralForms)
+
+const UNIVERSAL_NOTE = /only the universal ones/
+
+describe('the capitalization paragraph', () => {
+  // The Turkish paragraph is TDK text with Turkish examples. Gating it on the
+  // rule name alone sent it to any team that turned title-case on.
+  it('gives a locale that enables title-case by file the generic paragraph, with nothing Turkish in it', async () => {
+    await writeRules('nl', 'rules:\n  enable: [title-case]\n')
+    const prompt = audit('nl')
+    expect(prompt).toMatch(/Dutch capitalizes only the first word of a sentence and proper nouns/)
+    expect(prompt).not.toMatch(/TDK|Türk|Kaydet/)
+  })
+
+  it('gives Swedish its own paragraph', () => {
+    const prompt = audit('sv')
+    expect(prompt).toMatch(/Swedish writes the names of languages, nationalities, days of the week and months in lower case/)
+    expect(prompt).not.toMatch(/TDK|Türk/)
+  })
+
+  it('keeps the plain line for a locale without title-case', () => {
+    expect(audit('de')).toContain("- Follow German's own capitalization rules.")
+  })
+})
+
+describe('the register line', () => {
+  // WordPress in Swedish addresses the reader as "du". Asking for a formal
+  // register with no over-familiar address invites the model to push "ni".
+  it('tells both Swedish prompts to use "du" and not the formal register', () => {
+    for (const prompt of [audit('sv'), review('sv')]) {
+      expect(prompt).toMatch(/Address the reader as "du"/)
+      expect(prompt).not.toMatch(/formal/)
+    }
+  })
+
+  it('keeps the formal line for a locale without an override', () => {
+    expect(audit('de')).toContain('- Use the formal, neutral register standard in WordPress German.')
+    expect(review('de')).toContain('- Use the formal/neutral register that is standard in WordPress German (de).')
+  })
+})
+
+describe('the universal-only note', () => {
+  it('reaches both prompts for a locale whose rules are only the universal ones', () => {
+    expect(audit('de')).toMatch(UNIVERSAL_NOTE)
+    expect(review('de')).toMatch(UNIVERSAL_NOTE)
+  })
+
+  it('stays out of the Turkish and Swedish prompts', () => {
+    for (const prompt of [audit('tr'), review('tr'), audit('sv'), review('sv')]) expect(prompt).not.toMatch(UNIVERSAL_NOTE)
+  })
+
+  // Decided by the rules that will run, not by whether a pack exists.
+  it('reaches Turkish once its file turns every extra off', async () => {
+    await writeRules('tr', 'rules:\n  enable: []\n')
+    expect(audit('tr')).toMatch(UNIVERSAL_NOTE)
+    expect(review('tr')).toMatch(UNIVERSAL_NOTE)
+  })
+
+  it('leaves German alone once its file writes one mistake', async () => {
+    await writeRules('de', 'mistakes:\n  - wrong: Email\n')
+    expect(audit('de')).not.toMatch(UNIVERSAL_NOTE)
+    expect(review('de')).not.toMatch(UNIVERSAL_NOTE)
+  })
+})
+
+describe('the plural expression', () => {
+  const RU = 'nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);'
+
+  // Above two forms the count alone does not say which form is which.
+  it('reaches both prompts above two forms', () => {
+    expect(audit('ru', 3, RU)).toContain(`nplurals: 3\nPlural-Forms: ${RU}\n`)
+    expect(review('ru', 3, RU)).toContain(`nplurals: 3\nPlural-Forms: ${RU}\n`)
+  })
+
+  it('stays out at two forms or fewer', () => {
+    const two = 'nplurals=2; plural=(n > 1);'
+    expect(audit('tr', 2, two)).toBe(audit('tr', 2))
+    expect(review('tr', 2, two)).toBe(review('tr', 2))
+  })
+})
+
+describe('rule messages', () => {
+  const entry = (msgid: string, msgstr: string) => ({ key: msgid, msgid, msgstr: [msgstr], comments: [], references: [], fuzzy: false })
+
+  it('name the locale\'s own language when a file enables ampersand or number-format', async () => {
+    await writeRules('de', 'rules:\n  enable: [ampersand, number-format]\n')
+    const entries = [entry('Date & Time', 'Datum & Zeit'), entry('Progress: 25%', 'Fortschritt: % 25')]
+    const ctx = buildRuleContext({ locale: 'de', glossary: [], nplurals: 2, entries })
+    const messages = entries.flatMap((e) => runRules(e, ctx)).map((f) => f.message)
+    expect(messages).toEqual([
+      'the translation keeps "&" where German writes the conjunction as a word',
+      'German writes the percent sign closed up to its number, as %25',
+    ])
+  })
+})
+
+describe('the review prompt keeps its inputs', () => {
+  it('still renders entries after the new lines', () => {
+    const inputs: ReviewInput[] = [{ key: 'Save', msgid: 'Save', comments: [], drafts: ['Spara'] }]
+    expect(buildReviewPrompt(inputs, 'sv', 2)).toContain('"msgid":"Save"')
+  })
+})

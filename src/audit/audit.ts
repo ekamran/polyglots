@@ -34,7 +34,7 @@ export interface Verdict {
 
 export type Adjudicator = (
   batch: AuditCandidate[],
-  opts: { locale: Locale; nplurals: number } & AgentRunOptions,
+  opts: { locale: Locale; nplurals: number; pluralForms?: string } & AgentRunOptions,
 ) => Promise<AuditResult[]>
 
 export interface BatchStart {
@@ -64,6 +64,9 @@ export interface AuditOptions extends Partial<AgentRunOptions> {
   entries: AuditEntry[]
   locale: Locale
   nplurals: number
+  // The catalogue's Plural-Forms header, set only above two forms, where the
+  // prompt carries it and so the verdict key must too.
+  pluralForms?: string
   glossary: GlossaryEntry[]
   properNouns?: string[]
   // Every wording the memory holds for these sources, resolved by the caller.
@@ -121,7 +124,7 @@ export const DEFAULT_BATCH_SIZE = 25
 const MAX_CONSECUTIVE_FAILURES = 3
 
 export const adjudicateWithAgent: Adjudicator = async (batch, opts) => {
-  const payload = await runAgent(buildAuditPrompt(batch, opts.locale, opts.nplurals), auditBatchJsonSchema, opts)
+  const payload = await runAgent(buildAuditPrompt(batch, opts.locale, opts.nplurals, opts.pluralForms), auditBatchJsonSchema, opts)
   return mapAuditResults(batch, payload)
 }
 
@@ -169,7 +172,7 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
     // TMX import that changes an answer is seen at once, and nothing about it
     // can go stale in the verdict cache or needs the configuration hash to move.
     const key = tmKey(entry.msgid, entry.msgctxt)
-    const decision = decideFromMemory(entry, opts.tm?.get(key) ?? [], opts.memoryExact?.has(key) ?? false)
+    const decision = decideFromMemory(entry, opts.tm?.get(key) ?? [], opts.memoryExact?.has(key) ?? false, opts.locale)
     // An approved translation outranks a suspect rule. On the file this was
     // measured on, every title-case and untranslated hit on an identical match
     // was a label or a brand the locale had approved exactly as written. It
@@ -293,6 +296,7 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
         hints: candidate.hints.filter((f) => f.rule !== 'repaired').map((f) => `${f.rule}: ${f.message}`),
         ...(candidate.memory ? { memory: candidate.memory } : {}),
         nplurals: opts.nplurals,
+        ...(opts.pluralForms === undefined ? {} : { pluralForms: opts.pluralForms }),
         repaired: candidate.repaired !== undefined,
       },
     ),
@@ -413,6 +417,7 @@ async function runBatch(
   const agentOpts = {
     locale: opts.locale,
     nplurals: opts.nplurals,
+    ...(opts.pluralForms === undefined ? {} : { pluralForms: opts.pluralForms }),
     mcpConfigPath: opts.mcpConfigPath ?? '',
     ...(opts.provider ? { provider: opts.provider } : {}),
     ...(opts.bin ? { bin: opts.bin } : {}),

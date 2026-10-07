@@ -1,4 +1,7 @@
+import { pluralFormsLine, universalOnlyNote } from '../audit/prompt.js'
+import { isUniversalOnly, profileFor } from '../audit/rules/profiles.js'
 import { guidanceSection } from '../rules/guidance.js'
+import { packFor } from '../rules/packs/index.js'
 import { localeDisplayName, splitLocale } from '../wporg/locales.js'
 import type { Locale, ReviewInput } from '../types.js'
 
@@ -7,8 +10,17 @@ export function localeLabel(locale: Locale): string {
   return name !== splitLocale(locale).slug ? `${name} (${locale})` : `locale ${locale}`
 }
 
-export function buildReviewPrompt(inputs: ReviewInput[], locale: Locale, nplurals: number): string {
+export function buildReviewPrompt(inputs: ReviewInput[], locale: Locale, nplurals: number, pluralForms?: string): string {
   const language = localeLabel(locale)
+  const pack = packFor(locale)
+  // A pack replaces the line rather than adding to it: WordPress in Swedish
+  // says "du", and a formal line left beside the override would contradict it.
+  const register = pack?.register
+    ? `${pack.register.translate.replaceAll('{language}', language)}\n`
+    : `- Use the formal/neutral register that is standard in WordPress ${language}.\n`
+  // The same rules review runs are run on the drafts (translate/checks.ts),
+  // so when those know nothing about the language this prompt says so too.
+  const universalOnly = isUniversalOnly(profileFor(locale)) ? universalOnlyNote(language) : ''
   const entries = inputs
     .map((input, i) => {
       const entry = {
@@ -28,7 +40,7 @@ export function buildReviewPrompt(inputs: ReviewInput[], locale: Locale, nplural
   return `You are a senior WordPress ${language} translator reviewing machine-translated drafts of WordPress .po entries.
 Target locale: ${locale}
 nplurals: ${nplurals}
-
+${pluralFormsLine(nplurals, pluralForms)}
 Rules:
 - Follow the official WordPress ${language} glossary. Call the glossary_lookup tool for any term that might be in it (WordPress UI vocabulary, post/page/plugin/theme/block/widget terminology, etc.) before deciding on wording.
 - Call consistency_lookup only when the glossary has no answer for the wording in question. It reports how WordPress core already translates that exact string, which is authoritative; do not call it just to confirm a term the glossary already settled.
@@ -37,8 +49,7 @@ Rules:
 - Preserve HTML tags and their attributes exactly.
 - Preserve leading/trailing whitespace and newlines exactly as in the source.
 - The "text" array must have exactly ${nplurals} strings for entries with msgidPlural (one per plural form, in the locale's plural order), and exactly 1 string otherwise. Never return an empty string.
-- Use the formal/neutral register that is standard in WordPress ${language}.
-- Do not translate brand names, product names, code, shortcodes, URLs, CSS classes or option keys.
+${register}${universalOnly}- Do not translate brand names, product names, code, shortcodes, URLs, CSS classes or option keys.
 - Use the .po comments and msgctxt to disambiguate; they describe where and how the string is used.
 - An entry marked "control" is a setting WordPress code reads, not text: "on" or "off" for a font, "ltr" for text direction, a language tag, a number separator. Its draft is the source value. Set it to the value its translator comment says fits this locale. Never translate the English word.
 - Some entries carry "automatedChecks": findings from deterministic checks the draft failed. Fix the ones that are real problems in your text and ignore the ones that are not. A check about placeholders, HTML or the number of plural forms is always real.

@@ -213,6 +213,9 @@ interface ReviewCache {
 
 interface CacheSetup {
   nplurals: number
+  // Above two forms only. Keys the draft review, whose prompt carries it, and
+  // not the draft, whose engine prompt does not.
+  pluralForms?: string
   locale: Locale
   // The draft engine's own prompt, and the review prompt, hash differently and
   // key different tables. Passing both rather than one avoids the mistake of
@@ -238,7 +241,7 @@ function buildCaches(
   // decides how many drafts are asked for, so a draft formed under one of them
   // must not be served under another. References are absent because the draft
   // prompt does not carry them.
-  const unitHash = (unit: TranslationUnit): string =>
+  const unitHash = (unit: TranslationUnit, withPlural = false): string =>
     draftSrcHash(
       {
         msgid: unit.msgid,
@@ -249,7 +252,11 @@ function buildCaches(
         // string it is about to stop being.
         msgstr: [],
       },
-      { comments: unit.comments, nplurals: setup.nplurals },
+      {
+        comments: unit.comments,
+        nplurals: setup.nplurals,
+        ...(withPlural && setup.pluralForms !== undefined ? { pluralForms: setup.pluralForms } : {}),
+      },
     )
 
   const draftKey = (unit: TranslationUnit) => ({
@@ -262,8 +269,12 @@ function buildCaches(
   // The draft review is keyed by the review prompt, not the draft prompt, so
   // its own configHash replaces the draft's, and by the model that judged it:
   // two models answer differently and must not read each other's rows.
+  // The Plural-Forms header is in the review prompt above two forms, so it is
+  // in this key and not in the draft's: a cached draft stays served, and only
+  // the review of it is asked again.
   const verdictKey = (unit: TranslationUnit, text: string[]) => ({
     ...draftKey(unit),
+    srcHash: unitHash(unit, true),
     draftHash: draftHash(text),
     configHash: setup.reviewConfig,
     engine: engineId(setup.model, setup.provider),
@@ -289,6 +300,7 @@ async function reviewDrafts(
   opts: TranslateOptions,
   locale: Locale,
   nplurals: number,
+  pluralForms: string | undefined,
   mcpConfigPath: string,
   cache?: ReviewCache,
   checks?: Map<string, string[]>,
@@ -326,6 +338,7 @@ async function reviewDrafts(
       ? await review(missing, {
           locale,
           nplurals,
+          ...(pluralForms === undefined ? {} : { pluralForms }),
           mcpConfigPath,
           ...(opts.bin ? { bin: opts.bin } : {}),
           ...(opts.provider ? { provider: opts.provider } : {}),
@@ -354,6 +367,10 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
   const batchSize = resolveBatchSize(opts.batchSize)
   const locale = normalizeLocale(opts.locale)
   const po = await loadPo(opts.file)
+  // Before either database is opened and before any engine is built: a run
+  // that would write the wrong number of forms is refused, not recorded.
+  po.requirePluralForms(locale)
+  const pluralForms = po.promptPluralForms()
   const units = po.units(opts.mode)
   const summary: TranslateSummary = {
     file: opts.file,
@@ -415,6 +432,7 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
     const engineName = opts.engine?.name ?? draftEngineId(opts.draftEngine, settings.ollama)
     const { draftCache, reviewCache } = buildCaches(jobs, {
       nplurals: po.nplurals,
+      ...(pluralForms === undefined ? {} : { pluralForms }),
       locale,
       draftConfig,
       reviewConfig: config,
@@ -501,7 +519,7 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
             const checks = new Map([...prepared].map(([k, p]) => [k, p.checks]))
             emit({ type: 'batch-phase', index, phase: 'reviewing', at: Date.now() })
             results = (
-              await reviewDrafts(batch, fixedDrafts, review, opts, locale, po.nplurals, mcpConfigPath, reviewCache, checks)
+              await reviewDrafts(batch, fixedDrafts, review, opts, locale, po.nplurals, pluralForms, mcpConfigPath, reviewCache, checks)
             ).map((r) => {
               const unit = unitOf.get(r.key)
               return unit ? checker.finalize(unit, r) : r

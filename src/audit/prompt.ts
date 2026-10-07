@@ -2,8 +2,9 @@ import type { Finding, Locale } from '../types.js'
 import { localeDisplayName } from '../wporg/locales.js'
 import type { GlossaryMatch } from './rules/index.js'
 import { AUDIT_CATEGORIES } from './schema.js'
-import { profileFor } from './rules/profiles.js'
+import { isUniversalOnly, profileFor } from './rules/profiles.js'
 import { guidanceSection } from '../rules/guidance.js'
+import { packFor } from '../rules/packs/index.js'
 
 const GLOSSARY_LIMIT = 12
 
@@ -43,6 +44,34 @@ function languageName(locale: Locale): string {
   return localeDisplayName(locale)
 }
 
+// For a locale that turns title-case on without a pack to say how its own
+// orthography works: what sentence case means, and nothing about TDK or any
+// other language's institutions and examples.
+const GENERIC_CAPITALIZATION = `- {language} capitalizes only the first word of a sentence and proper nouns, not every word as English Title Case does. Brand names (WordPress, WooCommerce) and acronyms keep their own casing.
+- A capital mid-string is legitimate when the word is a proper noun in {language}. An automated check cannot recognize most proper nouns, so when a title-case finding is really one of them, clear it.
+- A title-case finding that says the translation "mirrors the English source" is close to proof of an English calque. One that only says a word is capitalized mid-string is weaker: check what the word refers to before confirming it.
+`
+
+/**
+ * Said in both review prompts when the checks that ran know nothing about the
+ * language, so the model does not read an entry with no automatedChecks as one
+ * that passed a spelling or capitalization check. Exported for the draft
+ * review prompt, which must say the same thing in the same words.
+ */
+export function universalOnlyNote(language: string): string {
+  return `- The automated checks for ${language} are only the universal ones: placeholders, HTML, whitespace, plural count, glossary and the like. Nothing language-specific is checked, so the absence of a finding says nothing about spelling, capitalization or grammar.\n`
+}
+
+/**
+ * The catalogue's Plural-Forms header, above two forms. With one or two the
+ * count says everything, and leaving the line out keeps those prompts, and so
+ * every cached verdict for them, exactly as they were. With three or more
+ * only the expression says which index is "few" and which is "many".
+ */
+export function pluralFormsLine(nplurals: number, pluralForms: string | undefined): string {
+  return nplurals > 2 && pluralForms ? `Plural-Forms: ${pluralForms}\n` : ''
+}
+
 /**
  * The prompt for one batch.
  *
@@ -62,19 +91,29 @@ function languageName(locale: Locale): string {
  * cached verdicts for the locale. That is the intended cost of changing the
  * question.
  */
-export function buildAuditPrompt(candidates: AuditCandidate[], locale: Locale, nplurals: number): string {
+export function buildAuditPrompt(
+  candidates: AuditCandidate[],
+  locale: Locale,
+  nplurals: number,
+  pluralForms?: string,
+): string {
   const language = languageName(locale)
+  const profile = profileFor(locale)
+  const pack = packFor(locale)
+  const fill = (text: string) => text.replaceAll('{language}', language)
   // Orthography guidance follows the locale's profile, not its name. Telling a
   // German reviewer that "German does not use English Title Case" would be false,
-  // and would have it flag correct capitalization all day.
-  const capitalization = profileFor(locale).rules.has('title-case')
-    ? `- ${language} does NOT use English Title Case. Only the first word and proper nouns are capitalized. "Tüm Değişiklikleri Kaydet" is wrong; "Tüm değişiklikleri kaydet" is right. Brand names (WordPress, WooCommerce) and acronyms keep their own casing.
-- A capital mid-string is legitimate when the word is a proper noun. In ${language} that includes place and person names, names of languages and peoples, day and month names inside a specific date, titles of works, and institution names, where every word is capitalized (Türk Dil Kurumu). An automated check cannot recognize most of these, so when a title-case finding is really one of them, clear it.
-- Menu labels, screen and section names, and section headings in help or documentation pages are a deliberate exception. TDK madde D capitalizes the words of sign-like labels, and the locale team does not reject a submission over capitalization in those places, so do NOT report title-case for them. This exception covers labels and headings only. Commands, buttons, confirmations, error messages and running prose keep sentence case, and an English calque there is still a problem worth reporting.
-- The two kinds of title-case check are not equal evidence. A finding that says the translation "mirrors the English source" means the source itself was Title Case and the translation copied its shape word for word; that is close to proof of an English calque. A finding that only says a word is capitalized mid-string is much weaker: measured against approved WordPress ${language} translations it is roughly four times as likely to be a false alarm, and the usual reason is that the capitalized words name a thing, most often a feature, widget, block or key ("Etiket Bulutu bileşeninde", "Hızlı Düzenleme'de göster", "Site Logosu bloğu", "Shift + Ok tuşları"). Check what the capitalized words refer to before confirming that kind.
-`
+  // and would have it flag correct capitalization all day. The paragraph itself
+  // comes from the pack: the Turkish one is TDK text with Turkish examples, and
+  // gating it on the rule name alone sent it to any team that turned
+  // title-case on in its rules file.
+  const capitalization = profile.rules.has('title-case')
+    ? fill(pack?.capitalization ?? GENERIC_CAPITALIZATION)
     : `- Follow ${language}'s own capitalization rules. Do not import English conventions, and do not treat a capital that ${language} requires as an error.
 `
+  const register = pack?.register
+    ? `${fill(pack.register.audit)}\n`
+    : `- Use the formal, neutral register standard in WordPress ${language}. No slang, no over-familiar address.\n`
   const entries = candidates
     .map((c) => {
       const payload: Record<string, unknown> = { id: c.id, source: c.msgid, submitted: c.msgstr }
@@ -107,13 +146,12 @@ export function buildAuditPrompt(candidates: AuditCandidate[], locale: Locale, n
 
 Target locale: ${locale}
 nplurals: ${nplurals}
-
+${pluralFormsLine(nplurals, pluralForms)}
 The locale team's standards:
 - The official WordPress ${language} glossary is binding. Every glossary term an entry's source contains is listed on that entry under "glossary", with its approved translation, so you do not need to look those up. Call glossary_lookup only for a term you need that is not listed there.
-${capitalization}- Each entry's "references" are the source file and line the string comes from, and they are the best clue to its role: a path like admin-menu.php or help.php points at a label or a heading, while one like actions.php, or a translation in the imperative, points at a command.
+${capitalization}${isUniversalOnly(profile) ? universalOnlyNote(language) : ''}- Each entry's "references" are the source file and line the string comes from, and they are the best clue to its role: a path like admin-menu.php or help.php points at a label or a heading, while one like actions.php, or a translation in the imperative, points at a command.
 - Placeholders (%s, %1$s, %d, {x}), HTML tags, and leading/trailing whitespace must match the source exactly.
-- Use the formal, neutral register standard in WordPress ${language}. No slang, no over-familiar address.
-- An entry's "memory" lists how this exact source has been translated and approved before, and every wording in it is already approved. Prefer one of them unless the source means something different here, or it breaks one of the standards above; where there are several, they are alternatives the locale accepts and any of them is a correct answer. You do not need tm_lookup for an entry that has one; call it only for near matches to an entry that has none. Call consistency_lookup to see how WordPress core already translates a string. Prefer established usage over a fresh invention.
+${register}- An entry's "memory" lists how this exact source has been translated and approved before, and every wording in it is already approved. Prefer one of them unless the source means something different here, or it breaks one of the standards above; where there are several, they are alternatives the locale accepts and any of them is a correct answer. You do not need tm_lookup for an entry that has one; call it only for near matches to an entry that has none. Call consistency_lookup to see how WordPress core already translates a string. Prefer established usage over a fresh invention.
 ${guidanceSection(locale)}
 Some entries carry an "automatedChecks" list: findings from deterministic checks that could not be decided mechanically. ${language} may inflect a glossary term so it no longer matches the dictionary form exactly, and a check may be wrong on that basis. Adjudicate each one: confirm it only if it is a real problem, and clear it otherwise. Entries with no automatedChecks still need your own judgment on meaning, register and fluency.
 
@@ -123,7 +161,7 @@ Mark problem=true only when a human should change the translation before it is a
 
 Categories: ${AUDIT_CATEGORIES.join(', ')}. Use an empty array when problem is false. Keep "reason" to one short sentence, written for the contributor, saying what is wrong (or why a flagged check was cleared).
 
-- When an entry is a problem, also return "fix": the corrected translation, as an array with one string per plural form. It must obey every standard above: the glossary, this locale's capitalization rules, the source's placeholders and HTML exactly, and the formal register.
+- When an entry is a problem, also return "fix": the corrected translation, as an array with one string per plural form. It must obey every standard above: the glossary, this locale's capitalization rules, the source's placeholders and HTML exactly, and ${pack?.register ? 'the register above' : 'the formal register'}.
 - If you are not confident what the entry should say, leave "fix" out entirely. An honest "I do not know" is worth more than a confident wrong translation, which a human then has to catch.
 - An entry marked "control" is a setting WordPress code reads, not text a person reads: "on" or "off" for a font, "ltr" for text direction, a language tag, a number separator. Its translator comment says which value to use. Never translate the English word; a fix is one of the values the comment names.
 - An entry marked "condemned" has been proved wrong by a deterministic check, so it is already known to be broken whatever you think of it. Do not argue about whether it is wrong; return the fix.

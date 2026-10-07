@@ -152,3 +152,22 @@ describe('rules copy', () => {
   })
 })
 
+
+describe('rules check: built-in pack', () => {
+  it('names a maintained pack', async () => {
+    expect((await run(['rules', 'check', 'tr'])).stdout).toContain('Built-in pack: Turkish (maintained)')
+  })
+
+  it('names a pack of defaults for the team to confirm', async () => {
+    expect((await run(['rules', 'check', 'sv'])).stdout).toContain('Built-in pack: Swedish (defaults for the locale team to confirm)')
+  })
+
+  it('says when there is no pack, with or without a file', async () => {
+    const line = 'No built-in pack for de: only the universal rules run unless this file adds some.'
+    expect((await run(['rules', 'check', 'de'])).stdout).toContain(line)
+    await writeRules('de', 'guidance: Kurz.\n')
+    const r = await run(['rules', 'check', 'de'])
+    expect(r.stdout).toContain(line)
+    expect(r.stdout).toMatch(/is valid/)
+  })
+})

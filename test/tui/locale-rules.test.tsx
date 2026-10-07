@@ -46,6 +46,40 @@ async function select(view: View, label: RegExp) {
   await tick()
 }
 
+// The screen says what the code ships for a locale before anyone edits it,
+// in the same words as rules check.
+describe('LocaleRules: built-in pack', () => {
+  async function openAs(view: View, locale: string) {
+    await waitForText(view.lastFrame, /Locale/)
+    view.stdin.write(keys.backspace)
+    await tick()
+    view.stdin.write(keys.backspace)
+    await tick()
+    view.stdin.write(locale)
+    await tick()
+    view.stdin.write(keys.enter)
+    await waitForText(view.lastFrame, /Built-in rules/)
+  }
+
+  it('names the Swedish pack as defaults to confirm', async () => {
+    const view = mount()
+    await openAs(view, 'sv')
+    expect(flat(view.lastFrame())).toContain('Built-in pack: Swedish (defaults for the locale team to confirm)')
+  })
+
+  it('names the Turkish pack as maintained', async () => {
+    const view = mount()
+    await openLocale(view)
+    expect(flat(view.lastFrame())).toContain('Built-in pack: Turkish (maintained)')
+  })
+
+  it('says when a locale has no pack', async () => {
+    const view = mount()
+    await openAs(view, 'de')
+    expect(flat(view.lastFrame())).toContain('No built-in pack for de: only the universal rules run unless this file adds some.')
+  })
+})
+
 describe('LocaleRules: picking a locale', () => {
   it('opens the configured locale and names its file', async () => {
     const view = mount()

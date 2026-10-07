@@ -1,7 +1,7 @@
 import { loadLocaleRules } from '../../rules/load.js'
 import type { LocaleRules } from '../../rules/schema.js'
-import { languageOf } from '../../wporg/locales.js'
 import { CUSTOM_RULE } from '../../rules/names.js'
+import { packFor } from '../../rules/packs/index.js'
 import type { Locale } from '../../types.js'
 
 export interface RuleProfile {
@@ -42,22 +42,18 @@ export const DEFAULT_PROFILE: RuleProfile = {
 }
 
 // A language only earns the orthography-specific rules once someone who speaks it
-// says they apply. German is the clearest reason for that caution: it capitalizes
-// every noun by rule, so `title-case` would flag correct translations wholesale.
-const BY_LANGUAGE: Record<string, RuleProfile> = {
-  tr: {
-    // `ampersand` and `number-format` are conventions of this locale rather
-    // than of gettext, so they wait for someone who speaks the language to say
-    // they apply, exactly as the orthography rules do.
-    rules: new Set([...UNIVERSAL, 'title-case', 'apostrophe', 'ampersand', 'number-format']),
-    glossaryStemRatio: 0.7,
-  },
-}
-
+// says they apply, and its pack is where that is written down. German is the
+// clearest reason for that caution: it capitalizes every noun by rule, so
+// `title-case` would flag correct translations wholesale.
+//
 // What the code ships for a language, before any rules file. Exported for the
-// defaults `rules edit` writes out, which must describe exactly this.
+// defaults `rules edit` writes out, which must describe exactly this. The
+// pack's extras follow the universal set in the pack's own order, which is
+// the order the template lists them in.
 export function builtInProfileFor(locale: Locale): RuleProfile {
-  return BY_LANGUAGE[languageOf(locale)] ?? DEFAULT_PROFILE
+  const pack = packFor(locale)
+  if (!pack) return DEFAULT_PROFILE
+  return { rules: new Set([...UNIVERSAL, ...pack.extraRules]), glossaryStemRatio: pack.glossaryStemRatio }
 }
 
 export const UNIVERSAL_RULES: readonly string[] = UNIVERSAL
@@ -87,4 +83,19 @@ export function mergeProfile(base: RuleProfile, file: LocaleRules | undefined): 
     : new Set(base.rules)
   if (file.patterns.length > 0) rules.add(CUSTOM_RULE)
   return { rules, glossaryStemRatio: file.glossaryStemRatio ?? base.glossaryStemRatio }
+}
+
+/**
+ * Whether the rules that will run say nothing about the language: no rule
+ * beyond the universal set, and no mistakes or patterns, which would have
+ * added `custom`.
+ *
+ * Decided by the effective profile, not by whether a pack exists. A German
+ * team that enables one rule or writes one mistake has language checks; a
+ * Turkish file that switches every extra off has none, and its prompt should
+ * say so. A file that disables a universal rule is still universal-only:
+ * fewer checks is not a language-specific one.
+ */
+export function isUniversalOnly(profile: RuleProfile): boolean {
+  return [...profile.rules].every((rule) => UNIVERSAL_RULES.includes(rule))
 }

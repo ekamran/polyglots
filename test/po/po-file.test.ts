@@ -34,6 +34,22 @@ describe('loadPo', () => {
     await rm(dir, { recursive: true, force: true })
   })
 
+  // The raw header, so the prompts can carry the expression that says which
+  // form is which, and undefined when absent rather than a guessed default.
+  it('keeps the raw Plural-Forms header, and says whether there are plural entries', async () => {
+    const file = await loadPo(fixture)
+    expect(file.pluralForms).toMatch(/^nplurals=2;/)
+    expect(file.hasPlurals()).toBe(true)
+    const dir = await mkdtemp(join(tmpdir(), 'polyglots-po-'))
+    const path = join(dir, 'no-plural.po')
+    await writeFile(path, (await readFile(fixture, 'utf8')).replace(/"Plural-Forms:[^\n]*\n/, ''))
+    expect((await loadPo(path)).pluralForms).toBeUndefined()
+    const singular = join(dir, 'singular.po')
+    await writeFile(singular, 'msgid ""\nmsgstr ""\n"Language: tr\\n"\n\nmsgid "Save"\nmsgstr "Kaydet"\n')
+    expect((await loadPo(singular)).hasPlurals()).toBe(false)
+    await rm(dir, { recursive: true, force: true })
+  })
+
   it('parses a 3-form Plural-Forms header', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'polyglots-po-'))
     const path = join(dir, 'three.po')
