@@ -104,7 +104,7 @@ async function run(argv: string[], deps: Omit<CliDeps, 'streams'> & { stdin?: Re
   const stdout = sink()
   const stderr = sink()
   const { stdin, ...rest } = deps
-  const code = await main(argv, { ...rest, streams: { stdin: stdin ?? stdinWith(undefined, false), stdout, stderr } })
+  const code = await main(argv, { env: {}, ...rest, streams: { stdin: stdin ?? stdinWith(undefined, false), stdout, stderr } })
   return { code, stdout: stdout.text, stderr: stderr.text }
 }
 
@@ -221,7 +221,10 @@ describe('fetch', () => {
       },
     })
     expect(r.code).toBe(1)
-    expect(r.stdout).toContain('1 done, 2 failed, 1 skipped')
+    expect(r.stdout).toContain('✗ Fetched with failures')
+    expect(r.stdout).toMatch(/done\s+1/)
+    expect(r.stdout).toMatch(/failed\s+2/)
+    expect(r.stdout).toMatch(/skipped\s+1/)
     expect(r.stdout).toMatch(/boom.*quota exhausted/)
     expect(r.stdout).toMatch(/broken.*export answered 500/)
   })

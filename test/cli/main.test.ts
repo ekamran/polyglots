@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
+import { stripVTControlCharacters } from 'node:util'
 import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
 import { fileURLToPath } from 'node:url'
@@ -72,7 +73,7 @@ function fakeTranslate(plan: (opts: TranslateOptions, call: number) => Partial<T
 interface Harness {
   stdout: Sink
   stderr: Sink
-  run(argv: string[], deps?: Omit<CliDeps, 'streams'> & { stdin?: FakeStdin; tty?: boolean }): Promise<number>
+  run(argv: string[], deps?: Omit<CliDeps, 'streams'> & { stdin?: FakeStdin; tty?: boolean; stdoutTty?: boolean }): Promise<number>
 }
 
 function harness(): Harness {
@@ -82,9 +83,10 @@ function harness(): Harness {
     stdout,
     stderr,
     run(argv, deps = {}) {
-      const { stdin, tty, ...rest } = deps
+      const { stdin, tty, stdoutTty, ...rest } = deps
       stderr.isTTY = tty === true
-      return main(argv, { ...rest, streams: { stdin: stdin ?? stdinWith(undefined, false), stdout, stderr } })
+      stdout.isTTY = stdoutTty === true
+      return main(argv, { env: {}, ...rest, streams: { stdin: stdin ?? stdinWith(undefined, false), stdout, stderr } })
     },
   }
 }
@@ -109,13 +111,42 @@ afterEach(async () => {
   await rm(home, { recursive: true, force: true })
 })
 
+// stdout and stderr decide colour separately: in `translate x.po | tee log`
+// the summary goes down a pipe while progress is still on a terminal.
+describe('per-stream colour', () => {
+  it('paints stderr and stdout separately, so a piped summary carries no escape codes', async () => {
+    const h = harness()
+    const translate = fakeTranslate()
+    const code = await h.run(['translate', file, '--draft-engine', 'deepl'], {
+      translate: translate.fn, tty: true, env: { FORCE_COLOR: undefined } as NodeJS.ProcessEnv,
+    })
+    expect(code).toBe(0)
+    expect(h.stdout.text).not.toMatch(/\x1b\[/)
+    expect(h.stderr.text).toMatch(/\x1b\[/)
+  })
+})
+
 describe('translate summary output', () => {
+  it('prints a header on stderr naming the file, locale and reviewer', async () => {
+    const h = harness()
+    await h.run(['translate', file, '--draft-engine', 'deepl'], { translate: fakeTranslate().fn })
+    expect(h.stderr.text).toContain(`polyglots translate  ${file}`)
+    expect(h.stderr.text).toMatch(/locale\s+tr/)
+    expect(h.stderr.text).toMatch(/draft\s+deepl/)
+    expect(h.stderr.text).toMatch(/review\s+claude/)
+  })
+
   it('prints the contract summary line on stdout and exits 0', async () => {
     const h = harness()
     const translate = fakeTranslate()
     const code = await h.run(['translate', file], { translate: translate.fn })
     expect(code).toBe(0)
-    expect(h.stdout.text).toBe(`Done. 6 translated, 1 fuzzy, 1 from TM, 0 skipped. Open ${file} in PoEdit to review.\n`)
+    expect(h.stdout.text).toContain('✓ Done')
+    expect(h.stdout.text).toMatch(/translated\s+6/)
+    expect(h.stdout.text).toMatch(/fuzzy\s+1  check before upload/)
+    expect(h.stdout.text).toMatch(/from TM\s+1/)
+    expect(h.stdout.text).toMatch(/skipped\s+0/)
+    expect(h.stdout.text).toContain(`› Open ${file} in PoEdit to review.`)
     expect(h.stderr.text).toContain('▰▰▰▰▰▰▰▰▰▰ 7/7  batch 1/1  fuzzy 1')
   })
 
@@ -142,7 +173,9 @@ describe('translate summary output', () => {
     const code = await h.run(['translate', file, '--dry-run'], { translate: translate.fn })
     expect(code).toBe(0)
     expect(translate.calls[0]?.dryRun).toBe(true)
-    expect(h.stdout.text).toBe('Dry run. 6 translated, 1 fuzzy, 1 from TM, 0 skipped. Nothing was written.\n')
+    expect(h.stdout.text).toContain('• Dry run')
+    expect(h.stdout.text).toMatch(/translated\s+6/)
+    expect(h.stdout.text).toContain('› Nothing was written.')
     expect(h.stdout.text).not.toContain('PoEdit')
   })
 
@@ -165,10 +198,9 @@ describe('translate summary output', () => {
     const code = await h.run(['translate', file, second], { translate: translate.fn })
     expect(code).toBe(0)
     expect(translate.calls.map((c) => c.file)).toEqual([file, second])
-    const lines = h.stdout.text.trim().split('\n')
-    expect(lines).toHaveLength(2)
-    expect(lines[0]).toContain(`Open ${file} in PoEdit`)
-    expect(lines[1]).toContain(`Open ${second} in PoEdit`)
+    const lines = h.stdout.text.trim().split('\n').filter((l) => l.startsWith('›'))
+    expect(h.stdout.text.match(/✓ Done/g)).toHaveLength(2)
+    expect(lines).toEqual([`› Open ${file} in PoEdit to review.`, `› Open ${second} in PoEdit to review.`])
   })
 
   it('reports a file that throws, continues with the next file and exits 1 at the end', async () => {
@@ -179,10 +211,10 @@ describe('translate summary output', () => {
     const code = await h.run(['translate', file, second], { translate: translate.fn })
     expect(code).toBe(1)
     expect(translate.calls.map((c) => c.file)).toEqual([file, second])
-    expect(h.stderr.text).toContain(`Error: ${file}: bad po syntax`)
-    const lines = h.stdout.text.trim().split('\n')
-    expect(lines).toHaveLength(1)
-    expect(lines[0]).toContain(`Open ${second} in PoEdit`)
+    expect(h.stderr.text).toContain(`✗ ${file}: bad po syntax`)
+    expect(h.stdout.text.match(/✓ Done/g)).toHaveLength(1)
+    expect(h.stdout.text).toContain(`› Open ${second} in PoEdit to review.`)
+    expect(h.stdout.text).not.toContain(`Open ${file} in PoEdit`)
   })
 
   it('exits 3 with a Stopped summary on a quota stop and does not touch later files', async () => {
@@ -193,8 +225,10 @@ describe('translate summary output', () => {
     const code = await h.run(['translate', file, second], { translate: translate.fn })
     expect(code).toBe(3)
     expect(translate.calls).toHaveLength(1)
-    expect(h.stdout.text).not.toContain('Done.')
-    expect(h.stdout.text).toMatch(/^Stopped\. 2 translated, 0 fuzzy, 1 from TM, 0 skipped\./)
+    expect(h.stdout.text).not.toContain('✓ Done')
+    expect(h.stdout.text).toContain('! Stopped')
+    expect(h.stdout.text).toMatch(/translated\s+2/)
+    expect(h.stdout.text).toContain('› Re-run the same command to resume.')
     expect(h.stderr.text).toContain('Stopped: DeepL quota exceeded')
   })
 })
@@ -284,7 +318,7 @@ describe('glossary sync', () => {
     const code = await h.run(['glossary', 'sync'], { syncGlossary: sync.fn })
     expect(code).toBe(0)
     expect(sync.calls).toEqual([{ locale: 'de' }])
-    expect(h.stdout.text).toBe('Synced 42 glossary entries for de.\n')
+    expect(h.stdout.text).toBe('✓ Synced 42 glossary entries for de.\n')
   })
 
   it('passes a normalized --locale override through', async () => {
@@ -293,7 +327,7 @@ describe('glossary sync', () => {
     const code = await h.run(['glossary', 'sync', '--locale', 'PT-BR'], { syncGlossary: sync.fn })
     expect(code).toBe(0)
     expect(sync.calls).toEqual([{ locale: 'pt-br' }])
-    expect(h.stdout.text).toBe('Synced 3 glossary entries for pt-br.\n')
+    expect(h.stdout.text).toBe('✓ Synced 3 glossary entries for pt-br.\n')
   })
 
   it('exits 1 with the error message when the sync throws', async () => {
@@ -301,7 +335,7 @@ describe('glossary sync', () => {
     const sync = fakeSync(new Error('No glossary entries found for locale "tr"; existing cache left untouched'))
     const code = await h.run(['glossary', 'sync'], { syncGlossary: sync.fn })
     expect(code).toBe(1)
-    expect(h.stderr.text).toContain('Error: No glossary entries found for locale "tr"')
+    expect(h.stderr.text).toContain('✗ No glossary entries found for locale "tr"')
     expect(h.stdout.text).toBe('')
   })
 })
@@ -497,10 +531,18 @@ describe('review', () => {
     expect(review.calls).toEqual([
       { file, locale: 'tr', outDir: undefined, noAi: undefined, batchSize: 25, fresh: undefined },
     ])
-    expect(h.stdout.text).toContain('14 flagged')
-    expect(h.stdout.text).toContain('102 approvable')
+    expect(h.stdout.text).toMatch(/flagged\s+14/)
+    expect(h.stdout.text).toMatch(/approvable\s+102/)
     expect(h.stdout.text).toContain('/tmp/plugin-tr-problems.po')
     expect(h.stdout.text).not.toContain('report')
+  })
+
+  it('prints a header on stderr naming the file, locale and reviewer', async () => {
+    const h = harness()
+    await h.run(['review', file, '--no-ai'], { reviewFile: fakeReview(summary({})).fn })
+    expect(h.stderr.text).toContain(`polyglots review  ${file}`)
+    expect(h.stderr.text).toMatch(/locale\s+tr/)
+    expect(h.stderr.text).toMatch(/review\s+rules only/)
   })
 
   it('counts undecided entries as flagged, since they are written to the file too', async () => {
@@ -508,8 +550,8 @@ describe('review', () => {
     const review = fakeReview(summary({ problems: 0, needsReview: 5, approvable: 0 }))
     await h.run(['review', file, '--no-ai'], { reviewFile: review.fn })
 
-    expect(h.stdout.text).toContain('5 flagged')
-    expect(h.stdout.text).not.toContain('0 flagged')
+    expect(h.stdout.text).toMatch(/flagged\s+5/)
+    expect(h.stdout.text).not.toMatch(/flagged\s+0/)
   })
 
   it('reports the needs-your-eye count from a rules-only run', async () => {
@@ -518,8 +560,7 @@ describe('review', () => {
     const code = await h.run(['review', file, '--no-ai'], { reviewFile: review.fn })
 
     expect(code).toBe(0)
-    expect(h.stdout.text).toContain('11')
-    expect(h.stdout.text).toMatch(/unadjudicated guesses/i)
+    expect(h.stdout.text).toMatch(/guesses\s+11  re-run without --no-ai to decide them/)
   })
 
   it('says so when nothing was flagged and names no po file', async () => {
@@ -566,8 +607,10 @@ describe('review', () => {
     await h.run(['review', file], { reviewFile: review.fn })
 
     expect(h.stdout.text).toMatch(/stopped early/i)
-    expect(h.stdout.text).toContain('2850')
-    expect(h.stdout.text).toMatch(/re-run/i)
+    expect(h.stdout.text).toMatch(/not reached\s+2850/)
+    // Both: the file holds what was found so far, and the rest needs a re-run.
+    expect(h.stdout.text).toContain('› Wrote ')
+    expect(h.stdout.text).toContain('› Re-run the same command to carry on.')
   })
 
   // It used to print both, which reads as a finished review that found nothing.
@@ -621,8 +664,7 @@ describe('review', () => {
     const h = harness()
     const review = fakeReview(summary({ unreviewed: 7 }))
     await h.run(['review', file], { reviewFile: review.fn })
-    expect(h.stdout.text).toContain('7')
-    expect(h.stdout.text).toMatch(/unreviewed|could not be reviewed/i)
+    expect(h.stdout.text).toMatch(/unreviewed\s+7  could not be reviewed; flagged/)
   })
 
   it('says how much of the work it already did', async () => {
@@ -632,8 +674,7 @@ describe('review', () => {
     )
     await h.run(['review', file], { reviewFile: review.fn })
 
-    expect(h.stdout.text).toContain('380 repaired')
-    expect(h.stdout.text).toContain('32 left for you')
+    expect(h.stdout.text).toMatch(/repaired\s+380  32 left for you/)
   })
 
   // Whitespace-only fixes are written but count as neither a problem nor a
@@ -645,7 +686,7 @@ describe('review', () => {
     const review = fakeReview(summary({ problems: 0, needsReview: 0, approvable: 10, repaired: 10, written: 10 }))
     await h.run(['review', file], { reviewFile: review.fn })
 
-    expect(h.stdout.text).toContain('10 repaired, 0 left for you')
+    expect(h.stdout.text).toMatch(/repaired\s+10  0 left for you/)
     expect(h.stdout.text).not.toMatch(/-\d+ left for you/)
   })
 
@@ -707,7 +748,7 @@ describe('glossary export', () => {
     const code = await h.run(['glossary', 'export', '/tmp/g.csv'], { exportGlossary: exp.fn })
     expect(code).toBe(0)
     expect(exp.calls).toEqual([{ locale: 'tr', file: '/tmp/g.csv', delimiter: ';' }])
-    expect(h.stdout.text).toBe('Exported 511 glossary terms (tr) to /tmp/g.csv\n')
+    expect(h.stdout.text).toBe('✓ Exported 511 glossary terms (tr) to /tmp/g.csv\n')
   })
 
   it('prints the csv to stdout when no path is given', async () => {
@@ -763,7 +804,7 @@ describe('tm import', () => {
     expect(code).toBe(0)
     expect(calls).toEqual([{ files: [file], locale: 'de', project: 'woocommerce' }])
     expect(h.stderr.text).toContain(`${file}: 5 entries, 4 upserted`)
-    expect(h.stdout.text).toBe('Imported 1 file(s): 5 entries, 4 upserted (locale de).\n')
+    expect(h.stdout.text).toBe('✓ Imported 1 file(s): 5 entries, 4 upserted (locale de).\n')
   })
 })
 
@@ -832,7 +873,7 @@ describe('translate error output on a TTY', () => {
     const translate = fakeTranslate(() => new Error('boom'))
     const code = await h.run(['translate', file], { translate: translate.fn, tty: true })
     expect(code).toBe(1)
-    expect(h.stderr.text).toMatch(new RegExp(`\\r\\x1b\\[2KError: ${file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}: boom\\n$`))
+    expect(h.stderr.text).toMatch(new RegExp(`\\r\\x1b\\[2K\\x1b\\[31m✗\\x1b\\[39m ${file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}: boom\\n$`))
     expect(h.stderr.text).not.toMatch(/0\/7Error/)
   })
 })
@@ -952,6 +993,35 @@ describe('doctor', () => {
     const code = await d.run(['doctor'], { discoverAgents: fakeDiscover([agent('claude'), agyMissing]).fn })
     expect(code).toBe(1)
     expect(d.stdout.text).toContain('Review provider: antigravity (unavailable: agy not on PATH)')
+  })
+
+  it('ends with a status line for the configured provider', async () => {
+    const h = harness()
+    await h.run(['doctor'], { discoverAgents: fakeDiscover([agent('claude'), agyMissing]).fn })
+    expect(h.stdout.text).toMatch(/^✓ Review provider: claude \(ready\)$/m)
+  })
+
+  it('marks an unavailable configured provider with a cross', async () => {
+    const h = harness()
+    const missingClaude = agent('claude', { usable: false, reason: 'not on PATH' })
+    await h.run(['doctor'], { discoverAgents: fakeDiscover([missingClaude]).fn })
+    expect(h.stdout.text).toMatch(/^✗ Review provider: claude \(unavailable: not on PATH\)$/m)
+  })
+
+  it('keeps --json raw even when colour is forced', async () => {
+    const h = harness()
+    await h.run(['doctor', '--json'], { discoverAgents: fakeDiscover([agent('claude')]).fn, env: { FORCE_COLOR: '1' } })
+    expect(() => JSON.parse(h.stdout.text)).not.toThrow()
+    expect(h.stdout.text).not.toMatch(/\x1b\[/)
+  })
+
+  it('colours the status column when colour is on, without moving the columns', async () => {
+    const plain = harness()
+    await plain.run(['doctor'], { discoverAgents: fakeDiscover([agent('claude'), agyMissing]).fn })
+    const painted = harness()
+    await painted.run(['doctor'], { discoverAgents: fakeDiscover([agent('claude'), agyMissing]).fn, env: { FORCE_COLOR: '1' } })
+    expect(painted.stdout.text).toMatch(/\x1b\[/)
+    expect(stripVTControlCharacters(painted.stdout.text)).toBe(plain.stdout.text)
   })
 
   it('prints notes beneath their provider', async () => {
@@ -1108,6 +1178,31 @@ describe('local models', () => {
       expect(discover.calls[0]).toMatchObject({ refresh: true })
     })
 
+    it('marks the local model line by whether it is installed', async () => {
+      const ok = harness()
+      await ok.run(['models'], { discoverModels: fakeModels([ollama]).fn, checkLocalModel: fakeCheck(installed).fn })
+      expect(ok.stdout.text).toMatch(/^✓ Local model: qwen3\.8:27b-mlx \(Ollama, installed\)$/m)
+      const gone = harness()
+      await gone.run(['models'], { discoverModels: fakeModels([ollama]).fn, checkLocalModel: fakeCheck(missing('qwen3.8:9b')).fn })
+      expect(gone.stdout.text).toMatch(/^! Local model: qwen3\.8:9b \(Ollama, not installed\)$/m)
+    })
+
+    it('keeps --json raw even when colour is forced', async () => {
+      const h = harness()
+      await h.run(['models', '--json'], { discoverModels: fakeModels([ollama]).fn, checkLocalModel: fakeCheck(installed).fn, env: { FORCE_COLOR: '1' } })
+      expect(() => JSON.parse(h.stdout.text)).not.toThrow()
+      expect(h.stdout.text).not.toMatch(/\x1b\[/)
+    })
+
+    it('reads the same with colour on, once the codes are stripped', async () => {
+      const plain = harness()
+      await plain.run(['models'], { discoverModels: fakeModels([ollama, lmStudio, llamaCpp]).fn, checkLocalModel: fakeCheck(installed).fn })
+      const painted = harness()
+      await painted.run(['models'], { discoverModels: fakeModels([ollama, lmStudio, llamaCpp]).fn, checkLocalModel: fakeCheck(installed).fn, env: { FORCE_COLOR: '1' } })
+      expect(painted.stdout.text).toMatch(/\x1b\[/)
+      expect(stripVTControlCharacters(painted.stdout.text)).toBe(plain.stdout.text)
+    })
+
     it('names the pull command when the draft model is not installed', async () => {
       const h = harness()
       await h.run(['models'], { discoverModels: fakeModels([ollama]).fn, checkLocalModel: fakeCheck(missing('qwen3.8:9b')).fn })
@@ -1155,7 +1250,7 @@ describe('local models', () => {
       const code = await h.run(['translate', file], { translate: translate.fn, checkLocalModel: check.fn })
       expect(code).toBe(0)
       expect(check.calls).toEqual([{ kind: 'ollama', baseUrl: 'http://localhost:11434', model: 'qwen3.8:27b-mlx' }])
-      expect(h.stderr.text).toContain('Warning: qwen3.8:27b-mlx is not installed in Ollama at http://localhost:11434. Pull it with: ollama pull qwen3.8:27b-mlx')
+      expect(h.stderr.text).toContain('! qwen3.8:27b-mlx is not installed in Ollama at http://localhost:11434. Pull it with: ollama pull qwen3.8:27b-mlx')
       expect(translate.calls).toHaveLength(1)
     })
 
@@ -1177,7 +1272,7 @@ describe('local models', () => {
       const translate = fakeTranslate()
       const code = await h.run(['translate', file], { translate: translate.fn, checkLocalModel: fakeCheck(new Error('boom')).fn })
       expect(code).toBe(0)
-      expect(h.stderr.text).toContain('Warning: could not check the local model: boom')
+      expect(h.stderr.text).toContain('! could not check the local model: boom')
       expect(translate.calls).toHaveLength(1)
     })
 
@@ -1200,8 +1295,8 @@ describe('local models', () => {
       const code = await h.run(['config', 'set', 'ollama.model', ' llama3.2:1b '], { checkLocalModel: check.fn })
       expect(code).toBe(0)
       expect((await configJson()).ollama).toEqual({ baseUrl: 'http://localhost:11434', model: 'llama3.2:1b' })
-      expect(h.stdout.text).toBe('ollama.model = llama3.2:1b\n')
-      expect(h.stderr.text).toContain('Warning: llama3.2:1b is not installed')
+      expect(h.stdout.text).toBe('✓ ollama.model = llama3.2:1b\n')
+      expect(h.stderr.text).toContain('! llama3.2:1b is not installed')
       expect(check.calls).toEqual([{ kind: 'ollama', baseUrl: 'http://localhost:11434', model: 'llama3.2:1b' }])
     })
 
@@ -1266,7 +1361,7 @@ describe('local models', () => {
 // nobody could tell an absent finding from a passed check. Told once, before
 // the run, and never a refusal.
 describe('universal-only notice', () => {
-  const NOTICE = 'Note: no locale rules for de; only the universal checks run. Add some with: polyglots rules edit de'
+  const NOTICE = '! no locale rules for de; only the universal checks run. Add some with: polyglots rules edit de'
 
   it('is printed to stderr before a review of a locale with no rules of its own', async () => {
     const h = harness()
@@ -1295,7 +1390,7 @@ describe('universal-only notice', () => {
     for (const locale of ['tr', 'sv']) {
       const h = harness()
       await h.run(['translate', file, '--locale', locale], { translate: fakeTranslate().fn })
-      expect(h.stderr.text).not.toContain('Note: no locale rules')
+      expect(h.stderr.text).not.toContain('no locale rules')
     }
   })
 })
@@ -1559,5 +1654,107 @@ describe('local model support', () => {
       expect(h.stdout.text).not.toMatch(/other\s+\(configured\)/)
       expect(h.stdout.text).toContain('Local model: qwen2.5-7b-instruct (OpenAI-compatible, installed)')
     })
+  })
+})
+
+describe('stats', () => {
+  const result = {
+    file: '/tmp/s.html', submissions: 3, entries: 300, flagged: 30, incomplete: 0,
+    translateRuns: 0, translateEntries: 0, weeks: [1, 4], topProjects: [{ project: 'akismet', runs: 3, entries: 300, flagged: 30 }],
+  }
+
+  it('summarises the page it wrote in a box, with the top projects below', async () => {
+    const h = harness()
+    const code = await h.run(['stats'], { writeStats: async () => result })
+    expect(code).toBe(0)
+    expect(h.stdout.text).toContain('• Statistics')
+    expect(h.stdout.text).toMatch(/submissions\s+3/)
+    expect(h.stdout.text).toMatch(/akismet\s+300 entries\s+10% flagged/)
+    expect(h.stdout.text.trimEnd().split('\n').at(-1)).toBe('› Wrote /tmp/s.html')
+  })
+})
+
+describe('NO_COLOR', () => {
+  const COMMANDS: string[][] = [
+    ['config', 'get'],
+    ['config', 'get', 'no-such-key'],
+    ['rules', 'check'],
+    ['rules', 'path'],
+    ['doctor'],
+    ['models'],
+    ['stats', '--out', '__TMP__/s.html'],
+    ['translate', '__FILE__'],
+    ['review', '__FILE__', '--no-ai'],
+  ]
+
+  // Both streams on a terminal, so a command whose output would be coloured
+  // without NO_COLOR is caught, on stdout as well as stderr.
+  async function runOnTty(argv: string[], env: NodeJS.ProcessEnv): Promise<{ stdout: string; stderr: string }> {
+    const h = harness()
+    const tmp = await mkdtemp(join(tmpdir(), 'pg-nocolor-'))
+    const args = argv.map((a) => a.replace('__TMP__', tmp).replace('__FILE__', file))
+    await h.run(args, {
+      tty: true,
+      stdoutTty: true,
+      env,
+      translate: fakeTranslate().fn,
+      reviewFile: async (opts) => ({
+        file: opts.file, locale: opts.locale, total: 3, skipped: 0, reviewed: 3, problems: 1, needsReview: 0,
+        approvable: 2, unreviewed: 0, repaired: 0, written: 1, pending: 0, byRule: {}, byGroup: {}, problemsFile: 'p.po',
+      }),
+      discoverAgents: async () => [],
+      discoverModels: async () => [],
+      writeStats: async () => ({ file: join(tmp, 's.html'), submissions: 1, entries: 10, flagged: 1, incomplete: 0, translateRuns: 0, translateEntries: 0, weeks: [1, 3], topProjects: [{ project: 'p', runs: 1, entries: 10, flagged: 1 }] }),
+    })
+    await rm(tmp, { recursive: true, force: true })
+    return { stdout: h.stdout.text, stderr: h.stderr.text }
+  }
+
+  // ESC[2K is the progress line's clear, cursor control rather than colour.
+  const COLOUR = /\x1b\[(?!2K)/
+
+  it.each(COMMANDS.map((c) => [c]))('%j prints no escape codes', async (argv) => {
+    const { stdout, stderr } = await runOnTty(argv, { NO_COLOR: '1' })
+    expect(stdout).not.toMatch(COLOUR)
+    expect(stderr).not.toMatch(COLOUR)
+  })
+
+  // The guard on the guard: without NO_COLOR the same runs are coloured on the
+  // stream that carries their result, so the sweep above is testing the
+  // variable and not a harness that never paints. config get and rules path
+  // are raw on purpose and have no coloured run to compare against.
+  it.each([
+    [['config', 'get', 'no-such-key'], 'stderr'],
+    [['rules', 'check'], 'stdout'],
+    [['doctor'], 'stdout'],
+    [['models'], 'stdout'],
+    [['stats', '--out', '__TMP__/s.html'], 'stdout'],
+    [['translate', '__FILE__'], 'stdout'],
+    [['review', '__FILE__', '--no-ai'], 'stdout'],
+  ] as const)('%j is coloured on %s without NO_COLOR', async (argv, stream) => {
+    expect((await runOnTty([...argv], {}))[stream]).toMatch(COLOUR)
+  })
+})
+
+describe('raw outputs', () => {
+  it('keeps config get raw on a coloured terminal', async () => {
+    const h = harness()
+    await h.run(['config', 'get', 'batchSize'], { tty: true, env: { FORCE_COLOR: '1' } })
+    expect(h.stdout.text).toMatch(/^\d+\n$/)
+  })
+
+  it('keeps rules path raw on a coloured terminal', async () => {
+    const h = harness()
+    await h.run(['rules', 'path'], { tty: true, env: { FORCE_COLOR: '1' } })
+    expect(h.stdout.text).not.toMatch(/\x1b\[/)
+    expect(h.stdout.text.trim().split('\n')).toHaveLength(1)
+  })
+})
+
+describe('confirmations', () => {
+  it('confirms config set with a check line', async () => {
+    const h = harness()
+    await h.run(['config', 'set', 'batchSize', '7'])
+    expect(h.stdout.text).toBe('✓ batchSize = 7\n')
   })
 })

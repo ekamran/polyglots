@@ -241,6 +241,9 @@ export function fakeCommands(overrides: Partial<TuiCommands> = {}): TuiCommands 
       incomplete: 0,
       translateRuns: 2,
       translateEntries: 900,
+      flagged: 12,
+      weeks: [10, 30, 80],
+      topProjects: [],
     })),
     translateFile: vi.fn(async (opts: TranslateOptions) => {
       const summary = summaryOf(opts.file)

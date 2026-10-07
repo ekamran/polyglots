@@ -36,7 +36,7 @@ import {
 import { createProgressReporter, createReviewProgressReporter } from './cli/progress.js'
 import { loadPo } from './po/po-file.js'
 import { buildReport } from './review/message.js'
-import { agentBinOverride, batchAdvice } from './agent/providers.js'
+import { agentBinOverride, batchAdvice, configuredModel } from './agent/providers.js'
 import { discoverAgents, type AgentStatus } from './agent/discover.js'
 import {
   checkLocalModel,
@@ -52,6 +52,10 @@ import {
   type ModelServer,
 } from './draft/discover.js'
 import { localModelId, resolveLocalTarget, type LocalTarget } from './draft/local-chat.js'
+import { createPainter, type Painter } from './ui/paint.js'
+import { errorLine, header, hintLine, nextLine, okLine, warnLine } from './ui/messages.js'
+import { table } from './ui/layout.js'
+import { reviewSummary, statsSummary, translateSummary } from './cli/summaries.js'
 import { LOCAL_REVIEW_NOTICE, localBatchAdvice, localReviewBatchSize } from './review/local.js'
 import { engineId } from './jobs/hash.js'
 import type { RunTuiOptions } from './tui/index.js'
@@ -66,8 +70,8 @@ const EXIT_STOPPED = 3
 
 export interface CliStreams {
   stdin: NodeJS.ReadableStream & { isTTY?: boolean }
-  stdout: { write(chunk: string): boolean }
-  stderr: { isTTY?: boolean; write(chunk: string): boolean }
+  stdout: { isTTY?: boolean; columns?: number; write(chunk: string): boolean }
+  stderr: { isTTY?: boolean; columns?: number; write(chunk: string): boolean }
 }
 
 export type RunTui = (opts?: RunTuiOptions) => Promise<void>
@@ -89,6 +93,9 @@ export interface CliDeps {
   discoverAgents?: typeof discoverAgents
   discoverModels?: typeof discoverModels
   checkLocalModel?: typeof checkLocalModel
+  // Injected so tests decide colour and glyphs themselves, instead of
+  // inheriting whatever LANG, TERM or NO_COLOR the machine running them has.
+  env?: NodeJS.ProcessEnv
 }
 
 interface Cli {
@@ -109,6 +116,9 @@ interface Cli {
   discoverModels: typeof discoverModels
   checkLocalModel: typeof checkLocalModel
   config: () => PolyglotsConfig
+  // One painter per stream, because the two can disagree: stdout piped into
+  // a file while stderr is still on a terminal.
+  ui: { out: Painter; err: Painter }
   out(line: string): void
   err(line: string): void
 }
@@ -126,8 +136,10 @@ function createCli(deps: CliDeps): Cli {
     stderr: deps.streams?.stderr ?? process.stderr,
   }
   let cached: PolyglotsConfig | undefined
+  const env = deps.env ?? process.env
   return {
     streams,
+    ui: { out: createPainter(streams.stdout, env), err: createPainter(streams.stderr, env) },
     translate: deps.translate ?? translateFile,
     importTmx: deps.importTmx ?? importTmx,
     syncGlossary: deps.syncGlossary ?? syncGlossary,
@@ -185,11 +197,19 @@ async function readSecretFromStdin(streams: CliStreams, name: string): Promise<s
   }
 }
 
-function summaryLine(s: TranslateSummary, dryRun: boolean): string {
-  const counts = `${s.translated} translated, ${s.fuzzy} fuzzy, ${s.fromTm} from TM, ${s.skipped} skipped.`
-  if (s.stopped) return `Stopped. ${counts} ${dryRun ? 'Nothing was written.' : 'Re-run the same command to resume.'}`
-  if (dryRun) return `Dry run. ${counts} Nothing was written.`
-  return `Done. ${counts} Open ${s.file} in PoEdit to review.`
+// What the header names as the reviewer: provider and, when known, model,
+// the same id the verdict cache keys on, so the line says whose judgement the
+// run is about to record.
+function reviewerLabel(config: PolyglotsConfig, model: string | undefined): string {
+  if (config.reviewProvider === 'local') {
+    try {
+      return localModelId(resolveLocalTarget(config, model))
+    } catch {
+      return 'local (no model chosen)'
+    }
+  }
+  const chosen = model ?? configuredModel(config.reviewProvider)
+  return chosen ? `${config.reviewProvider}:${chosen}` : config.reviewProvider
 }
 
 async function countTranslated(files: string[]): Promise<number> {
@@ -271,7 +291,12 @@ async function runTranslate(cli: Cli, patterns: string[], flags: TranslateFlags)
   // One unreadable file must not abort the rest of a multi-file run; report it and move on.
   let failed = 0
   for (const file of files) {
-    const report = createProgressReporter(cli.streams.stderr)
+    for (const line of header(cli.ui.err, 'translate', file, [
+      ['locale', locale],
+      ['draft', draftEngine],
+      ['review', reviewerLabel(config, flags.model)],
+    ])) cli.err(line)
+    const report = createProgressReporter(cli.streams.stderr, cli.ui.err)
     let summary: TranslateSummary
     try {
       summary = await cli.translate({
@@ -290,15 +315,15 @@ async function runTranslate(cli: Cli, patterns: string[], flags: TranslateFlags)
       })
     } catch (error) {
       report.finish()
-      cli.err(`Error: ${file}: ${errorMessage(error)}`)
+      cli.err(errorLine(cli.ui.err, `${file}: ${errorMessage(error)}`))
       failed += 1
       continue
     }
     report.finish()
-    cli.out(summaryLine(summary, dryRun))
+    for (const line of translateSummary(cli.ui.out, summary, dryRun)) cli.out(line)
     if (summary.stopped) {
       cli.err(`Stopped: ${summary.stopped}`)
-      cli.err('Already-written entries are kept; re-run the same command to resume.')
+      cli.err(hintLine(cli.ui.err, 'Already-written entries are kept; re-run the same command to resume.'))
       return EXIT_STOPPED
     }
   }
@@ -310,7 +335,8 @@ async function runTranslate(cli: Cli, patterns: string[], flags: TranslateFlags)
 // absent finding is not a passed language check.
 function warnUniversalOnly(cli: Cli, locale: Locale): void {
   const notice = supportNotice(locale)
-  if (notice) cli.err(notice)
+  // The glyph says what "Note: " said, and the TUI keeps the prefix.
+  if (notice) cli.err(warnLine(cli.ui.err, notice.replace(/^Note: /, '')))
 }
 
 /**
@@ -328,12 +354,12 @@ function resolveBatchSize(config: PolyglotsConfig, flag: string | undefined): nu
 async function warnAboutLocalModel(cli: Cli, target: LocalTarget): Promise<ModelCheck | undefined> {
   try {
     const check = await cli.checkLocalModel(target)
-    if (check.state !== 'installed') cli.err(`Warning: ${check.message ?? `${check.model} is ${check.state}`}`)
+    if (check.state !== 'installed') cli.err(warnLine(cli.ui.err, check.message ?? `${check.model} is ${check.state}`))
     return check
   } catch (error) {
     // A throw here is a bug rather than a probe failure, since a probe never
     // rejects. It still must not be the reason a translate fails.
-    cli.err(`Warning: could not check the local model: ${errorMessage(error)}`)
+    cli.err(warnLine(cli.ui.err, `could not check the local model: ${errorMessage(error)}`))
     return undefined
   }
 }
@@ -350,7 +376,7 @@ async function warnAboutLocalReview(
   locale: Locale,
   check: 'check' | 'skip-check' = 'check',
 ): Promise<void> {
-  cli.err(LOCAL_REVIEW_NOTICE)
+  cli.err(warnLine(cli.ui.err, LOCAL_REVIEW_NOTICE))
   const result = check === 'check' ? await warnAboutLocalModel(cli, target) : undefined
   const contextLength = target.contextLength ?? result?.contextLength
   const advice = localBatchAdvice({
@@ -360,7 +386,7 @@ async function warnAboutLocalReview(
     kind: target.kind,
     ...(contextLength === undefined ? {} : { contextLength }),
   })
-  if (advice) cli.err(advice)
+  if (advice) cli.err(warnLine(cli.ui.err, advice))
 }
 
 const CONFIG_KEYS = Object.keys(DEFAULT_CONFIG) as Array<keyof PolyglotsConfig>
@@ -489,7 +515,7 @@ function configAddName(cli: Cli, name: string, locale: Locale): number {
     return EXIT_OK
   }
   saveConfig({ properNouns: { ...existing, [locale]: [...current, trimmed] } })
-  cli.out(`Added ${JSON.stringify(trimmed)} to the ${locale} proper-noun list.`)
+  cli.out(okLine(cli.ui.out, `Added ${JSON.stringify(trimmed)} to the ${locale} proper-noun list.`))
   return EXIT_OK
 }
 
@@ -538,7 +564,7 @@ async function configSet(cli: Cli, key: string, raw: string): Promise<void> {
     const value = coerceServerValue(key, raw)
     const { [field]: _previous, ...rest } = cli.config()[group]
     const saved = saveConfig({ [group]: value === undefined ? rest : { ...rest, [field]: value } })
-    cli.out(value === undefined ? `${key} unset` : `${key} = ${value}`)
+    cli.out(okLine(cli.ui.out, value === undefined ? `${key} unset` : `${key} = ${value}`))
     // Saved first and checked after, with exit 0 either way: choosing a model
     // before pulling or loading it is ordinary, and the warning says what to run.
     if (field === 'model') {
@@ -552,9 +578,9 @@ async function configSet(cli: Cli, key: string, raw: string): Promise<void> {
   }
   if (!isConfigKey(key)) throw new UsageError(`Unknown config key "${key}"; expected one of ${SETTABLE_KEYS}`)
   const saved = saveConfig({ [key]: coerceConfigValue(key, raw) })
-  cli.out(`${key} = ${formatConfigValue(key, saved[key])}`)
+  cli.out(okLine(cli.ui.out, `${key} = ${formatConfigValue(key, saved[key])}`))
   // The one door to the experimental reviewer, so the warning is said here.
-  if (key === 'reviewProvider' && saved.reviewProvider === 'local') cli.err(LOCAL_REVIEW_NOTICE)
+  if (key === 'reviewProvider' && saved.reviewProvider === 'local') cli.err(warnLine(cli.ui.err, LOCAL_REVIEW_NOTICE))
 }
 
 async function configSetKey(cli: Cli, rawName: string, value: string | undefined): Promise<number> {
@@ -567,7 +593,7 @@ async function configSetKey(cli: Cli, rawName: string, value: string | undefined
   const secret = entered.trim()
   if (!secret) throw new UsageError(`No value given for ${name}; pass it as an argument or on stdin`)
   saveSecret(name, secret)
-  cli.out(`Saved ${name} (${maskSecret(secret)}).`)
+  cli.out(okLine(cli.ui.out, `Saved ${name} (${maskSecret(secret)}).`))
   return EXIT_OK
 }
 
@@ -577,6 +603,7 @@ const ENVIRONMENT_HELP = [
   '  POLYGLOTS_AGENT_BIN   agent executable for the review pass, whichever provider is set (default: claude or agy on PATH)',
   '  POLYGLOTS_CLAUDE_BIN  the older name, applied to claude only',
   '  POLYGLOTS_HOME        root for config/ and data/ instead of the XDG directories',
+  '  POLYGLOTS_ASCII=1     plain ASCII glyphs instead of Unicode (also NO_COLOR, FORCE_COLOR)',
 ].join('\n')
 
 const LIVE_WARNING = 'Sends one prompt to each usable agent; this spends a request on metered plans.'
@@ -601,7 +628,7 @@ function liveText(live: AgentStatus['live']): string | undefined {
 async function runDoctor(cli: Cli, flags: { json?: boolean; live?: boolean }): Promise<number> {
   const configured = cli.config().reviewProvider
   const live = flags.live === true
-  if (live) cli.err(LIVE_WARNING)
+  if (live) cli.err(warnLine(cli.ui.err, LIVE_WARNING))
   const agents = await cli.discoverAgents({ refresh: true, ...(live ? { live: true } : {}) })
   // The experimental local reviewer is no agent, so its health is its model
   // check: the same question `models` answers, asked of the one target a
@@ -627,28 +654,35 @@ async function runDoctor(cli: Cli, flags: { json?: boolean; live?: boolean }): P
     cli.out(JSON.stringify({ configured, agents, ...(local ? { local } : {}) }, null, 2))
     return ok ? EXIT_OK : EXIT_ERROR
   }
-  const nameWidth = Math.max(0, ...agents.map((a) => a.provider.length)) + 2
-  for (const a of agents) {
+  const p = cli.ui.out
+  const rows = agents.map((a) => {
     const facts = a.usable
       ? [a.path ?? a.bin, a.version, authText(a), a.model].filter((x): x is string => Boolean(x))
       : [a.reason ?? 'unavailable']
     const liveLine = liveText(a.live)
     if (liveLine) facts.push(liveLine)
-    cli.out(`${a.provider.padEnd(nameWidth)}${(a.usable ? 'ready' : 'unavailable').padEnd(13)}${facts.join('  ')}`)
-    for (const note of a.notes) cli.out(`${' '.repeat(nameWidth)}note: ${note}`)
-  }
+    return [a.provider, a.usable ? p.paint('success', 'ready') : p.paint('error', 'unavailable'), facts.join('  ')]
+  })
+  const lines = table(rows)
+  agents.forEach((a, i) => {
+    cli.out(lines[i]!)
+    for (const note of a.notes) cli.out(hintLine(p, `note: ${note}`))
+  })
+  // The closing line is the answer the exit code gives, so it carries the
+  // glyph; the table above is detail.
+  const status = (good: boolean, msg: string) => cli.out((good ? okLine : errorLine)(p, msg))
   if (local && 'unset' in local) {
-    cli.out('Review provider: local (experimental) (no model chosen)')
-    cli.out('Set one with: polyglots config set openaiCompatible.model <id>')
+    status(false, 'Review provider: local (experimental) (no model chosen)')
+    cli.out(hintLine(p, 'Set one with: polyglots config set openaiCompatible.model <id>'))
     return EXIT_ERROR
   }
   if (local) {
-    cli.out(`Review provider: local (experimental) ${local.id} (${checkText(local.check)})`)
-    if (local.check.state !== 'installed' && local.check.message) cli.out(local.check.message)
+    status(ok, `Review provider: local (experimental) ${local.id} (${checkText(local.check)})`)
+    if (local.check.state !== 'installed' && local.check.message) cli.out(hintLine(p, local.check.message))
     return ok ? EXIT_OK : EXIT_ERROR
   }
   const state = !mine ? 'unknown' : mine.usable ? 'ready' : `unavailable: ${mine.reason ?? 'no reason given'}`
-  cli.out(`Review provider: ${configured} (${state})`)
+  status(ok, `Review provider: ${configured} (${state})`)
   return ok ? EXIT_OK : EXIT_ERROR
 }
 
@@ -684,36 +718,38 @@ async function runModels(cli: Cli, flags: { json?: boolean }): Promise<number> {
     cli.out(JSON.stringify({ servers, configured: configured ?? null }, null, 2))
     return ok ? EXIT_OK : EXIT_ERROR
   }
+  const p = cli.ui.out
   const up = servers.filter((s) => s.state === 'up')
-  const labelWidth = Math.max(0, ...up.map((s) => serverLabel(s).length)) + 2
-  const urlWidth = Math.max(0, ...up.map((s) => s.target.baseUrl.length)) + 3
+  // One table for the server lines, so their URLs line up across servers even
+  // though each is followed by its own model rows.
+  const serverLines = table(up.map((s) => [p.paint('heading', serverLabel(s)), s.target.baseUrl, plural(s.models.length, 'model')]), { gap: 3 })
   // Compared without the API version, as discovery lists servers.
   const configuredBase = target ? serverBaseUrl(target.baseUrl) : undefined
-  for (const server of up) {
-    cli.out(`${serverLabel(server).padEnd(labelWidth)}${server.target.baseUrl.padEnd(urlWidth)}${plural(server.models.length, 'model')}`)
-    const names = server.models.map((m) => sanitizeDisplay(m.name))
-    const nameWidth = Math.max(0, ...names.map((n) => n.length)) + 2
+  up.forEach((server, at) => {
+    cli.out(serverLines[at]!)
     const facts = server.models.map(modelFacts)
-    const widths = [0, 1, 2].map((i) => Math.max(0, ...facts.map((f) => f[i]!.length)))
-    server.models.forEach((model, i) => {
+    const rows = server.models.map((model, i) => {
       const isConfigured =
         target !== undefined &&
         server.kind === target.kind &&
         server.target.baseUrl === configuredBase &&
         (target.kind === 'ollama' ? matchesModel(target.model, model) : model.name === target.model)
-      const columns = server.kind === 'ollama' ? facts[i]!.map((f, c) => (c === 0 ? f.padStart(widths[c]!) : f.padEnd(widths[c]!))).join('  ') : ''
-      const line = `  ${names[i]!.padEnd(nameWidth)}${columns}${isConfigured ? '  (configured)' : ''}`
-      cli.out(line.trimEnd())
+      const mark = isConfigured ? p.paint('accent', '(configured)') : ''
+      // Only Ollama reports size, parameters and quantisation; the others
+      // list a name and nothing else.
+      return [sanitizeDisplay(model.name), ...(server.kind === 'ollama' ? facts[i]! : []), mark]
     })
-  }
-  for (const server of servers.filter((s) => s.state !== 'up')) cli.out(unavailableLine(server))
+    for (const line of table(rows, { indent: 2, align: ['left', 'right', 'left', 'left', 'left'] })) cli.out(line)
+  })
+  for (const server of servers.filter((s) => s.state !== 'up')) cli.out(hintLine(p, unavailableLine(server)))
   // Shown whatever the default engine: it costs nothing and answers the
   // question anyone reading a model list asks next.
   if (configured && target) {
-    cli.out(`Local model: ${configured.model} (${kindLabel(target.kind)}, ${checkText(configured)})`)
-    if (configured.state !== 'installed' && configured.message) cli.out(configured.message)
+    const line = `Local model: ${configured.model} (${kindLabel(target.kind)}, ${checkText(configured)})`
+    cli.out(configured.state === 'installed' ? okLine(p, line) : warnLine(p, line))
+    if (configured.state !== 'installed' && configured.message) cli.out(hintLine(p, configured.message))
   } else {
-    cli.out('Local model: none chosen for the OpenAI-compatible server. Set one with: polyglots config set openaiCompatible.model <id>')
+    cli.out(warnLine(p, 'Local model: none chosen for the OpenAI-compatible server. Set one with: polyglots config set openaiCompatible.model <id>'))
   }
   return ok ? EXIT_OK : EXIT_ERROR
 }
@@ -762,21 +798,21 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
     .description('Open the locale rules file in $VISUAL or $EDITOR, creating it with the defaults if needed')
     .action(async (raw: string | undefined) => {
       const locale = parseLocaleArg(raw ?? cli.config().defaultLocale)
-      for (const line of await editRules(locale, cli.openEditor)) cli.out(line)
+      for (const line of await editRules(locale, cli.openEditor, cli.ui.out)) cli.out(line)
     })
   rules
     .command('check [locale]')
     .description('Validate the locale rules file and summarise what it sets')
     .action((raw: string | undefined) => {
       const locale = parseLocaleArg(raw ?? cli.config().defaultLocale)
-      for (const line of describeRules(locale)) cli.out(line)
+      for (const line of describeRules(locale, cli.ui.out)) cli.out(line)
     })
   rules
     .command('copy <from> <to>')
     .description('Duplicate one locale\'s rules file as another\'s, e.g. nl_NL to nl_BE')
     .option('--force', 'Replace the target file if it exists')
     .action(async (from: string, to: string, flags: { force?: boolean }) => {
-      for (const line of await copyRules(parseLocaleArg(from), parseLocaleArg(to), flags.force === true)) cli.out(line)
+      for (const line of await copyRules(parseLocaleArg(from), parseLocaleArg(to), flags.force === true, cli.ui.out)) cli.out(line)
     })
   rules
     .command('path [locale]')
@@ -796,9 +832,9 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
       const result = await cli.importTmx(files, {
         locale,
         project: flags.project,
-        onProgress: (e) => cli.err(`${e.file}: ${e.entries} entries, ${e.upserted} upserted`),
+        onProgress: (e) => cli.err(hintLine(cli.ui.err, `${e.file}: ${e.entries} entries, ${e.upserted} upserted`)),
       })
-      cli.out(`Imported ${result.files} file(s): ${result.entries} entries, ${result.upserted} upserted (locale ${locale}).`)
+      cli.out(okLine(cli.ui.out, `Imported ${result.files} file(s): ${result.entries} entries, ${result.upserted} upserted (locale ${locale}).`))
     })
 
   program
@@ -829,6 +865,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
             translate: cli.translate,
             out: cli.out,
             err: cli.err,
+            ui: cli.ui,
           },
           names,
           flags,
@@ -855,11 +892,15 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
       warnUniversalOnly(cli, locale)
       const batchSize = resolveBatchSize(config, flags.batchSize)
       const advice = batchAdvice(config.reviewProvider, batchSize)
-      if (advice) cli.err(advice)
+      if (advice) cli.err(warnLine(cli.ui.err, advice))
       if (config.reviewProvider === 'local' && flags.ai !== false) {
         await warnAboutLocalReview(cli, resolveLocalTarget(config), batchSize, locale)
       }
-      const report = createReviewProgressReporter(cli.streams.stderr)
+      for (const line of header(cli.ui.err, 'review', target!, [
+        ['locale', locale],
+        ['review', flags.ai === false ? 'rules only' : reviewerLabel(config, undefined)],
+      ])) cli.err(line)
+      const report = createReviewProgressReporter(cli.streams.stderr, cli.ui.err)
       // Only binds on a terminal. A piped or scheduled run has nobody to press
       // anything, and raw mode on a pipe would break it.
       const control = createRunControl()
@@ -889,44 +930,12 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
         unwatchKeys()
         report.finish()
       })
-      // Undecided entries are written to the file alongside decided ones, so the
-      // flagged count is both; needsReview then qualifies how many are guesses.
-      const flagged = summary.problems + summary.needsReview
-      cli.out(
-        `Reviewed ${summary.reviewed} entries (${summary.skipped} not submitted): ` +
-          `${flagged} flagged, ${summary.approvable} approvable.`,
-      )
-      if (summary.needsReview > 0) {
-        cli.out(
-          `${summary.needsReview} of those are unadjudicated guesses; re-run without --no-ai to have them decided.`,
-        )
-      }
-      if (summary.unreviewed > 0) cli.out(`${summary.unreviewed} entries could not be reviewed and were flagged.`)
-      // Without this the counts just look small: a run that stopped on an
-      // exhausted quota would read exactly like one that finished.
-      if (summary.pending > 0) {
-        cli.out(`Stopped early with ${summary.pending} entries not reviewed. Re-run the same command to carry on.`)
-      }
-      // written - repaired, not flagged - repaired: a whitespace-only fix is neither
-      // a problem nor a needsReview entry, so flagged - repaired can go negative.
-      if (summary.repaired > 0) {
-        cli.out(`${summary.repaired} repaired, ${summary.written - summary.repaired} left for you.`)
-      }
-      // The line to post back to whoever submitted the translation. Printed
-      // rather than copied: a CLI run may be in a pipe or a script, where
-      // reaching for the clipboard would be a side effect nobody asked for.
-      const requesterMessage = buildReport(summary, cli.config().wporgUsername)
-      if (requesterMessage) {
-        cli.out('')
-        cli.out('Message for the requester:')
-        cli.out(requesterMessage)
-        cli.out('')
-      }
-      if (summary.problemsFile) cli.out(`Wrote ${summary.problemsFile}`)
-      // Only a run that reached the end can say that. A stopped one has entries
-      // nothing has looked at, and saying they look approvable invites exactly
-      // the bulk approval this tool exists to make safe.
-      else if (summary.pending === 0) cli.out('Nothing flagged; the whole submission looks approvable.')
+      // The requester message is the line to post back to whoever submitted
+      // the translation. Printed rather than copied: a CLI run may be in a pipe
+      // or a script, where reaching for the clipboard would be a side effect
+      // nobody asked for.
+      const requesterMessage = buildReport(summary, cli.config().wporgUsername) || undefined
+      for (const line of reviewSummary(cli.ui.out, summary, requesterMessage)) cli.out(line)
     })
 
   program
@@ -974,12 +983,12 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
       // The last part's size is the one thing the arithmetic does not give
       // away, and it is what decides whether the tail is worth its own run.
       const tail = last && last.entries !== summary.size ? `, last ${last.entries}` : ''
-      cli.out(`${summary.entries} entries into ${summary.parts.length} parts of ${summary.size}${tail}.`)
-      cli.out(`Wrote ${summary.dir}`)
+      cli.out(okLine(cli.ui.out, `${summary.entries} entries into ${summary.parts.length} parts of ${summary.size}${tail}.`))
+      cli.out(nextLine(cli.ui.out, `Wrote ${cli.ui.out.paint('path', summary.dir)}`))
       // Higher-numbered parts from an earlier, finer split look exactly like
       // work waiting to be submitted. Nothing is deleted, so they are named.
       if (summary.leftBehind.length > 0) {
-        cli.err(`Left alone, not part of this split: ${summary.leftBehind.join(', ')}`)
+        cli.err(warnLine(cli.ui.err, `Left alone, not part of this split: ${summary.leftBehind.join(', ')}`))
       }
     })
 
@@ -998,7 +1007,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
       // The dropped count is the whole reason a .po export is not the default:
       // saying nothing would hand back a file holding less than it was asked for.
       const lost = result.dropped > 0 ? `, ${result.dropped} alternative wording(s) dropped` : ''
-      cli.out(`Exported ${result.entries} translations (${locale}) to ${result.file}${lost}`)
+      cli.out(okLine(cli.ui.out, `Exported ${result.entries} translations (${locale}) to ${result.file}${lost}`))
     })
 
   const glossary = program.command('glossary').description('translate.wordpress.org glossary cache')
@@ -1009,7 +1018,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
     .action(async (flags: { locale?: string }) => {
       const locale = parseLocaleArg(flags.locale ?? cli.config().defaultLocale)
       const result = await cli.syncGlossary({ locale })
-      cli.out(`Synced ${result.entries} glossary entries for ${locale}.`)
+      cli.out(okLine(cli.ui.out, `Synced ${result.entries} glossary entries for ${locale}.`))
     })
   glossary
     .command('export [file]')
@@ -1020,7 +1029,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
       const locale = parseLocaleArg(flags.locale ?? cli.config().defaultLocale)
       const delimiter = parseCsvDelimiter(flags.delimiter ?? ';')
       const result = await cli.exportGlossary({ locale, file, delimiter })
-      if (result.file) cli.out(`Exported ${result.entries} glossary terms (${locale}) to ${result.file}`)
+      if (result.file) cli.out(okLine(cli.ui.out, `Exported ${result.entries} glossary terms (${locale}) to ${result.file}`))
       else cli.streams.stdout.write(result.csv)
     })
 
@@ -1034,20 +1043,10 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
         ...(flags.out ? { out: flags.out } : {}),
         ...(flags.since ? { since: flags.since } : {}),
       })
-      const parts: string[] = []
-      if (result.submissions > 0) parts.push(`${result.submissions} submissions reviewed, ${result.entries} entries`)
-      if (result.translateRuns > 0) parts.push(`${result.translateRuns} translate runs, ${result.translateEntries} entries drafted`)
       // Saying "nothing recorded yet" while the page holds real translate
-      // numbers would send the user to look at a page they think is empty.
-      if (parts.length === 0) {
-        cli.out(`Nothing recorded yet. Wrote ${result.file} anyway; it will fill in as you work.`)
-        return
-      }
-      cli.out(`${parts.join('. ')}. Wrote ${result.file}.`)
-      if (result.incomplete > 0) {
-        const were = result.incomplete === 1 ? 'review is' : 'reviews are'
-        cli.out(`${result.incomplete} unfinished ${were} left out of the totals.`)
-      }
+      // numbers would send the user to look at a page they think is empty, so
+      // the summary checks both before saying it.
+      for (const line of statsSummary(cli.ui.out, result)) cli.out(line)
     })
 
   const cfg = program.command('config').description('Settings and API keys')
@@ -1086,10 +1085,10 @@ function exitCodeFor(cli: Cli, error: unknown): number {
     return error.exitCode === 0 ? EXIT_OK : EXIT_USAGE
   }
   if (error instanceof UsageError) {
-    cli.err(`Error: ${error.message}`)
+    cli.err(errorLine(cli.ui.err, error.message))
     return EXIT_USAGE
   }
-  cli.err(`Error: ${errorMessage(error)}`)
+  cli.err(errorLine(cli.ui.err, errorMessage(error)))
   return EXIT_ERROR
 }
 

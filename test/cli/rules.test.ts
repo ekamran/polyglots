@@ -15,7 +15,7 @@ async function run(argv: string[], deps: Omit<CliDeps, 'streams'> = {}) {
   const stderr = sink()
   const stdin = new PassThrough() as PassThrough & { isTTY?: boolean }
   stdin.end()
-  const code = await main(argv, { ...deps, streams: { stdin, stdout, stderr } })
+  const code = await main(argv, { env: {}, ...deps, streams: { stdin, stdout, stderr } })
   return { code, stdout: stdout.text, stderr: stderr.text }
 }
 
@@ -168,6 +168,6 @@ describe('rules check: built-in pack', () => {
     await writeRules('de', 'guidance: Kurz.\n')
     const r = await run(['rules', 'check', 'de'])
     expect(r.stdout).toContain(line)
-    expect(r.stdout).toMatch(/is valid/)
+    expect(r.stdout).toMatch(/^✓ \S+ is valid\.$/m)
   })
 })

@@ -7,6 +7,8 @@ import { renderDefaultRules, rulesHeader } from '../rules/defaults.js'
 import { loadLocaleRules, localeRulesFile } from '../rules/load.js'
 import { GUIDANCE_LIMIT } from '../rules/schema.js'
 import { packLine } from '../rules/support.js'
+import { okLine, hintLine } from '../ui/messages.js'
+import { plainPainter, type Painter } from '../ui/paint.js'
 import type { Locale } from '../types.js'
 
 export type OpenEditor = (file: string) => Promise<void>
@@ -24,14 +26,14 @@ export const openInEditor: OpenEditor = (file) =>
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 
 /** A short account of what a locale's rules file sets. Throws RulesFileError. */
-export function describeRules(locale: Locale): string[] {
+export function describeRules(locale: Locale, p: Painter = plainPainter): string[] {
   const file = localeRulesFile(locale)
   const rules = loadLocaleRules(locale)
   // First, because it says what the file is layered over: a pack's profile,
   // or nothing but the universal set.
-  const pack = packLine(locale)
+  const pack = p.paint('muted', packLine(locale))
   if (!rules) {
-    return [pack, `No rules file for ${locale}; the built-in defaults apply.`, `Create one with: polyglots rules edit ${locale}`]
+    return [pack, `No rules file for ${locale}; the built-in defaults apply.`, hintLine(p, `Create one with: polyglots rules edit ${locale}`)]
   }
   const mistakes = rules.patterns.filter((p) => p.kind === 'mistake').length
   const patterns = rules.patterns.length - mistakes
@@ -41,7 +43,7 @@ export function describeRules(locale: Locale): string[] {
     .map(([level, n]) => `${n} ${level}`)
   return [
     pack,
-    `${file} is valid.`,
+    okLine(p, `${file} is valid.`),
     rules.rules
       ? `  rules: ${plural(rules.rules.enable.length, 'enabled extra')}, ${plural(rules.rules.disable.length, 'disabled')}`
       : '  rules: built-in',
@@ -61,7 +63,7 @@ export function describeRules(locale: Locale): string[] {
  * which is renamed. The source must be valid, since copying a broken file
  * makes two; an existing target is kept unless `force`.
  */
-export async function copyRules(from: Locale, to: Locale, force = false): Promise<string[]> {
+export async function copyRules(from: Locale, to: Locale, force = false, p: Painter = plainPainter): Promise<string[]> {
   const source = localeRulesFile(from)
   if (!existsSync(source)) throw new UsageError(`No rules file for ${from} to copy (${source})`)
   loadLocaleRules(from)
@@ -74,7 +76,7 @@ export async function copyRules(from: Locale, to: Locale, force = false): Promis
   const renamed = first.startsWith('# polyglots rules for ') ? [rulesHeader(to), ...rest].join('\n') : text
   await mkdir(dirname(target), { recursive: true })
   await writeFile(target, renamed, 'utf8')
-  return [`Copied ${from} to ${to}.`, ...describeRules(to)]
+  return [okLine(p, `Copied ${from} to ${to}.`), ...describeRules(to, p)]
 }
 
 /**
@@ -82,12 +84,12 @@ export async function copyRules(from: Locale, to: Locale, force = false): Promis
  * first when there is none, and checks it once the editor closes. An existing
  * file is never overwritten.
  */
-export async function editRules(locale: Locale, openEditor: OpenEditor): Promise<string[]> {
+export async function editRules(locale: Locale, openEditor: OpenEditor, p: Painter = plainPainter): Promise<string[]> {
   const file = localeRulesFile(locale)
   if (!existsSync(file)) {
     await mkdir(dirname(file), { recursive: true })
     await writeFile(file, renderDefaultRules(locale), 'utf8')
   }
   await openEditor(file)
-  return describeRules(locale)
+  return describeRules(locale, p)
 }

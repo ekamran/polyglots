@@ -7,7 +7,6 @@ import {
   describeResolution,
   endOfJob,
   endOfResolution,
-  tallyLine,
   tallyOf,
   waitNotice,
   type BatchSummary,
@@ -22,6 +21,10 @@ import type { PolyglotsConfig } from '../types.js'
 import { parseProjectLines, type FetchStatus } from '../wporg/projects.js'
 import { UsageError, parseDraftEngine, parseLocaleArg, parsePositiveInt, secretForEngine } from './args.js'
 import { watchKeys, type KeyStream } from './keys.js'
+import type { Painter } from '../ui/paint.js'
+import { warnLine } from '../ui/messages.js'
+import { table } from '../ui/layout.js'
+import { fetchTally, tallyCell } from './summaries.js'
 
 export interface FetchFlags {
   get?: string
@@ -42,6 +45,7 @@ export interface FetchCli {
   fetchProjects: typeof fetchProjects
   reviewFile: typeof reviewFile
   translate: typeof translateFile
+  ui: { out: Painter; err: Painter }
   out(line: string): void
   err(line: string): void
 }
@@ -57,11 +61,6 @@ function parseFetchStatus(raw: string | undefined): FetchStatus {
       ? '--get is required: waiting (to review) or untranslated (to translate)'
       : `--get must be waiting (to review) or untranslated (to translate), got "${raw}"`,
   )
-}
-
-const pad = (rows: string[][]): string[] => {
-  const width = Math.max(...rows.map((r) => r[0]!.length))
-  return rows.map(([name, ...rest]) => `  ${name!.padEnd(width)}  ${rest.join('  ')}`)
 }
 
 /**
@@ -119,14 +118,14 @@ export async function runFetch(cli: FetchCli, names: string[], flags: FetchFlags
     }
   } else {
     const advice = batchAdvice(config.reviewProvider, batchSize)
-    if (advice) cli.err(advice)
+    if (advice) cli.err(warnLine(cli.ui.err, advice))
   }
-  if (config.reviewProvider === 'local' && !(review && flags.ai === false)) cli.err(LOCAL_REVIEW_NOTICE)
+  if (config.reviewProvider === 'local' && !(review && flags.ai === false)) cli.err(warnLine(cli.ui.err, LOCAL_REVIEW_NOTICE))
 
   cli.err(`Checking ${refs.length} ${refs.length === 1 ? 'project' : 'projects'} on translate.wordpress.org...`)
   const onWait = (ms: number) => cli.err(waitNotice(ms))
   const resolutions = await cli.resolveProjects(refs, { locale, status, onWait })
-  for (const line of pad(resolutions.map((r) => [r.input, describeResolution(r, status)]))) cli.out(line)
+  for (const line of table(resolutions.map((r) => [r.input, describeResolution(r, status)]), { indent: 2 })) cli.out(line)
 
   const ends = new Map<string, ProjectEnd>()
   for (const r of resolutions) {
@@ -154,7 +153,8 @@ export async function runFetch(cli: FetchCli, names: string[], flags: FetchFlags
 
   cli.out('')
   const final = resolutions.map((r): ProjectEnd => ends.get(r.input) ?? { tally: 'failed', detail: 'never ran' })
-  for (const line of pad(resolutions.map((r, i) => [r.input, final[i]!.tally, final[i]!.detail]))) cli.out(line)
+  const rows = resolutions.map((r, i) => [r.input, tallyCell(cli.ui.out, final[i]!.tally), final[i]!.detail])
+  for (const line of table(rows, { indent: 2 })) cli.out(line)
   const tally = tallyOf(final)
 
   // One message per reviewed project, because each goes back to a different
@@ -168,7 +168,7 @@ export async function runFetch(cli: FetchCli, names: string[], flags: FetchFlags
   }
 
   cli.out('')
-  cli.out(tallyLine(tally))
+  for (const line of fetchTally(cli.ui.out, tally)) cli.out(line)
   if (tally.failed > 0) return EXIT_ERROR
   return tally.stopped > 0 ? EXIT_STOPPED : EXIT_OK
 }
@@ -245,7 +245,7 @@ async function runJobs(
               cli.err(`Started ${inputOf.get(e.file)}${note}`)
             } else {
               finished += 1
-              cli.err(`[${finished}/${toRun.length}] ${inputOf.get(e.outcome.file)}: ${e.outcome.state}`)
+              cli.err(`[${finished}/${toRun.length}] ${inputOf.get(e.outcome.file)}: ${tallyCell(cli.ui.err, e.outcome.state)}`)
             }
           },
         },

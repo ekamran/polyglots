@@ -2,7 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import type Database from 'better-sqlite3'
 import { openJobsDb } from '../jobs/index.js'
-import { reviewStats, translateStats } from '../stats/query.js'
+import { reviewStats, translateStats, type ProjectRow } from '../stats/query.js'
 import { renderStats } from '../stats/render.js'
 
 export const DEFAULT_STATS_FILE = 'polyglots-stats.html'
@@ -24,6 +24,10 @@ export interface StatsSummary {
   incomplete: number
   translateRuns: number
   translateEntries: number
+  flagged: number
+  // Review entries per week, oldest first, for the terminal's sparkline.
+  weeks: number[]
+  topProjects: ProjectRow[]
 }
 
 function parseSince(since: string): number {
@@ -60,6 +64,14 @@ export async function writeStats(opts: StatsOptions = {}): Promise<StatsSummary>
       incomplete: stats.incomplete,
       translateRuns: translate.runs,
       translateEntries: translate.entries,
+      flagged: stats.flagged,
+      // The terminal has room for a glance, not the page: twelve weeks is a
+      // quarter, long enough to show a trend and short enough to fit any
+      // width. byWeek is already oldest first.
+      weeks: stats.byWeek.slice(-12).map((w) => w.entries),
+      topProjects: [...stats.byProject]
+        .sort((a, b) => b.entries - a.entries || a.project.localeCompare(b.project))
+        .slice(0, 5),
     }
   } finally {
     if (ownsJobsDb) jobs.close()
