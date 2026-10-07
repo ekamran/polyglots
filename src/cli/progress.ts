@@ -2,6 +2,7 @@ import type { TranslateEvent } from '../commands/translate.js'
 import type { ReviewEvent } from '../types.js'
 import { UNICODE_GLYPHS, type GlyphSet } from '../ui/glyphs.js'
 import { plainPainter, type Painter } from '../ui/paint.js'
+import { warnLine } from '../ui/messages.js'
 
 export type BatchPhase = 'drafting' | 'reviewing'
 
@@ -135,12 +136,12 @@ export function formatProgress(state: ProgressState, now: number = Date.now(), p
   return parts.join('  ')
 }
 
-export function noticeFor(event: TranslateEvent, state: ProgressState = initialProgress): string | undefined {
+export function noticeFor(event: TranslateEvent, state: ProgressState = initialProgress, p: Painter = plainPainter): string | undefined {
   switch (event.type) {
     case 'start':
       return `Translating ${event.file}: ${event.pending} of ${event.total} entries selected`
     case 'warning':
-      return `warning: ${event.message}`
+      return warnLine(p, event.message)
     case 'batch-phase':
       return `batch ${event.index}/${state.batch?.of ?? '?'} ${event.phase}…`
     case 'batch-skipped':
@@ -213,7 +214,7 @@ export function createProgressReporter(stream: ProgressStream, p: Painter = plai
 
   const report = (event: TranslateEvent): void => {
     state = applyEvent(state, event)
-    const notice = noticeFor(event, state)
+    const notice = noticeFor(event, state, p)
     const line = formatProgress(state, Date.now(), p)
 
     if (!tty) {

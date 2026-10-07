@@ -73,7 +73,7 @@ function fakeTranslate(plan: (opts: TranslateOptions, call: number) => Partial<T
 interface Harness {
   stdout: Sink
   stderr: Sink
-  run(argv: string[], deps?: Omit<CliDeps, 'streams'> & { stdin?: FakeStdin; tty?: boolean }): Promise<number>
+  run(argv: string[], deps?: Omit<CliDeps, 'streams'> & { stdin?: FakeStdin; tty?: boolean; stdoutTty?: boolean }): Promise<number>
 }
 
 function harness(): Harness {
@@ -83,8 +83,9 @@ function harness(): Harness {
     stdout,
     stderr,
     run(argv, deps = {}) {
-      const { stdin, tty, ...rest } = deps
+      const { stdin, tty, stdoutTty, ...rest } = deps
       stderr.isTTY = tty === true
+      stdout.isTTY = stdoutTty === true
       return main(argv, { env: {}, ...rest, streams: { stdin: stdin ?? stdinWith(undefined, false), stdout, stderr } })
     },
   }
@@ -1674,28 +1675,64 @@ describe('stats', () => {
 })
 
 describe('NO_COLOR', () => {
-  // Every command the suite can run without a network, on a TTY, with NO_COLOR
-  // set: none may emit an escape code on either stream.
-  it.each([
-    [['config', 'get']],
-    [['rules', 'check']],
-    [['rules', 'path']],
-    [['doctor']],
-    [['stats', '--out', '__TMP__/s.html']],
-    [['translate', '__FILE__']],
-  ])('%j prints no escape codes', async (argv) => {
+  const COMMANDS: string[][] = [
+    ['config', 'get'],
+    ['config', 'get', 'no-such-key'],
+    ['rules', 'check'],
+    ['rules', 'path'],
+    ['doctor'],
+    ['models'],
+    ['stats', '--out', '__TMP__/s.html'],
+    ['translate', '__FILE__'],
+    ['review', '__FILE__', '--no-ai'],
+  ]
+
+  // Both streams on a terminal, so a command whose output would be coloured
+  // without NO_COLOR is caught, on stdout as well as stderr.
+  async function runOnTty(argv: string[], env: NodeJS.ProcessEnv): Promise<{ stdout: string; stderr: string }> {
     const h = harness()
     const tmp = await mkdtemp(join(tmpdir(), 'pg-nocolor-'))
     const args = argv.map((a) => a.replace('__TMP__', tmp).replace('__FILE__', file))
     await h.run(args, {
       tty: true,
-      env: { NO_COLOR: '1' },
+      stdoutTty: true,
+      env,
       translate: fakeTranslate().fn,
+      reviewFile: async (opts) => ({
+        file: opts.file, locale: opts.locale, total: 3, skipped: 0, reviewed: 3, problems: 1, needsReview: 0,
+        approvable: 2, unreviewed: 0, repaired: 0, written: 1, pending: 0, byRule: {}, byGroup: {}, problemsFile: 'p.po',
+      }),
       discoverAgents: async () => [],
+      discoverModels: async () => [],
       writeStats: async () => ({ file: join(tmp, 's.html'), submissions: 1, entries: 10, flagged: 1, incomplete: 0, translateRuns: 0, translateEntries: 0, weeks: [1, 3], topProjects: [{ project: 'p', runs: 1, entries: 10, flagged: 1 }] }),
     })
     await rm(tmp, { recursive: true, force: true })
-    expect(h.stdout.text + h.stderr.text).not.toMatch(/\x1b\[(?!2K)/)
+    return { stdout: h.stdout.text, stderr: h.stderr.text }
+  }
+
+  // ESC[2K is the progress line's clear, cursor control rather than colour.
+  const COLOUR = /\x1b\[(?!2K)/
+
+  it.each(COMMANDS.map((c) => [c]))('%j prints no escape codes', async (argv) => {
+    const { stdout, stderr } = await runOnTty(argv, { NO_COLOR: '1' })
+    expect(stdout).not.toMatch(COLOUR)
+    expect(stderr).not.toMatch(COLOUR)
+  })
+
+  // The guard on the guard: without NO_COLOR the same runs are coloured on the
+  // stream that carries their result, so the sweep above is testing the
+  // variable and not a harness that never paints. config get and rules path
+  // are raw on purpose and have no coloured run to compare against.
+  it.each([
+    [['config', 'get', 'no-such-key'], 'stderr'],
+    [['rules', 'check'], 'stdout'],
+    [['doctor'], 'stdout'],
+    [['models'], 'stdout'],
+    [['stats', '--out', '__TMP__/s.html'], 'stdout'],
+    [['translate', '__FILE__'], 'stdout'],
+    [['review', '__FILE__', '--no-ai'], 'stdout'],
+  ] as const)('%j is coloured on %s without NO_COLOR', async (argv, stream) => {
+    expect((await runOnTty([...argv], {}))[stream]).toMatch(COLOUR)
   })
 })
 

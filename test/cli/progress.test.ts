@@ -121,7 +121,7 @@ describe('formatProgress remaining time', () => {
 
 describe('noticeFor', () => {
   it('turns warnings and skipped batches into persistent lines', () => {
-    expect(noticeFor(events[7]!)).toBe('warning: placeholder %s missing in "Hello %s"')
+    expect(noticeFor(events[7]!)).toBe('! placeholder %s missing in "Hello %s"')
     expect(noticeFor(events[8]!, run(9))).toBe('batch 2/9 skipped (25 entries): claude exited 1')
     expect(noticeFor(events[8]!)).toBe('batch 2/? skipped (25 entries): claude exited 1')
     expect(noticeFor(events[0]!)).toBe('Translating a.po: 210 of 300 entries selected')
@@ -163,7 +163,7 @@ describe('createProgressReporter', () => {
       'Translating a.po: 210 of 300 entries selected',
       '▰▱▱▱▱▱▱▱▱▱ 12/210',
       '▰▰▱▱▱▱▱▱▱▱ 37/210  batch 1/9  fuzzy 3',
-      'warning: placeholder %s missing in "Hello %s"',
+      '! placeholder %s missing in "Hello %s"',
       'batch 2/9 skipped (25 entries): claude exited 1',
       '▰▰▰▱▱▱▱▱▱▱ 62/210  batch 2/9  fuzzy 3',
       '▰▰▰▱▱▱▱▱▱▱ 67/210  batch 3/9  fuzzy 4',
@@ -182,7 +182,7 @@ describe('createProgressReporter', () => {
 
     report(events[7]!)
     const afterWarning = noEta(stream.chunks.slice(-2).join(''))
-    expect(afterWarning).toBe('\r\x1b[2Kwarning: placeholder %s missing in "Hello %s"\n\r\x1b[2K▰▰▱▱▱▱▱▱▱▱ 37/210  batch 1/9  fuzzy 3')
+    expect(afterWarning).toBe('\r\x1b[2K! placeholder %s missing in "Hello %s"\n\r\x1b[2K▰▰▱▱▱▱▱▱▱▱ 37/210  batch 1/9  fuzzy 3')
 
     report(events[11]!)
     expect(stream.chunks.at(-1)).toBe('\r\x1b[2K')
