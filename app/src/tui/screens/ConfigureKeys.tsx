@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { Box, Text } from 'ink'
-import TextInput from 'ink-text-input'
 import { maskSecret } from '../../config.js'
 import type { Secrets } from '../../types.js'
 import { errorMessage, useCommands, type TuiCommands } from '../commands.js'
 import { DONE_HINT, Hint } from '../components/Hint.js'
 import { useBackKeys } from '../hooks/useBackKeys.js'
+import { TextInput } from '../input.js'
 
 export interface ConfigureKeysProps {
   onBack: () => void

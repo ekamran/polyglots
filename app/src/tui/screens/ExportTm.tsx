@@ -1,14 +1,14 @@
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { useState } from 'react'
-import { Box, Text, useInput } from 'ink'
-import TextInput from 'ink-text-input'
+import { Box, Text } from 'ink'
 import type { ExportTmResult, TmExportFormat } from '../../commands/tm-export.js'
 import { useCommands, useConfig } from '../commands.js'
 import { FilePicker } from '../components/FilePicker.js'
 import { DONE_HINT, Hint } from '../components/Hint.js'
 import { useBackKeys } from '../hooks/useBackKeys.js'
 import { useTask } from '../hooks/useTask.js'
+import { TextInput, useInput } from '../input.js'
 
 export interface ExportTmProps {
   onBack: () => void

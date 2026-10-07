@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Box, Text, useInput } from 'ink'
+import { Box, Text } from 'ink'
 import { agentBinOverride } from '../../agent/providers.js'
 import { initialBatchSize, providerLabel, screenBatchAdvice } from '../local.js'
 import { MAX_PARALLEL, runProjects, withSharedDbs } from '../../commands/batch.js'
@@ -21,6 +21,7 @@ import { batchSizeChoices } from '../batch-size.js'
 import { useCommands, useConfig } from '../commands.js'
 import { DONE_HINT, Hint } from '../components/Hint.js'
 import { useTask } from '../hooks/useTask.js'
+import { useInput, useTypingWhile } from '../input.js'
 
 export interface FetchProps {
   onBack: () => void
@@ -209,6 +210,8 @@ export function Fetch({ onBack }: FetchProps) {
     if (complete.length > 0) setLines((prev) => [...prev, ...complete])
     setCurrent(parts[parts.length - 1]!)
   }
+
+  useTypingWhile(shown === 'list')
 
   useInput((input, key) => {
     if (shown === 'running') {

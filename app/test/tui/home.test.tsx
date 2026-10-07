@@ -2,23 +2,24 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import React from 'react'
-import { cleanup } from 'ink-testing-library'
 import { App } from '../../src/tui/App.js'
 import { DEFAULT_CONFIG } from '../../src/config.js'
 import type { PolyglotsConfig } from '../../src/types.js'
-import { MENU_ITEMS, nextProvider } from '../../src/tui/screens/Menu.js'
+import { HOME, RESERVED_KEYS, walk } from '../../src/tui/menu.js'
+import { nextProvider } from '../../src/tui/screens/Home.js'
 import {
   agentStatus,
   ESC_DELAY,
   fakeCommands,
   flat,
-  hopsTo,
+  openFromHome,
   keys,
   makeHome,
   tick,
   unusableAgent,
   waitForText,
   render,
+  cleanup,
   type Home,
 } from './helpers.js'
 
@@ -38,115 +39,263 @@ afterEach(async () => {
   await home.cleanup()
 })
 
-// Written out rather than derived from MENU_ITEMS, because this is the
+// Written out rather than derived from the menu tree, because this is the
 // assertion about what the user sees and deriving it would make it agree with
 // the code by construction. The length check below is what stops it drifting.
-const EXPECTED_LABELS = [
-  'Translate a .po file',
-  'Review a submitted .po',
-  'Fetch from translate.wordpress.org',
-  'Split a .po into parts',
-  'Review statistics',
-  'Import Translation Memory (.tmx or .po)',
-  'Export Translation Memory',
-  /Sync .*glossary/,
-  'Locale rules',
-  'Check AI agents',
-  'Local models',
-  'Configure API keys',
+const EXPECTED_HOME = [
+  't Translate a .po file',
+  'r Review a submitted .po',
+  'f Fetch from translate.wordpress.org',
+  's Review statistics',
+  'o Tools',
+  'c Configuration',
+  'h Help',
+  'a About',
 ]
 
-describe('Menu', () => {
-  it('lists every action with the first one highlighted', async () => {
-    const { lastFrame } = render(<App commands={fakeCommands()} cwd={cwd} />)
+describe('Home', () => {
+  it('shows eight cards in a grid with the wordmark at 120x40', async () => {
+    const { lastFrame } = render(<App commands={fakeCommands()} cwd={cwd} />, { columns: 120, rows: 40 })
     await tick()
-    const frame = lastFrame() ?? ''
-    for (const item of EXPECTED_LABELS) {
-      if (typeof item === 'string') expect(frame).toContain(item)
-      else expect(frame).toMatch(item)
-    }
-    // Adding a menu item without listing it here should fail, not pass quietly:
-    // containment alone never notices something new.
-    expect(EXPECTED_LABELS).toHaveLength(MENU_ITEMS.length)
-    expect(frame).toMatch(/❯ Translate a \.po file/)
+    const frame = flat(lastFrame())
+    for (const item of EXPECTED_HOME) expect(frame).toContain(item)
+    expect(EXPECTED_HOME).toHaveLength(HOME.length)
+    expect(lastFrame()).toContain('▛▌▛▌▐ ▌▌▛▌▐ ▛▌▜▘▛▘')
+    expect(lastFrame()).toContain('╭')
+    // Two cards on one line is what makes it a grid.
+    expect(lastFrame()).toMatch(/Translate a \.po file.*Review a submitted \.po/)
+    expect(frame).toMatch(/› t Translate/)
   })
 
-  it('opens the translate file picker on enter', async () => {
+  it('fits the grid exactly at 80x24', async () => {
+    const { lastFrame } = render(<App commands={fakeCommands()} cwd={cwd} />, { columns: 80, rows: 24 })
+    await tick()
+    const lines = lastFrame().split('\n')
+    expect(lines.length).toBeLessThanOrEqual(24)
+    expect(Math.max(...lines.map((l) => l.length))).toBeLessThanOrEqual(80)
+    expect(lastFrame()).toMatch(/Translate a \.po file.*Review a submitted \.po/)
+    expect(flat(lastFrame())).toContain('a About')
+    expect(flat(lastFrame())).toContain('? help')
+  })
+
+  it('switches to a one-column list without the wordmark below 80 columns', async () => {
+    const { lastFrame } = render(<App commands={fakeCommands()} cwd={cwd} />, { columns: 70, rows: 24 })
+    await tick()
+    const frame = lastFrame()
+    for (const item of EXPECTED_HOME) expect(flat(frame)).toContain(item)
+    expect(frame).not.toContain('╭')
+    expect(frame).not.toContain('▛▌')
+    expect(frame).not.toMatch(/Translate a \.po file.*Review a submitted \.po/)
+  })
+
+  it('asks for a larger terminal below 60x20, and lays out again on resize', async () => {
+    const view = render(<App commands={fakeCommands()} cwd={cwd} />, { columns: 59, rows: 20 })
+    await tick()
+    expect(flat(view.lastFrame())).toMatch(/Enlarge the terminal to at least 60×20 \(now 59×20\)/)
+    view.resize(120, 40)
+    await waitForText(view.lastFrame, 'Translate a .po file')
+    expect(view.lastFrame()).toContain('╭')
+  })
+
+  it('opens a card by its hotkey', async () => {
     const { lastFrame, stdin } = render(<App commands={fakeCommands()} cwd={cwd} />)
     await tick()
-    stdin.write(keys.enter)
+    stdin.write('t')
     await waitForText(lastFrame, 'plugin.po')
     expect(lastFrame()).toContain(cwd)
   })
 
-  it('reaches the review picker with the arrow keys', async () => {
+  it('moves between cards with the arrows and opens one with enter', async () => {
     const { lastFrame, stdin } = render(<App commands={fakeCommands()} cwd={cwd} />)
     await tick()
+    stdin.write(keys.right)
+    await tick()
+    expect(flat(lastFrame())).toMatch(/› r Review/)
     stdin.write(keys.down)
+    await tick()
+    expect(flat(lastFrame())).toMatch(/› s Review statistics/)
+    stdin.write(keys.left)
+    await tick()
+    expect(flat(lastFrame())).toMatch(/› f Fetch/)
+    stdin.write(keys.up)
+    await tick()
+    stdin.write(keys.right)
     await tick()
     stdin.write(keys.enter)
     await waitForText(lastFrame, 'Review')
     expect(lastFrame()).toContain('plugin.po')
   })
 
-  it('reaches the TM import picker with the arrow keys', async () => {
+  it('moves down the list one item at a time in the narrow layout', async () => {
+    const { lastFrame, stdin } = render(<App commands={fakeCommands()} cwd={cwd} />, { columns: 70, rows: 24 })
+    await tick()
+    stdin.write(keys.down)
+    await tick()
+    expect(flat(lastFrame())).toMatch(/› r Review/)
+  })
+
+  it('opens Tools as a submenu, and goes back a level at a time', async () => {
     const { lastFrame, stdin } = render(<App commands={fakeCommands()} cwd={cwd} />)
     await tick()
-    for (let i = 0; i < hopsTo('import-tm'); i++) {
-      stdin.write(keys.down)
-      await tick()
-    }
-    stdin.write(keys.enter)
+    stdin.write('o')
+    await waitForText(lastFrame, 'Split a .po into parts')
+    expect(flat(lastFrame())).toContain('i Import Translation Memory')
+    expect(flat(lastFrame())).toContain('e Export Translation Memory')
+    stdin.write('s')
+    await waitForText(lastFrame, 'Split')
+    stdin.write(keys.esc)
+    await tick(ESC_DELAY)
+    await waitForText(lastFrame, 'Import Translation Memory')
+    stdin.write('q')
+    await waitForText(lastFrame, 'Translate a .po file')
+  })
+
+  it('reaches the TM import picker through Tools', async () => {
+    const { lastFrame, stdin } = render(<App commands={fakeCommands()} cwd={cwd} />)
+    await openFromHome(stdin, 'import-tm')
     await waitForText(lastFrame, /Import Translation Memory \(\.tmx or \.po\)/)
   })
 
-  it('reaches the glossary sync screen', async () => {
+  it('reaches the glossary sync screen through Configuration', async () => {
     const { lastFrame, stdin } = render(<App commands={fakeCommands()} cwd={cwd} />)
-    await tick()
-    for (let i = 0; i < hopsTo('sync-glossary'); i++) {
-      stdin.write(keys.down)
-      await tick()
-    }
-    stdin.write(keys.enter)
+    await openFromHome(stdin, 'sync-glossary')
     await waitForText(lastFrame, /[Ll]ocale/)
     expect(lastFrame()).toContain('tr')
   })
 
-  it('reaches the API key screen', async () => {
+  it('reaches the API key screen through Configuration', async () => {
     const { lastFrame, stdin } = render(<App commands={fakeCommands()} cwd={cwd} />)
-    await tick()
-    for (let i = 0; i < hopsTo('configure-keys'); i++) {
-      stdin.write(keys.down)
-      await tick()
-    }
-    stdin.write(keys.enter)
+    await openFromHome(stdin, 'configure-keys')
     await waitForText(lastFrame, 'DEEPL_API_KEY')
     expect(lastFrame()).toContain('(not set)')
   })
 
-  it('returns to the menu with q and with escape', async () => {
+  it('returns home with q and with escape', async () => {
     const { lastFrame, stdin } = render(<App commands={fakeCommands()} cwd={cwd} />)
     await tick()
-    stdin.write(keys.enter)
+    stdin.write('t')
     await waitForText(lastFrame, 'plugin.po')
 
     stdin.write('q')
-    await waitForText(lastFrame, 'Configure API keys')
+    await waitForText(lastFrame, 'About')
 
-    stdin.write(keys.enter)
+    stdin.write('t')
     await waitForText(lastFrame, 'plugin.po')
     stdin.write(keys.esc)
     await tick(ESC_DELAY)
-    await waitForText(lastFrame, 'Configure API keys')
+    await waitForText(lastFrame, 'About')
   })
 
-  it('exits the app when q is pressed on the menu', async () => {
+  it('exits the app when q is pressed on home', async () => {
     let exited = false
     const { stdin } = render(<App commands={fakeCommands()} cwd={cwd} onExit={() => (exited = true)} />)
     await tick()
     stdin.write('q')
     await tick()
     expect(exited).toBe(true)
+  })
+
+  it('exits on Ctrl+C when nothing is running', async () => {
+    let exited = false
+    const { stdin } = render(<App commands={fakeCommands()} cwd={cwd} onExit={() => (exited = true)} />)
+    await tick()
+    stdin.write('\u0003')
+    await tick()
+    expect(exited).toBe(true)
+  })
+})
+
+describe('the header', () => {
+  it('shows the version, the provider with its model, and the setup count', async () => {
+    const commands = fakeCommands({
+      loadConfig: () => ({ ...DEFAULT_CONFIG, reviewProvider: 'antigravity' }),
+      discoverAgents: async () => [agentStatus('claude'), agentStatus('antigravity', { model: 'Gemini 3.8 Flash (Low)' })],
+      hasLocaleRules: () => true,
+    })
+    const { lastFrame } = render(<App commands={commands} cwd={cwd} />)
+    await waitForText(lastFrame, 'Flash')
+    const frame = flat(lastFrame())
+    expect(frame).toMatch(/polyglots \d+\.\d+\.\d+/)
+    expect(frame).toContain('review antigravity · Gemini 3.8 Flash (Low)')
+    expect(frame).toMatch(/setup 2\/5/)
+  })
+
+  it('opens the wizard at a missing step from the setup status', async () => {
+    const { lastFrame, stdin } = render(<App commands={fakeCommands()} cwd={cwd} />)
+    await waitForText(lastFrame, 'setup 1/5')
+    stdin.write(keys.tab)
+    await tick()
+    // Focus lands on the first step that is not done.
+    expect(flat(lastFrame())).toMatch(/› ✗ locale/)
+    stdin.write(keys.enter)
+    await waitForText(lastFrame, 'Step 1 of 5')
+  })
+})
+
+describe('the menu tree', () => {
+  it('never binds one key twice within a level, nor a reserved key', () => {
+    const levels = [HOME, ...HOME.filter((n) => n.children).map((n) => n.children!)]
+    for (const level of levels) {
+      const keysAt = level.map((n) => n.key)
+      expect(new Set(keysAt).size).toBe(keysAt.length)
+      for (const key of keysAt) expect(RESERVED_KEYS).not.toContain(key)
+    }
+  })
+
+  it('gives every node a single-character key, a description and help', () => {
+    for (const { node } of walk()) {
+      expect(node.key).toHaveLength(1)
+      expect(node.description.length).toBeGreaterThan(0)
+      expect(node.help.length).toBeGreaterThan(0)
+    }
+  })
+})
+
+describe('overlays', () => {
+  it('opens help for the current screen with ?, and keeps keys away from the screen beneath', async () => {
+    const { lastFrame, stdin } = render(<App commands={fakeCommands()} cwd={cwd} />)
+    await tick()
+    stdin.write('?')
+    await waitForText(lastFrame, 'Keys on this screen')
+    stdin.write('t')
+    await tick()
+    expect(lastFrame()).toContain('Keys on this screen')
+    stdin.write(keys.esc)
+    await tick(ESC_DELAY)
+    await waitForText(lastFrame, 'Translate a .po file')
+    expect(lastFrame()).not.toContain('Keys on this screen')
+  })
+
+  it('leaves ? to a text field that is being typed into', async () => {
+    const { lastFrame, stdin } = render(<App commands={fakeCommands()} cwd={cwd} />)
+    await openFromHome(stdin, 'sync-glossary')
+    await waitForText(lastFrame, 'Locale:')
+    stdin.write('?')
+    await tick()
+    expect(lastFrame()).not.toContain('Keys on this screen')
+    expect(lastFrame()).toContain('tr?')
+  })
+
+  it('finds and opens a screen from the command palette', async () => {
+    const { lastFrame, stdin } = render(<App commands={fakeCommands()} cwd={cwd} />)
+    await tick()
+    stdin.write('\u000b')
+    await waitForText(lastFrame, 'Go to')
+    for (const ch of 'split') {
+      stdin.write(ch)
+      await tick()
+    }
+    expect(flat(lastFrame())).toContain('Tools › Split a .po into parts')
+    stdin.write(keys.enter)
+    await waitForText(lastFrame, 'Split')
+    expect(lastFrame()).not.toContain('Go to')
+  })
+
+  it('opens the palette with : too', async () => {
+    const { lastFrame, stdin } = render(<App commands={fakeCommands()} cwd={cwd} />)
+    await tick()
+    stdin.write(':')
+    await waitForText(lastFrame, 'Go to')
   })
 })
 
@@ -157,7 +306,7 @@ describe('switching the review provider', () => {
     })
     const { lastFrame } = render(<App commands={commands} cwd={cwd} />)
     await tick()
-    expect(lastFrame() ?? '').toContain('Provider: antigravity')
+    expect(lastFrame() ?? '').toContain('review antigravity')
   })
 
   it('cycles with p and saves the choice', async () => {
@@ -171,17 +320,17 @@ describe('switching the review provider', () => {
     })
     const { lastFrame, stdin } = render(<App commands={commands} cwd={cwd} />)
     await tick()
-    expect(lastFrame() ?? '').toContain('Provider: claude')
+    expect(lastFrame() ?? '').toContain('review claude')
 
     stdin.write('p')
     await tick()
     expect(saved).toEqual([{ reviewProvider: 'antigravity' }])
-    expect(lastFrame() ?? '').toContain('Provider: antigravity')
+    expect(lastFrame() ?? '').toContain('review antigravity')
 
     // Wraps, so one key reaches every provider however many there are.
     stdin.write('p')
     await tick()
-    expect(lastFrame() ?? '').toContain('Provider: claude')
+    expect(lastFrame() ?? '').toContain('review claude')
   })
 
   // A run reads the saved config, so moving the display on a failed save would
@@ -198,7 +347,7 @@ describe('switching the review provider', () => {
     stdin.write('p')
     await tick()
     const frame = lastFrame() ?? ''
-    expect(frame).toContain('Provider: claude')
+    expect(frame).toContain('review claude')
     expect(frame).toMatch(/EACCES/)
   })
 })
@@ -230,7 +379,7 @@ describe('switching only between usable agents', () => {
     await tick()
     const frame = flat(lastFrame())
     expect(config.saved).toEqual([])
-    expect(frame).toContain('Provider: claude')
+    expect(frame).toContain('review claude')
     expect(frame).toContain('No other usable agent: antigravity: agy not on PATH')
   })
 
@@ -242,7 +391,7 @@ describe('switching only between usable agents', () => {
     stdin.write('p')
     await tick()
     expect(config.saved).toEqual([{ reviewProvider: 'antigravity' }])
-    expect(lastFrame()).toContain('Provider: antigravity')
+    expect(lastFrame()).toContain('review antigravity')
     expect(lastFrame()).not.toContain('Unavailable')
   })
 
@@ -257,15 +406,15 @@ describe('switching only between usable agents', () => {
     })
     const { lastFrame, stdin } = render(<App commands={commands} cwd={cwd} />)
     await waitForText(() => flat(lastFrame()), 'missing permission rules')
-    expect(lastFrame()).toContain('Provider: antigravity')
+    expect(lastFrame()).toContain('review antigravity')
     expect(config.saved).toEqual([])
 
     stdin.write('p')
     await tick()
-    expect(lastFrame()).toContain('Provider: claude')
+    expect(lastFrame()).toContain('review claude')
     stdin.write('p')
     await tick()
-    expect(lastFrame()).toContain('Provider: antigravity')
+    expect(lastFrame()).toContain('review antigravity')
     expect(config.saved).toEqual([{ reviewProvider: 'claude' }, { reviewProvider: 'antigravity' }])
   })
 
@@ -318,7 +467,7 @@ describe('nextProvider', () => {
   })
 })
 
-describe('the local reviewer on the menu', () => {
+describe('the local reviewer on home', () => {
   it('is marked experimental, and p moves away from it', async () => {
     const saved: Partial<PolyglotsConfig>[] = []
     const commands = fakeCommands({
@@ -330,7 +479,7 @@ describe('the local reviewer on the menu', () => {
     })
     const { lastFrame, stdin } = render(<App commands={commands} cwd={cwd} />)
     await tick()
-    expect(lastFrame() ?? '').toContain('Provider: local (experimental)')
+    expect(lastFrame() ?? '').toContain('review local (experimental)')
     stdin.write('p')
     await tick()
     expect(saved).toEqual([{ reviewProvider: 'claude' }])

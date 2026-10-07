@@ -1,8 +1,8 @@
 import { readdirSync, statSync } from 'node:fs'
 import { dirname, extname, join } from 'node:path'
 import { useMemo, useState } from 'react'
-import { Box, Text, useInput } from 'ink'
-import SelectInput from 'ink-select-input'
+import { Box, Text } from 'ink'
+import { SelectInput, useInput } from '../input.js'
 
 /**
  * How the listing is ordered.

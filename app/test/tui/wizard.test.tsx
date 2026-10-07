@@ -1,0 +1,210 @@
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { DEFAULT_CONFIG } from '../../src/config.js'
+import { App } from '../../src/tui/App.js'
+import { matchLocales, offeredProviders } from '../../src/tui/screens/Wizard.js'
+import { DEFAULT_TUI_STATE, type TuiState } from '../../src/tui/state.js'
+import type { PolyglotsConfig } from '../../src/types.js'
+import {
+  agentStatus,
+  cleanup,
+  ESC_DELAY,
+  fakeCommands,
+  flat,
+  keys,
+  makeHome,
+  memoryTuiState,
+  modelServer,
+  render,
+  tick,
+  unusableAgent,
+  waitForText,
+  type Home,
+} from './helpers.js'
+
+let home: Home
+beforeEach(async () => {
+  home = await makeHome()
+})
+afterEach(async () => {
+  cleanup()
+  await home.cleanup()
+})
+
+const fresh = (): TuiState => structuredClone(DEFAULT_TUI_STATE)
+
+function configStore(initial: Partial<PolyglotsConfig> = {}) {
+  let current: PolyglotsConfig = { ...DEFAULT_CONFIG, ...initial }
+  const saved: Partial<PolyglotsConfig>[] = []
+  return {
+    saved,
+    loadConfig: () => current,
+    saveConfig: (patch: Partial<PolyglotsConfig>) => {
+      saved.push(patch)
+      current = { ...current, ...patch }
+      return current
+    },
+  }
+}
+
+async function type(stdin: { write(s: string): void }, text: string) {
+  for (const ch of text) {
+    stdin.write(ch)
+    await tick()
+  }
+}
+
+describe('opening at launch', () => {
+  it('opens on the first missing step when setup is incomplete and the wizard was never finished', async () => {
+    const { lastFrame } = render(<App commands={fakeCommands({ ...memoryTuiState(fresh()) })} />)
+    await waitForText(lastFrame, 'Step 1 of 5')
+    expect(flat(lastFrame())).toContain('Locale')
+  })
+
+  it('stays on home once the wizard has been walked to the end', async () => {
+    const { lastFrame } = render(<App commands={fakeCommands()} />)
+    await waitForText(lastFrame, 'Translate a .po file')
+    expect(lastFrame()).not.toContain('Step 1 of 5')
+  })
+
+  // The provider is unknown until discovery answers. Counting that as
+  // missing would flash the wizard at every launch of a finished setup.
+  it('does not open for a provider that is merely not checked yet', async () => {
+    const commands = fakeCommands({
+      ...memoryTuiState(fresh()),
+      discoverAgents: () => new Promise(() => {}),
+      localeConfigured: () => true,
+      loadSecrets: () => ({ DEEPL_API_KEY: 'k' }),
+      glossaryCount: () => 10,
+      hasLocaleRules: () => true,
+    })
+    const { lastFrame } = render(<App commands={commands} />)
+    await waitForText(lastFrame, 'Translate a .po file')
+    expect(lastFrame()).not.toContain('Step 1 of 5')
+  })
+})
+
+describe('the steps', () => {
+  it('saves the chosen locale and marks it confirmed', async () => {
+    const config = configStore()
+    const state = memoryTuiState(fresh())
+    const { lastFrame, stdin } = render(<App commands={fakeCommands({ ...config, ...state })} />)
+    await waitForText(lastFrame, 'Search:')
+    // The field starts with the configured locale; clear it first.
+    for (let i = 0; i < 4; i++) {
+      stdin.write(keys.backspace)
+      await tick()
+    }
+    await type(stdin, 'de_DE')
+    await waitForText(lastFrame, 'de_DE')
+    stdin.write(keys.enter)
+    await waitForText(lastFrame, 'Step 2 of 5')
+    expect(config.saved).toContainEqual({ defaultLocale: 'de' })
+    const last = state.saveTuiState.mock.calls.at(-1)![0]
+    expect(last.wizard.confirmed).toContain('locale')
+  })
+
+  it('skips a step with esc and remembers that it was skipped', async () => {
+    const state = memoryTuiState(fresh())
+    const { lastFrame, stdin } = render(<App commands={fakeCommands({ ...state })} />)
+    await waitForText(lastFrame, 'Step 1 of 5')
+    stdin.write(keys.esc)
+    await tick(ESC_DELAY)
+    await waitForText(lastFrame, 'Step 2 of 5')
+    expect(state.saveTuiState.mock.calls.at(-1)![0].wizard.skipped).toEqual(['locale'])
+  })
+
+  it('offers only providers that are ready, with what each costs, and saves the pick', async () => {
+    const config = configStore()
+    const commands = fakeCommands({
+      ...config,
+      ...memoryTuiState(fresh()),
+      discoverAgents: async () => [agentStatus('claude'), unusableAgent('antigravity', 'agy not on PATH')],
+      discoverModels: async () => [],
+    })
+    const { lastFrame, stdin } = render(<App commands={commands} />)
+    await waitForText(lastFrame, 'Step 1 of 5')
+    stdin.write(keys.esc)
+    await tick(ESC_DELAY)
+    await waitForText(lastFrame, 'Claude Code')
+    const frame = flat(lastFrame())
+    expect(frame).toContain('Claude subscription or API credits')
+    expect(frame).not.toContain('Antigravity')
+    expect(frame).not.toContain('Local model')
+    stdin.write(keys.enter)
+    await waitForText(lastFrame, 'Step 3 of 5')
+    expect(config.saved).toContainEqual({ reviewProvider: 'claude' })
+  })
+
+  it('offers the local draft engine only when a local server answers', async () => {
+    const withServer = render(<App commands={fakeCommands({ ...memoryTuiState(fresh()), discoverModels: async () => [modelServer()] })} />)
+    await waitForText(withServer.lastFrame, 'Step 1 of 5')
+    for (let i = 0; i < 2; i++) {
+      withServer.stdin.write(keys.esc)
+      await tick(ESC_DELAY)
+    }
+    await waitForText(withServer.lastFrame, 'Step 3 of 5')
+    await waitForText(withServer.lastFrame, 'Local model')
+    expect(flat(withServer.lastFrame())).toContain('DeepL')
+    cleanup()
+
+    const without = render(<App commands={fakeCommands({ ...memoryTuiState(fresh()), discoverModels: async () => [modelServer({ state: 'down', models: [] })] })} />)
+    await waitForText(without.lastFrame, 'Step 1 of 5')
+    for (let i = 0; i < 2; i++) {
+      without.stdin.write(keys.esc)
+      await tick(ESC_DELAY)
+    }
+    await waitForText(without.lastFrame, 'OpenAI')
+    expect(flat(without.lastFrame())).not.toContain('Local model')
+  })
+
+  it('goes on to the key screen after choosing DeepL', async () => {
+    const config = configStore()
+    const { lastFrame, stdin } = render(<App commands={fakeCommands({ ...config, ...memoryTuiState(fresh()) })} />)
+    await waitForText(lastFrame, 'Step 1 of 5')
+    for (let i = 0; i < 2; i++) {
+      stdin.write(keys.esc)
+      await tick(ESC_DELAY)
+    }
+    await waitForText(lastFrame, 'DeepL')
+    stdin.write(keys.enter)
+    await waitForText(lastFrame, 'DEEPL_API_KEY')
+    expect(config.saved).toContainEqual({ defaultDraftEngine: 'deepl' })
+  })
+
+  it('is dismissed and lands on home after the last step', async () => {
+    const state = memoryTuiState(fresh())
+    const { lastFrame, stdin } = render(<App commands={fakeCommands({ ...state })} />)
+    await waitForText(lastFrame, 'Step 1 of 5')
+    for (const step of [1, 2, 3, 4, 5]) {
+      await waitForText(lastFrame, `Step ${step} of 5`)
+      stdin.write(keys.esc)
+      await tick(ESC_DELAY)
+    }
+    await waitForText(lastFrame, 'Translate a .po file')
+    expect(state.saveTuiState.mock.calls.at(-1)![0].wizard.dismissed).toBe(true)
+  })
+
+  it('is reachable from Configuration', async () => {
+    const { lastFrame, stdin } = render(<App commands={fakeCommands()} />)
+    await tick()
+    stdin.write('c')
+    await waitForText(lastFrame, 'Setup wizard')
+    stdin.write('w')
+    await waitForText(lastFrame, 'Step 1 of 5')
+  })
+})
+
+describe('matchLocales', () => {
+  it('puts an exact code first, then prefixes', () => {
+    expect(matchLocales('tr_TR')[0]).toEqual({ id: 'tr', wp: 'tr_TR' })
+    expect(matchLocales('nl').map((l) => l.id)).toContain('nl/formal')
+  })
+})
+
+describe('offeredProviders', () => {
+  it('lists usable agents and the local reviewer only with a live server', () => {
+    expect(offeredProviders([agentStatus('claude'), agentStatus('antigravity')], []).map((p) => p.id)).toEqual(['claude', 'antigravity'])
+    expect(offeredProviders([], [modelServer()]).map((p) => p.id)).toEqual(['local'])
+    expect(offeredProviders(undefined, undefined)).toEqual([])
+  })
+})

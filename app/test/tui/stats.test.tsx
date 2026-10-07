@@ -2,12 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import React from 'react'
-import { cleanup } from 'ink-testing-library'
 import { App } from '../../src/tui/App.js'
 import { statsTarget } from '../../src/tui/screens/Stats.js'
 import { DEFAULT_STATS_FILE, type StatsOptions } from '../../src/commands/stats.js'
 import { openInDefaultApp } from '../../src/tui/open-file.js'
-import { fakeCommands, hopsTo, keys, makeHome, render, tick, waitForText, type Home } from './helpers.js'
+import { ESC_DELAY, fakeCommands, flat, openFromHome, keys, makeHome, render, tick, waitForText, cleanup, type Home } from './helpers.js'
 
 // The real one launches a browser. A test run must not open one.
 vi.mock('../../src/tui/open-file.js', () => ({
@@ -30,17 +29,21 @@ afterEach(async () => {
   await home.cleanup()
 })
 
-async function openStats() {
-  const commands = fakeCommands()
+async function openLive(commands = fakeCommands()) {
   const view = render(<App commands={commands} cwd={cwd} />)
   await tick()
-  for (let i = 0; i < hopsTo('stats'); i++) {
-    view.stdin.write(keys.down)
-    await tick()
-  }
-  view.stdin.write(keys.enter)
+  await openFromHome(view.stdin, 'stats')
   await waitForText(view.lastFrame, 'Review statistics')
   return { ...view, commands }
+}
+
+// The standalone copy, which is what this screen was before the server: w
+// from the live screen.
+async function openStats() {
+  const view = await openLive()
+  view.stdin.write('w')
+  await waitForText(view.lastFrame, 'Write to:')
+  return view
 }
 
 describe('statsTarget', () => {
@@ -57,6 +60,57 @@ describe('statsTarget', () => {
 
   it('ignores surrounding space rather than making a file named for it', () => {
     expect(statsTarget('/tmp/out', '  report.html  ')).toBe(join('/tmp/out', 'report.html'))
+  })
+})
+
+describe('the live statistics page', () => {
+  it('starts the server on entry and shows where it is', async () => {
+    const view = await openLive()
+    await waitForText(view.lastFrame, 'Serving at')
+    expect(view.lastFrame()).toContain('http://127.0.0.1:4321/t0k3n/')
+    expect(view.commands.startStatsServer).toHaveBeenCalledTimes(1)
+  })
+
+  it('opens the browser on o, and says to copy the address when there is none', async () => {
+    const commands = fakeCommands({ openInBrowser: vi.fn(async () => false) })
+    const view = await openLive(commands)
+    await waitForText(view.lastFrame, 'Serving at')
+    view.stdin.write('o')
+    await waitForText(view.lastFrame, 'copy the address')
+    expect(commands.openInBrowser).toHaveBeenCalledWith('http://127.0.0.1:4321/t0k3n/')
+  })
+
+  // Leaving the screen keeps the page live in the browser; coming back must
+  // not start a second server beside it.
+  it('keeps serving after the screen is left, and reuses the server on return', async () => {
+    const view = await openLive()
+    await waitForText(view.lastFrame, 'Serving at')
+    view.stdin.write(keys.esc)
+    await tick(ESC_DELAY)
+    await waitForText(view.lastFrame, 'About')
+    expect(flat(view.lastFrame())).toContain('stats 127.0.0.1:4321')
+    await openFromHome(view.stdin, 'stats')
+    await waitForText(view.lastFrame, 'Serving at')
+    expect(view.commands.startStatsServer).toHaveBeenCalledTimes(1)
+  })
+
+  it('stops on x', async () => {
+    const close = vi.fn(async () => {})
+    const commands = fakeCommands({ startStatsServer: vi.fn(async () => ({ url: 'http://127.0.0.1:9/x/', port: 9, close })) })
+    const view = await openLive(commands)
+    await waitForText(view.lastFrame, 'Serving at')
+    view.stdin.write('x')
+    await waitForText(view.lastFrame, 'Stopped')
+    expect(close).toHaveBeenCalledTimes(1)
+    expect(flat(view.lastFrame())).not.toContain('stats 127.0.0.1')
+  })
+
+  it('says why it could not start, and still offers the standalone copy', async () => {
+    const commands = fakeCommands({ startStatsServer: vi.fn(async () => Promise.reject(new Error('jobs.db is locked'))) })
+    const view = await openLive(commands)
+    await waitForText(view.lastFrame, 'jobs.db is locked')
+    view.stdin.write('w')
+    await waitForText(view.lastFrame, 'Write to:')
   })
 })
 

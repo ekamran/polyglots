@@ -2,13 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import React from 'react'
-import { cleanup } from 'ink-testing-library'
 import { saveConfig } from '../../src/config.js'
 import type { ExportTmOptions } from '../../src/commands/tm-export.js'
 import { App } from '../../src/tui/App.js'
 import { CommandsProvider } from '../../src/tui/commands.js'
 import { defaultTmName, ExportTm } from '../../src/tui/screens/ExportTm.js'
-import { fakeCommands, flat, hopsTo, keys, makeHome, render, tick, waitForText, type Home } from './helpers.js'
+import { fakeCommands, flat, openFromHome, keys, makeHome, render, tick, waitForText, cleanup, type Home } from './helpers.js'
 
 let home: Home
 
@@ -98,11 +97,7 @@ describe('ExportTm', () => {
   it('is reachable from the menu', async () => {
     const view = render(<App commands={fakeCommands()} />)
     await tick()
-    for (let i = 0; i < hopsTo('export-tm'); i++) {
-      view.stdin.write(keys.down)
-      await tick()
-    }
-    view.stdin.write(keys.enter)
+    await openFromHome(view.stdin, 'export-tm')
     await waitForText(view.lastFrame, /Export Translation Memory/)
     expect(view.lastFrame()).toMatch(/TMX/)
   })

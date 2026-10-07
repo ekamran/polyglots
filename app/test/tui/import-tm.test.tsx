@@ -2,11 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import React from 'react'
-import { cleanup } from 'ink-testing-library'
 import { saveConfig } from '../../src/config.js'
 import { CommandsProvider } from '../../src/tui/commands.js'
 import { ImportTm } from '../../src/tui/screens/ImportTm.js'
-import { fakeCommands, keys, makeHome, tick, waitForText, render, type Home } from './helpers.js'
+import { fakeCommands, keys, makeHome, tick, waitForText, render, cleanup, type Home } from './helpers.js'
 
 let home: Home
 let cwd: string

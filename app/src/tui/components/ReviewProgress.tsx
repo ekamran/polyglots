@@ -1,4 +1,4 @@
-import { Box, Text, useInput } from 'ink'
+import { Box, Text } from 'ink'
 import { useState } from 'react'
 import type { ReviewEvent, ReviewSummary } from '../../types.js'
 import { buildReport } from '../../review/message.js'
@@ -7,6 +7,7 @@ import { openInDefaultApp } from '../open-file.js'
 import { renderBar } from './Progress.js'
 import { estimateRemainingMs, formatDuration, formatFinishTime } from '../../cli/progress.js'
 import { useElapsed } from '../hooks/useElapsed.js'
+import { useInput } from '../input.js'
 
 export interface ReviewProgressState {
   started: boolean

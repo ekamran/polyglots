@@ -1,7 +1,6 @@
 import { basename } from 'node:path'
 import { useState } from 'react'
-import { Box, Text, useInput } from 'ink'
-import TextInput from 'ink-text-input'
+import { Box, Text } from 'ink'
 import { UNIVERSAL_RULES } from '../../audit/rules/profiles.js'
 import { openRulesDraft, saveRulesDraft, type RulesDraft, type RulesValue } from '../../rules/edit.js'
 import { BUILT_IN_RULES } from '../../rules/names.js'
@@ -17,6 +16,7 @@ import { packLine } from '../../rules/support.js'
 import { tryRules, type TryResult } from '../../rules/try.js'
 import { allGlossary, openDb } from '../../storage/index.js'
 import type { GlossaryEntry } from '../../types.js'
+import { TextInput, useInput } from '../input.js'
 
 export interface LocaleRulesProps {
   onBack: () => void

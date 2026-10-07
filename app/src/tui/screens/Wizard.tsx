@@ -1,0 +1,302 @@
+import { useEffect, useState } from 'react'
+import { Box, Text } from 'ink'
+import type { AgentStatus } from '../../agent/discover.js'
+import type { ModelServer } from '../../draft/discover.js'
+import { TOKENS } from '../../ui/tokens.js'
+import { WPORG_LOCALES, localeId } from '../../wporg/locales.js'
+import { errorMessage, useCommands } from '../commands.js'
+import { TextInput, useInput } from '../input.js'
+import { DRAFT_ENGINES, REVIEW_PROVIDERS, type DraftEngineOption, type ProviderOption } from '../providers.js'
+import { STEP_LABELS, type SetupStatus } from '../setup.js'
+import { SETUP_STEPS, type SetupStep, type TuiState } from '../state.js'
+import { useGlyphs } from '../theme.js'
+import { ConfigureKeys } from './ConfigureKeys.js'
+import { LocaleRules } from './LocaleRules.js'
+import { LocalModels } from './LocalModels.js'
+import { SyncGlossary } from './SyncGlossary.js'
+
+// The setup wizard: five steps, each skippable, resumable because where it
+// stands is derived from the same facts as the header's x/5 rather than from
+// a page number. Three steps are the existing screens, embedded: their own
+// "back" is the wizard's "next", so a glossary sync or a rules edit behaves
+// here exactly as it does from Configuration.
+
+const TITLES: Record<SetupStep, string> = {
+  locale: 'Locale',
+  provider: 'Review provider',
+  keys: 'Draft engine and API keys',
+  glossary: 'Glossary sync',
+  rules: 'Locale rules',
+}
+
+export interface WizardProps {
+  start: SetupStep
+  status: SetupStatus
+  agents?: AgentStatus[]
+  // Records a step as chosen or skipped in tui.json. The app owns the file.
+  onRecord: (patch: (state: TuiState) => TuiState) => void
+  // After each step, so the header's count catches up with a glossary
+  // synced or a key saved inside the wizard.
+  onAdvance?: () => void
+  onDone: () => void
+}
+
+function Choice<T extends { id: string; label: string; cost: string }>({ options, at }: { options: readonly T[]; at: number }) {
+  const glyphs = useGlyphs()
+  return (
+    <Box flexDirection="column">
+      {options.map((o, i) => (
+        <Box key={o.id} flexDirection="column">
+          <Text>
+            <Text {...TOKENS.accent.ink}>{i === at ? glyphs.next : ' '}</Text> <Text bold={i === at}>{o.label}</Text>
+          </Text>
+          <Text {...TOKENS.muted.ink}>
+            {'    '}
+            {o.cost}
+          </Text>
+        </Box>
+      ))}
+    </Box>
+  )
+}
+
+/** The locales that match what has been typed: by WordPress code, slug, or slug/set. */
+export function matchLocales(query: string, limit = 8): Array<{ id: string; wp: string }> {
+  const q = query.trim().toLowerCase().replace(/-/g, '_')
+  const all = WPORG_LOCALES.map((l) => ({ id: localeId(l.slug, l.set), wp: l.wp }))
+  if (q === '') return all.slice(0, limit)
+  const exact = all.filter((l) => l.id === query.trim().toLowerCase() || l.wp.toLowerCase() === q)
+  const starts = all.filter((l) => !exact.includes(l) && (l.wp.toLowerCase().startsWith(q) || l.id.startsWith(query.trim().toLowerCase())))
+  const contains = all.filter((l) => !exact.includes(l) && !starts.includes(l) && (l.wp.toLowerCase().includes(q) || l.id.includes(q)))
+  return [...exact, ...starts, ...contains].slice(0, limit)
+}
+
+function LocaleStep({ onChosen, onSkip }: { onChosen: (id: string) => void; onSkip: () => void }) {
+  const commands = useCommands()
+  const glyphs = useGlyphs()
+  const [query, setQuery] = useState(() => {
+    try {
+      return commands.loadConfig().defaultLocale
+    } catch {
+      return ''
+    }
+  })
+  const [at, setAt] = useState(0)
+  const [error, setError] = useState<string>()
+  const matches = matchLocales(query)
+  const chosen = Math.min(at, Math.max(0, matches.length - 1))
+  useInput((_input, key) => {
+    if (key.escape) onSkip()
+    else if (key.upArrow) setAt(Math.max(0, chosen - 1))
+    else if (key.downArrow) setAt(Math.min(matches.length - 1, chosen + 1))
+  })
+  const submit = () => {
+    const pick = matches[chosen]
+    if (!pick) return
+    try {
+      commands.saveConfig({ defaultLocale: pick.id })
+      onChosen(pick.id)
+    } catch (err) {
+      setError(errorMessage(err))
+    }
+  }
+  return (
+    <Box flexDirection="column">
+      <Text>The locale you translate into, as translate.wordpress.org names it.</Text>
+      <Box>
+        <Text>Search: </Text>
+        <TextInput
+          value={query}
+          onChange={(v) => {
+            setQuery(v)
+            setAt(0)
+          }}
+          onSubmit={submit}
+        />
+      </Box>
+      {matches.map((m, i) => (
+        <Text key={m.id}>
+          <Text {...TOKENS.accent.ink}>{i === chosen ? glyphs.next : ' '}</Text> <Text bold={i === chosen}>{m.id}</Text>{' '}
+          <Text {...TOKENS.muted.ink}>{m.wp}</Text>
+        </Text>
+      ))}
+      {matches.length === 0 && <Text {...TOKENS.warn.ink}>translate.wordpress.org lists no locale like that.</Text>}
+      {error && <Text {...TOKENS.error.ink}>Could not save that: {error}</Text>}
+    </Box>
+  )
+}
+
+/** The providers worth offering: agents discovery found usable, and the local reviewer when a server answers. */
+export function offeredProviders(agents: AgentStatus[] | undefined, servers: ModelServer[] | undefined): ProviderOption[] {
+  return REVIEW_PROVIDERS.filter((p) =>
+    p.needs === 'agent'
+      ? (agents ?? []).some((a) => a.provider === p.id && a.usable)
+      : (servers ?? []).some((s) => s.state === 'up'),
+  )
+}
+
+function useServers(): ModelServer[] | undefined {
+  const commands = useCommands()
+  const [servers, setServers] = useState<ModelServer[] | undefined>(undefined)
+  useEffect(() => {
+    let wanted = true
+    commands.discoverModels().then(
+      (s) => wanted && setServers(s),
+      () => wanted && setServers([]),
+    )
+    return () => {
+      wanted = false
+    }
+  }, [commands])
+  return servers
+}
+
+function PickStep<T extends { id: string; label: string; cost: string }>({
+  intro,
+  options,
+  waiting,
+  empty,
+  onPick,
+  onSkip,
+}: {
+  intro: string
+  options: readonly T[]
+  waiting: boolean
+  empty: string
+  onPick: (option: T) => void
+  onSkip: () => void
+}) {
+  const [at, setAt] = useState(0)
+  useInput((_input, key) => {
+    if (key.escape) onSkip()
+    else if (key.upArrow) setAt((a) => Math.max(0, a - 1))
+    else if (key.downArrow) setAt((a) => Math.min(options.length - 1, a + 1))
+    else if (key.return && options[at]) onPick(options[at])
+  })
+  return (
+    <Box flexDirection="column">
+      <Text>{intro}</Text>
+      <Text> </Text>
+      {options.length > 0 ? <Choice options={options} at={Math.min(at, options.length - 1)} /> : null}
+      {waiting && <Text {...TOKENS.muted.ink}>Looking for what is installed…</Text>}
+      {!waiting && options.length === 0 && <Text {...TOKENS.warn.ink}>{empty}</Text>}
+    </Box>
+  )
+}
+
+export function Wizard({ start, status, agents, onRecord, onAdvance, onDone }: WizardProps) {
+  const commands = useCommands()
+  const [step, setStep] = useState<SetupStep>(start)
+  // Inside the keys step: once an engine is picked, its own screen follows.
+  const [engine, setEngine] = useState<DraftEngineOption['id'] | undefined>(undefined)
+  const [error, setError] = useState<string>()
+  const servers = useServers()
+  const index = SETUP_STEPS.indexOf(step)
+
+  const advance = () => {
+    onAdvance?.()
+    setEngine(undefined)
+    setError(undefined)
+    const next = SETUP_STEPS[index + 1]
+    if (next) setStep(next)
+    else {
+      // Reaching the end, by finishing or by skipping, is what stops the
+      // wizard opening at launch. It stays one key away in Configuration.
+      onRecord((s) => ({ ...s, wizard: { ...s.wizard, dismissed: true } }))
+      onDone()
+    }
+  }
+  const record = (kind: 'confirmed' | 'skipped') =>
+    onRecord((s) => ({
+      ...s,
+      wizard: {
+        ...s.wizard,
+        [kind]: [...s.wizard[kind].filter((x) => x !== step), step],
+        // A step chosen after being skipped is no longer skipped, and the
+        // other way round: the latest answer is the one that counts.
+        [kind === 'confirmed' ? 'skipped' : 'confirmed']: s.wizard[kind === 'confirmed' ? 'skipped' : 'confirmed'].filter((x) => x !== step),
+      },
+    }))
+  const skip = () => {
+    record('skipped')
+    advance()
+  }
+  const save = (patch: Parameters<typeof commands.saveConfig>[0]): boolean => {
+    try {
+      commands.saveConfig(patch)
+      return true
+    } catch (err) {
+      setError(errorMessage(err))
+      return false
+    }
+  }
+
+  let body
+  if (step === 'locale') {
+    body = (
+      <LocaleStep
+        onChosen={() => {
+          record('confirmed')
+          advance()
+        }}
+        onSkip={skip}
+      />
+    )
+  } else if (step === 'provider') {
+    body = (
+      <PickStep
+        intro="Who reviews submissions. Only what is installed and signed in is listed."
+        options={offeredProviders(agents, servers)}
+        waiting={agents === undefined || servers === undefined}
+        empty="No review agent is ready. Check AI agents in Configuration says what each one is missing."
+        onPick={(p) => {
+          if (!save({ reviewProvider: p.id })) return
+          record('confirmed')
+          advance()
+        }}
+        onSkip={skip}
+      />
+    )
+  } else if (step === 'keys') {
+    if (engine === 'deepl' || engine === 'openai') body = <ConfigureKeys onBack={advance} />
+    else if (engine === 'local') body = <LocalModels onBack={advance} />
+    else {
+      const up = (servers ?? []).some((s) => s.state === 'up')
+      body = (
+        <PickStep
+          intro="Which engine writes machine drafts when the memory has no match. Optional: esc skips it."
+          options={DRAFT_ENGINES.filter((e) => e.id !== 'local' || up)}
+          waiting={servers === undefined}
+          empty=""
+          onPick={(e) => {
+            if (!save({ defaultDraftEngine: e.id })) return
+            record('confirmed')
+            setEngine(e.id)
+          }}
+          onSkip={skip}
+        />
+      )
+    }
+  } else if (step === 'glossary') {
+    body = <SyncGlossary onBack={advance} />
+  } else {
+    body = <LocaleRules onBack={advance} />
+  }
+
+  return (
+    <Box flexDirection="column">
+      <Text>
+        <Text {...TOKENS.heading.ink}>Setup</Text> <Text {...TOKENS.muted.ink}>·</Text> Step {index + 1} of {SETUP_STEPS.length}{' '}
+        <Text {...TOKENS.muted.ink}>·</Text> <Text bold>{TITLES[step]}</Text>
+        {'  '}
+        <Text {...TOKENS.muted.ink}>
+          ({STEP_LABELS[step]} {status.steps[step] === 'done' ? 'is done' : 'needs doing'})
+        </Text>
+      </Text>
+      <Text {...TOKENS.muted.ink}>esc skips a step · the wizard stays under Configuration › Setup wizard</Text>
+      <Text> </Text>
+      {body}
+      {error && <Text {...TOKENS.error.ink}>Could not save that: {error}</Text>}
+    </Box>
+  )
+}

@@ -1,7 +1,6 @@
 import { basename } from 'node:path'
 import { useState } from 'react'
 import { Box, Text } from 'ink'
-import TextInput from 'ink-text-input'
 import { partCount, type SplitSummary } from '../../commands/split.js'
 import { countEntries, poEntryCount } from '../../po/count.js'
 import { useCommands } from '../commands.js'
@@ -9,6 +8,7 @@ import { FilePicker } from '../components/FilePicker.js'
 import { BACK_HINT, DONE_HINT, Hint } from '../components/Hint.js'
 import { useBackKeys } from '../hooks/useBackKeys.js'
 import { useTask } from '../hooks/useTask.js'
+import { TextInput } from '../input.js'
 
 export interface SplitProps {
   cwd: string

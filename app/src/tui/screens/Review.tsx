@@ -1,7 +1,6 @@
 import { basename } from 'node:path'
 import { useRef, useState } from 'react'
-import { Box, Text, useInput } from 'ink'
-import TextInput from 'ink-text-input'
+import { Box, Text } from 'ink'
 import { normalizeLocale } from '../../tmx/parse.js'
 import { resolveLocale } from '../../wporg/locales.js'
 import type { ReviewEvent, ReviewSummary } from '../../types.js'
@@ -15,6 +14,7 @@ import { ReviewProgress } from '../components/ReviewProgress.js'
 import { useTask } from '../hooks/useTask.js'
 import { createRunControl, type RunControl } from '../../run-control.js'
 import { batchSizeChoices } from '../batch-size.js'
+import { TextInput, useInput } from '../input.js'
 
 export interface ReviewProps {
   cwd: string

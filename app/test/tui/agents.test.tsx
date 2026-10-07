@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import React from 'react'
-import { cleanup } from 'ink-testing-library'
 import { App } from '../../src/tui/App.js'
 import type { AgentStatus } from '../../src/agent/discover.js'
 import {
@@ -8,13 +7,14 @@ import {
   ESC_DELAY,
   fakeCommands,
   flat,
-  hopsTo,
+  openFromHome,
   keys,
   makeHome,
   tick,
   unusableAgent,
   waitForText,
   render,
+  cleanup,
   type Home,
 } from './helpers.js'
 
@@ -31,11 +31,7 @@ afterEach(async () => {
 
 async function openAgents(stdin: { write(data: string): void }, lastFrame: () => string) {
   await tick()
-  for (let i = 0; i < hopsTo('agents'); i++) {
-    stdin.write(keys.down)
-    await tick()
-  }
-  stdin.write(keys.enter)
+  await openFromHome(stdin, 'agents')
   await waitForText(lastFrame, 'r re-check')
 }
 

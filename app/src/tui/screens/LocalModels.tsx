@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Box, Text, useInput } from 'ink'
+import { Box, Text } from 'ink'
 import {
   kindLabel,
   matchesModel,
@@ -15,6 +15,7 @@ import type { LocalServerKind, PolyglotsConfig } from '../../types.js'
 import { errorMessage, useCommands, useConfig } from '../commands.js'
 import { Hint } from '../components/Hint.js'
 import { useBackKeys } from '../hooks/useBackKeys.js'
+import { useInput } from '../input.js'
 
 export interface LocalModelsProps {
   onBack: () => void

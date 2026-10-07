@@ -2,13 +2,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import React from 'react'
-import { cleanup } from 'ink-testing-library'
 import { profileFor } from '../../src/audit/rules/profiles.js'
 import { localeRulesFile, loadLocaleRules } from '../../src/rules/load.js'
 import { App } from '../../src/tui/App.js'
 import { CommandsProvider } from '../../src/tui/commands.js'
 import { LocaleRules } from '../../src/tui/screens/LocaleRules.js'
-import { ESC_DELAY, fakeCommands, flat, hopsTo, keys, makeHome, render, tick, waitFor, waitForText, type Home } from './helpers.js'
+import { ESC_DELAY, fakeCommands, flat, openFromHome, keys, makeHome, render, tick, waitFor, waitForText, cleanup, type Home } from './helpers.js'
 
 let home: Home
 
@@ -498,11 +497,7 @@ describe('Menu entry', () => {
   it('reaches the locale rules screen', async () => {
     const view = render(<App commands={fakeCommands()} />)
     await tick()
-    for (let i = 0; i < hopsTo('locale-rules'); i++) {
-      view.stdin.write(keys.down)
-      await tick()
-    }
-    view.stdin.write(keys.enter)
+    await openFromHome(view.stdin, 'locale-rules')
     await waitForText(view.lastFrame, /Locale rules/)
   })
 })

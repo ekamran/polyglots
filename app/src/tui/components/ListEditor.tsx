@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Box, Text, useInput } from 'ink'
+import { Box, Text } from 'ink'
 import { Form, type FormField } from './Form.js'
 import { Hint } from './Hint.js'
+import { useInput } from '../input.js'
 
 export interface ListEditorProps<T> {
   title: string

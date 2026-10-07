@@ -1,7 +1,6 @@
 import { basename } from 'node:path'
 import { useEffect, useRef, useState } from 'react'
-import { Box, Text, useInput } from 'ink'
-import TextInput from 'ink-text-input'
+import { Box, Text } from 'ink'
 import type { TranslateEvent, TranslateSummary } from '../../commands/translate.js'
 import { normalizeLocale } from '../../tmx/parse.js'
 import { resolveLocale } from '../../wporg/locales.js'
@@ -18,6 +17,7 @@ import { createRunControl, type RunControl } from '../../run-control.js'
 import { agentBinOverride } from '../../agent/providers.js'
 import { initialBatchSize, providerLabel, screenBatchAdvice } from '../local.js'
 import { batchSizeChoices } from '../batch-size.js'
+import { TextInput, useInput } from '../input.js'
 
 export interface TranslateProps {
   cwd: string
