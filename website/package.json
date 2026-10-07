@@ -1,0 +1,29 @@
+{
+  "name": "polyglots-website",
+  "type": "module",
+  "version": "0.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "snapshot": "../app/node_modules/.bin/tsx scripts/snapshot.ts",
+    "predev": "npm run snapshot",
+    "dev": "astro dev",
+    "prebuild": "npm run snapshot",
+    "build": "astro check && astro build",
+    "preview": "astro preview",
+    "check": "astro check",
+    "test": "../app/node_modules/.bin/tsx --test scripts/*.test.ts",
+    "images": "node scripts/images.mjs",
+    "font": "sh scripts/subset-font.sh"
+  },
+  "dependencies": {
+    "astro": "^7.3.6"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "puppeteer-core": "^25.12.0",
+    "typescript": "^6.0.3"
+  }
+}

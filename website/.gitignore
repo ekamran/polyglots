@@ -1,0 +1,5 @@
+# Astro's generated types and caches.
+.astro/
+# Written by scripts/snapshot.ts on every dev and build, from ../app/src.
+# Never committed, so the site cannot ship output older than the code.
+src/generated/
