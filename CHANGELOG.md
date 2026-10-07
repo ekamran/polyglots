@@ -10,6 +10,8 @@ Entries say what changed. For why and how, read the commit.
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-10-07
+
 ### Added
 
 - The local draft engine runs on OpenAI-compatible servers (LM Studio, llama.cpp server, vLLM) as
