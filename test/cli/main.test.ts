@@ -529,10 +529,18 @@ describe('review', () => {
     expect(review.calls).toEqual([
       { file, locale: 'tr', outDir: undefined, noAi: undefined, batchSize: 25, fresh: undefined },
     ])
-    expect(h.stdout.text).toContain('14 flagged')
-    expect(h.stdout.text).toContain('102 approvable')
+    expect(h.stdout.text).toMatch(/flagged\s+14/)
+    expect(h.stdout.text).toMatch(/approvable\s+102/)
     expect(h.stdout.text).toContain('/tmp/plugin-tr-problems.po')
     expect(h.stdout.text).not.toContain('report')
+  })
+
+  it('prints a header on stderr naming the file, locale and reviewer', async () => {
+    const h = harness()
+    await h.run(['review', file, '--no-ai'], { reviewFile: fakeReview(summary({})).fn })
+    expect(h.stderr.text).toContain(`polyglots review  ${file}`)
+    expect(h.stderr.text).toMatch(/locale\s+tr/)
+    expect(h.stderr.text).toMatch(/review\s+rules only/)
   })
 
   it('counts undecided entries as flagged, since they are written to the file too', async () => {
@@ -540,8 +548,8 @@ describe('review', () => {
     const review = fakeReview(summary({ problems: 0, needsReview: 5, approvable: 0 }))
     await h.run(['review', file, '--no-ai'], { reviewFile: review.fn })
 
-    expect(h.stdout.text).toContain('5 flagged')
-    expect(h.stdout.text).not.toContain('0 flagged')
+    expect(h.stdout.text).toMatch(/flagged\s+5/)
+    expect(h.stdout.text).not.toMatch(/flagged\s+0/)
   })
 
   it('reports the needs-your-eye count from a rules-only run', async () => {
@@ -550,8 +558,7 @@ describe('review', () => {
     const code = await h.run(['review', file, '--no-ai'], { reviewFile: review.fn })
 
     expect(code).toBe(0)
-    expect(h.stdout.text).toContain('11')
-    expect(h.stdout.text).toMatch(/unadjudicated guesses/i)
+    expect(h.stdout.text).toMatch(/guesses\s+11  re-run without --no-ai to decide them/)
   })
 
   it('says so when nothing was flagged and names no po file', async () => {
@@ -598,8 +605,10 @@ describe('review', () => {
     await h.run(['review', file], { reviewFile: review.fn })
 
     expect(h.stdout.text).toMatch(/stopped early/i)
-    expect(h.stdout.text).toContain('2850')
-    expect(h.stdout.text).toMatch(/re-run/i)
+    expect(h.stdout.text).toMatch(/not reached\s+2850/)
+    // Both: the file holds what was found so far, and the rest needs a re-run.
+    expect(h.stdout.text).toContain('› Wrote ')
+    expect(h.stdout.text).toContain('› Re-run the same command to carry on.')
   })
 
   // It used to print both, which reads as a finished review that found nothing.
@@ -653,8 +662,7 @@ describe('review', () => {
     const h = harness()
     const review = fakeReview(summary({ unreviewed: 7 }))
     await h.run(['review', file], { reviewFile: review.fn })
-    expect(h.stdout.text).toContain('7')
-    expect(h.stdout.text).toMatch(/unreviewed|could not be reviewed/i)
+    expect(h.stdout.text).toMatch(/unreviewed\s+7  could not be reviewed; flagged/)
   })
 
   it('says how much of the work it already did', async () => {
@@ -664,8 +672,7 @@ describe('review', () => {
     )
     await h.run(['review', file], { reviewFile: review.fn })
 
-    expect(h.stdout.text).toContain('380 repaired')
-    expect(h.stdout.text).toContain('32 left for you')
+    expect(h.stdout.text).toMatch(/repaired\s+380  32 left for you/)
   })
 
   // Whitespace-only fixes are written but count as neither a problem nor a
@@ -677,7 +684,7 @@ describe('review', () => {
     const review = fakeReview(summary({ problems: 0, needsReview: 0, approvable: 10, repaired: 10, written: 10 }))
     await h.run(['review', file], { reviewFile: review.fn })
 
-    expect(h.stdout.text).toContain('10 repaired, 0 left for you')
+    expect(h.stdout.text).toMatch(/repaired\s+10  0 left for you/)
     expect(h.stdout.text).not.toMatch(/-\d+ left for you/)
   })
 

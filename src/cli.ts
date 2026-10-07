@@ -54,7 +54,7 @@ import {
 import { localModelId, resolveLocalTarget, type LocalTarget } from './draft/local-chat.js'
 import { createPainter, type Painter } from './ui/paint.js'
 import { errorLine, header, hintLine, warnLine } from './ui/messages.js'
-import { translateSummary } from './cli/summaries.js'
+import { reviewSummary, translateSummary } from './cli/summaries.js'
 import { LOCAL_REVIEW_NOTICE, localBatchAdvice, localReviewBatchSize } from './review/local.js'
 import { engineId } from './jobs/hash.js'
 import type { RunTuiOptions } from './tui/index.js'
@@ -886,7 +886,11 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
       if (config.reviewProvider === 'local' && flags.ai !== false) {
         await warnAboutLocalReview(cli, resolveLocalTarget(config), batchSize, locale)
       }
-      const report = createReviewProgressReporter(cli.streams.stderr)
+      for (const line of header(cli.ui.err, 'review', target!, [
+        ['locale', locale],
+        ['review', flags.ai === false ? 'rules only' : reviewerLabel(config, undefined)],
+      ])) cli.err(line)
+      const report = createReviewProgressReporter(cli.streams.stderr, cli.ui.err)
       // Only binds on a terminal. A piped or scheduled run has nobody to press
       // anything, and raw mode on a pipe would break it.
       const control = createRunControl()
@@ -916,44 +920,12 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
         unwatchKeys()
         report.finish()
       })
-      // Undecided entries are written to the file alongside decided ones, so the
-      // flagged count is both; needsReview then qualifies how many are guesses.
-      const flagged = summary.problems + summary.needsReview
-      cli.out(
-        `Reviewed ${summary.reviewed} entries (${summary.skipped} not submitted): ` +
-          `${flagged} flagged, ${summary.approvable} approvable.`,
-      )
-      if (summary.needsReview > 0) {
-        cli.out(
-          `${summary.needsReview} of those are unadjudicated guesses; re-run without --no-ai to have them decided.`,
-        )
-      }
-      if (summary.unreviewed > 0) cli.out(`${summary.unreviewed} entries could not be reviewed and were flagged.`)
-      // Without this the counts just look small: a run that stopped on an
-      // exhausted quota would read exactly like one that finished.
-      if (summary.pending > 0) {
-        cli.out(`Stopped early with ${summary.pending} entries not reviewed. Re-run the same command to carry on.`)
-      }
-      // written - repaired, not flagged - repaired: a whitespace-only fix is neither
-      // a problem nor a needsReview entry, so flagged - repaired can go negative.
-      if (summary.repaired > 0) {
-        cli.out(`${summary.repaired} repaired, ${summary.written - summary.repaired} left for you.`)
-      }
-      // The line to post back to whoever submitted the translation. Printed
-      // rather than copied: a CLI run may be in a pipe or a script, where
-      // reaching for the clipboard would be a side effect nobody asked for.
-      const requesterMessage = buildReport(summary, cli.config().wporgUsername)
-      if (requesterMessage) {
-        cli.out('')
-        cli.out('Message for the requester:')
-        cli.out(requesterMessage)
-        cli.out('')
-      }
-      if (summary.problemsFile) cli.out(`Wrote ${summary.problemsFile}`)
-      // Only a run that reached the end can say that. A stopped one has entries
-      // nothing has looked at, and saying they look approvable invites exactly
-      // the bulk approval this tool exists to make safe.
-      else if (summary.pending === 0) cli.out('Nothing flagged; the whole submission looks approvable.')
+      // The requester message is the line to post back to whoever submitted
+      // the translation. Printed rather than copied: a CLI run may be in a pipe
+      // or a script, where reaching for the clipboard would be a side effect
+      // nobody asked for.
+      const requesterMessage = buildReport(summary, cli.config().wporgUsername) || undefined
+      for (const line of reviewSummary(cli.ui.out, summary, requesterMessage)) cli.out(line)
     })
 
   program

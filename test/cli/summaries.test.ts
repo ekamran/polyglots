@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { stripVTControlCharacters } from 'node:util'
-import { translateSummary } from '../../src/cli/summaries.js'
+import { reviewSummary, translateSummary } from '../../src/cli/summaries.js'
+import { reviewSummaryOf } from '../tui/helpers.js'
+import type { ReviewSummary } from '../../src/types.js'
 import { createPainter, plainPainter } from '../../src/ui/paint.js'
 import type { TranslateSummary } from '../../src/commands/translate.js'
 
@@ -35,5 +37,52 @@ describe('translateSummary', () => {
     const painted = translateSummary(createPainter({ isTTY: true }, {}), base, false)
     expect(painted.join('\n')).toMatch(/\x1b\[/)
     expect(painted.map((l) => stripVTControlCharacters(l))).toEqual(translateSummary(plainPainter, base, false))
+  })
+})
+
+// The factory names a problems file by default; a run that wrote none has the
+// key absent, not undefined, under exactOptionalPropertyTypes.
+function reviewed(patch: Partial<ReviewSummary>, problemsFile: string | undefined): ReviewSummary {
+  const { problemsFile: _drop, ...rest } = reviewSummaryOf('a.po', patch)
+  return problemsFile === undefined ? rest : { ...rest, problemsFile }
+}
+
+describe('reviewSummary', () => {
+  it('frames reviewed, flagged and approvable, flagged highlighted', () => {
+    const s = reviewed({ reviewed: 120, skipped: 3, problems: 9, needsReview: 2, approvable: 109, pending: 0 }, 'out/a-problems.po')
+    const lines = reviewSummary(plainPainter, s, undefined)
+    expect(lines[0]).toMatch(/✓ Reviewed/)
+    expect(lines.join('\n')).toMatch(/flagged\s+11/)
+    expect(lines.join('\n')).toMatch(/approvable\s+109/)
+    expect(lines.at(-1)).toBe('› Wrote out/a-problems.po')
+  })
+
+  it('titles an early stop with a warning and never says approvable for the rest', () => {
+    const s = reviewed({ reviewed: 40, pending: 80, problems: 1, needsReview: 0, approvable: 39 }, undefined)
+    const lines = reviewSummary(plainPainter, s, undefined)
+    expect(lines[0]).toContain('! Stopped early')
+    expect(lines.join('\n')).toMatch(/not reached\s+80/)
+    expect(lines.join('\n')).not.toContain('looks approvable')
+    expect(lines.at(-1)).toBe('› Re-run the same command to carry on.')
+  })
+
+  it('says a clean finished run looks approvable', () => {
+    const s = reviewed({ reviewed: 50, pending: 0, problems: 0, needsReview: 0, approvable: 50, repaired: 0, written: 0 }, undefined)
+    expect(reviewSummary(plainPainter, s, undefined).at(-1)).toBe('› Nothing flagged; the whole submission looks approvable.')
+  })
+
+  it('prints the requester message verbatim under its heading, outside the box', () => {
+    const s = reviewed({ reviewed: 10, pending: 0, problems: 1, needsReview: 0, approvable: 9 }, 'p.po')
+    const lines = reviewSummary(plainPainter, s, 'Thanks! 1 entry needs a look.')
+    const at = lines.indexOf('Message for the requester:')
+    expect(at).toBeGreaterThan(0)
+    expect(lines.slice(0, at).some((l) => l.startsWith('╰'))).toBe(true)
+    expect(lines[at + 1]).toBe('Thanks! 1 entry needs a look.')
+  })
+
+  it('reads the same with colour on, once the codes are stripped', () => {
+    const s = reviewed({ problems: 2 }, 'p.po')
+    const painted = reviewSummary(createPainter({ isTTY: true }, {}), s, 'msg')
+    expect(painted.map((l) => stripVTControlCharacters(l))).toEqual(reviewSummary(plainPainter, s, 'msg'))
   })
 })
