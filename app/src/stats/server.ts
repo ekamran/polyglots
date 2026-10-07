@@ -22,6 +22,11 @@ import { buildPayload } from './payload.js'
 //   - A cross-site request that is not a top-level navigation is refused,
 //     for browsers that send Sec-Fetch headers.
 //
+// One exposure the token does not cover: openInBrowser passes the URL to
+// open, xdg-open or start as an argument, so for the moment that process
+// lives the token is visible to anyone on the machine who can run ps. The
+// window is short, and what the token opens is read-only statistics.
+//
 // The server never writes to the job store and never writes to the terminal:
 // the TUI owns the screen while it runs, and the CLI prints for itself.
 

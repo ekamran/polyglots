@@ -1055,7 +1055,8 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
         for (const line of statsSummary(cli.ui.out, result)) cli.out(line)
         return
       }
-      await cli.serveStats({ ...since, open: flags.open }, ({ url, opened, summary }) => {
+      const onError = (err: Error) => cli.err(errorLine(cli.ui.err, `stats server: ${err.message}`))
+      await cli.serveStats({ ...since, open: flags.open, onError }, ({ url, opened, summary }) => {
         for (const line of statsServingSummary(cli.ui.out, summary, url, opened)) cli.out(line)
       })
       cli.out(okLine(cli.ui.out, 'Stopped'))

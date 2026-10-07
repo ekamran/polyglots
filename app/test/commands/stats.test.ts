@@ -188,6 +188,23 @@ describe('serveStats', () => {
     expect(ready[0]!.opened).toBe(false)
   })
 
+  it('hands the caller\'s error reporter to the server', async () => {
+    const seen: Error[] = []
+    let given: ((e: Error) => void) | undefined
+    await serveStats(
+      {
+        jobsDb: db,
+        open: false,
+        onError: (e) => seen.push(e),
+        start: async (o) => ((given = o?.onError), fakeServer().server),
+        untilStopped: async () => {},
+      },
+      () => {},
+    )
+    given?.(new Error('boom'))
+    expect(seen.map((e) => e.message)).toEqual(['boom'])
+  })
+
   it('refuses a --since it cannot read before starting anything', async () => {
     let started = false
     await expect(

@@ -1705,6 +1705,18 @@ describe('stats', () => {
     expect(h.stdout.text.trimEnd().split('\n').at(-1)).toContain('Stopped')
   })
 
+  // The TUI keeps the server silent; on the command line a failed request
+  // would otherwise leave no trace but a 500 in the browser.
+  it('writes server errors to stderr while serving', async () => {
+    const h = harness()
+    await h.run(['stats'], {
+      stdoutTty: true,
+      env: { NO_COLOR: '1' },
+      serveStats: async (opts) => opts.onError?.(new Error('no such table: run')),
+    })
+    expect(h.stderr.text).toContain('no such table: run')
+  })
+
   it('passes --no-open through, for a machine where the browser is somewhere else', async () => {
     const h = harness()
     const calls: Array<boolean | undefined> = []

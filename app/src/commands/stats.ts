@@ -94,6 +94,9 @@ export interface ServeOptions {
   open?: boolean
   jobsDb?: Database.Database
   now?: () => Date
+  // Errors the server meets after it started. The CLI writes them to stderr;
+  // without that a failed request leaves nothing but a 500 in the browser.
+  onError?: (err: Error) => void
   // Seams for tests. The defaults are the real server, the real opener, and
   // the first SIGINT or SIGTERM.
   start?: typeof startStatsServer
@@ -138,6 +141,7 @@ export async function serveStats(opts: ServeOptions, onReady: (serving: Serving)
       jobsDb: jobs,
       ...(floor === undefined ? {} : { since: floor }),
       ...(opts.now === undefined ? {} : { now: opts.now }),
+      ...(opts.onError === undefined ? {} : { onError: opts.onError }),
     })
     const opened = opts.open === false ? false : await (opts.openBrowser ?? openInBrowser)(server.url)
     onReady({ url: server.url, opened, summary: summarizeStats(jobs, floor === undefined ? {} : { since: floor }) })
