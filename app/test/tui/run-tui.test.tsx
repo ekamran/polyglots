@@ -242,6 +242,33 @@ describe('runTui', () => {
     release()
   })
 
+  it('records a quit during a run as stopped before exiting', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => (release = resolve))
+    const order: string[] = []
+    const commands = fakeCommands({
+      translateFile: vi.fn(async (opts: TranslateOptions) => {
+        opts.onProgress?.({ type: 'start', file: opts.file, total: 4, pending: 2 })
+        await gate
+        return { file: opts.file, total: 4, pending: 2, fromTm: 0, translated: 2, fuzzy: 0, skipped: 0 }
+      }),
+      stopOwnRuns: vi.fn(() => {
+        order.push('stop')
+        return 1
+      }),
+    })
+    const { stdin, exit, done, lastFrame } = start(commands)
+    exit.mockImplementation(() => void order.push('exit'))
+    await openTranslateAndStart(stdin, lastFrame)
+    await waitForText(lastFrame, /0\/2/)
+    stdin.write(CTRL_C)
+    await waitForText(lastFrame, 'A run is still going')
+    stdin.write('y')
+    await done
+    expect(order).toEqual(['stop', 'exit'])
+    release()
+  })
+
   it('keeps the run going when the quit prompt is declined', async () => {
     let release!: () => void
     const gate = new Promise<void>((resolve) => (release = resolve))

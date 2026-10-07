@@ -362,6 +362,7 @@ export function fakeCommands(overrides: Partial<TuiCommands> = {}): TuiCommands 
     hasLocaleRules: vi.fn(() => false),
     localeConfigured: vi.fn(() => false),
     startStatsServer: vi.fn(async () => ({ url: 'http://127.0.0.1:4321/t0k3n/', port: 4321, close: vi.fn(async () => {}) })),
+    stopOwnRuns: vi.fn(() => 0),
     openInBrowser: vi.fn(async () => true),
     ...overrides,
   }

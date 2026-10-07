@@ -48,8 +48,8 @@ export async function runTui(opts: RunTuiOptions = {}): Promise<void> {
   } catch (err) {
     const trace = `\n${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`
     // A render crash with a run still going would leave that run writing
-    // files from a process with no UI, so this is the same hard exit as an
-    // abandoned quit, with the trace written where it can be read.
+    // files from a process with no UI, so this is the same hard exit as a
+    // quit during a run, with the trace written where it can be read.
     if (activity.busy) {
       await writeOut(stderr, `${trace}\nInterrupted; abandoning the run in progress.\n`)
       exit(EXIT_INTERRUPTED)
@@ -79,7 +79,15 @@ export async function runTui(opts: RunTuiOptions = {}): Promise<void> {
   // A translate/import/sync still in flight would keep the process alive and
   // keep writing files with no UI. The quit prompt already asked; exit hard.
   if (activity.busy) {
-    await writeOut(stderr, '\nInterrupted; abandoning the run in progress.\n')
+    // Said in the run history before the process goes, or the reaper later
+    // files this deliberate quit as abandoned and stats counts it as a fault.
+    // A failure to write it must not keep the process alive with no UI.
+    try {
+      (commands ?? defaultCommands).stopOwnRuns()
+    } catch {
+      // The reaper still ends the row, as abandoned; a wrong count beats a hung exit.
+    }
+    await writeOut(stderr, '\nStopped the run in progress; finished work is cached.\n')
     exit(EXIT_INTERRUPTED)
     return
   }

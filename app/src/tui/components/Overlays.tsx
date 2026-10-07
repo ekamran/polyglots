@@ -166,7 +166,7 @@ export function QuitPrompt({ onQuit, onCancel }: { onQuit: () => void; onCancel:
   return (
     <Box flexDirection="column" borderStyle="round" paddingX={1} flexShrink={0} {...(TOKENS.warn.ink.color ? { borderColor: TOKENS.warn.ink.color } : {})}>
       <Text {...TOKENS.heading.ink}>A run is still going.</Text>
-      <Text>Quitting now abandons it part way. Work already finished is cached and a rerun picks up from there.</Text>
+      <Text>Quitting now stops it part way. Work already finished is cached and a rerun picks up from there.</Text>
       <Text> </Text>
       <Text>
         <Text {...TOKENS.accent.ink}>y</Text> quit anyway · <Text {...TOKENS.accent.ink}>n</Text>/esc keep going ·{' '}

@@ -159,6 +159,28 @@ export function endRun(
   write()
 }
 
+/**
+ * Ends this process's own in-flight runs as `stopped`, for an exit that cannot
+ * wait for them to wind down cooperatively.
+ *
+ * The TUI quits with a run still going by exiting hard, because the run would
+ * otherwise keep writing files with no UI. Left alone, its row stays `running`
+ * until the reaper finds the pid gone and files it as `abandoned`, which
+ * `stats` counts beside crashes. The person asked for this exit, and what the
+ * run finished is cached for the next one, so it is a stop, said here before
+ * the process goes. Scoped to the pid so a run another process owns is never
+ * touched.
+ */
+export function stopOwnRuns(db: Database.Database, pid: number = process.pid, now: Clock = () => Date.now()): number {
+  const ids = db
+    .prepare<[number], { id: number }>(`SELECT id FROM run WHERE state = 'running' AND pid = ?`)
+    .all(pid)
+    .map((r) => r.id)
+  const at = now()
+  for (const id of ids) endRun(db, id, 'stopped', () => at)
+  return ids.length
+}
+
 interface Row {
   id: number
   file: string

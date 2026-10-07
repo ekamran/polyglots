@@ -12,6 +12,7 @@ import {
   reapAbandonedRuns,
   recordEntries,
   startRun,
+  stopOwnRuns,
 } from '../../src/jobs/runs.js'
 
 let db: Database.Database
@@ -366,5 +367,32 @@ describe('how a run ended', () => {
     const id = startRun(db, input)
     finishRun(db, id, { entries: 1, flagged: 0, repaired: 0, unreviewed: 0, approvable: 1, byCategory: {} })
     expect(getRun(db, id)!.ending).toBeUndefined()
+  })
+})
+
+describe('stopOwnRuns', () => {
+  const owner = (id: number, pid: number) => db.prepare('UPDATE run SET pid = ? WHERE id = ?').run(pid, id)
+
+  it('ends the running rows this process owns as stopped, not abandoned', () => {
+    const id = startRun(db, input)
+    owner(id, 4242)
+    recordEntries(db, id, ['a'])
+    expect(stopOwnRuns(db, 4242, () => 7000)).toBe(1)
+    const row = getRun(db, id)!
+    expect(row.state).toBe('stopped')
+    expect(row.ending).toBe('stopped')
+    expect(row.finishedAt).toBe(7000)
+    expect(db.prepare('SELECT COUNT(*) AS n FROM entry WHERE run_id = ?').get(id)).toEqual({ n: 0 })
+  })
+
+  it("leaves another process's runs and finished runs alone", () => {
+    const other = startRun(db, input)
+    owner(other, 5151)
+    const done = startRun(db, input)
+    owner(done, 4242)
+    finishRun(db, done, { entries: 1, flagged: 0, repaired: 0, unreviewed: 0, approvable: 1, byCategory: {} })
+    expect(stopOwnRuns(db, 4242)).toBe(0)
+    expect(getRun(db, other)!.state).toBe('running')
+    expect(getRun(db, done)!.state).toBe('done')
   })
 })
