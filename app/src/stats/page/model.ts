@@ -47,6 +47,15 @@ export interface StatsPayload {
   recent: Recent
 }
 
+// What the page starts from, embedded beside it as JSON: written by the
+// server-side document and read by the browser client.
+export interface BootData {
+  mode: 'server' | 'static'
+  range: Range
+  lang: string
+  payloads: Partial<Record<Range, StatsPayload>>
+}
+
 export interface FlagRow {
   key: string
   count: number

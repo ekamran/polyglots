@@ -2,9 +2,8 @@ import { createHash } from 'node:crypto'
 import { WEB_PALETTE, type WebSurface } from '../ui/web-palette.js'
 import { CLIENT_JS } from './client-bundle.js'
 import { BUILT_IN_LANGUAGES, ENGLISH, phrase, type StatsLanguage } from './i18n.js'
-import type { BootData } from './page/client.js'
 import { esc } from './page/html.js'
-import type { Range, StatsPayload } from './page/model.js'
+import type { BootData, Range, StatsPayload } from './page/model.js'
 import { renderRoot } from './page/views.js'
 
 // The page around the views: head, style, the inline client and the data it

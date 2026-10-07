@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // The stats page's browser code: the DOM library, here and nowhere else,
+    // so no Node file in src can reach for document or window by mistake.
+    // Never emits; esbuild bundles this code into src/stats/client-bundle.ts.
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "rootDir": ".",
+    "noEmit": true
+  },
+  "include": ["src/stats/page/client.ts", "src/stats/page/entry.ts", "test/stats/client.test.ts"],
+  "exclude": []
+}

@@ -1,12 +1,12 @@
-/// <reference lib="dom" />
-// The DOM types come in through this reference rather than the tsconfig, so
-// the rest of the program keeps compiling against Node's globals only in
-// spirit: lib references are program-wide in TypeScript, and the alternative
-// was a second tsconfig and typecheck step for one directory.
+// Typechecked by tsconfig.client.json, which adds the DOM library, and kept
+// out of the main program by tsconfig.json: a lib reference here would have
+// given every Node file in src the browser's globals, and tsc would have
+// emitted this file into dist, where nothing loads it. The browser gets it
+// through the esbuild bundle instead.
 
 import { ENGLISH, languageByTag, type StatsLanguage } from '../i18n.js'
 import { STATS_TRANSLATIONS } from '../translations-data.js'
-import { parseRange, type Range, type StatsPayload } from './model.js'
+import { parseRange, type BootData, type Range, type StatsPayload } from './model.js'
 import { shareCard, SHARE_HEIGHT, SHARE_WIDTH } from './share-card.js'
 import { renderRoot, VIEWS, type View } from './views.js'
 
@@ -18,12 +18,7 @@ import { renderRoot, VIEWS, type View } from './views.js'
 // Events are delegated from the document, so a redraw that replaces the whole
 // root needs no rebinding.
 
-export interface BootData {
-  mode: 'server' | 'static'
-  range: Range
-  lang: string
-  payloads: Partial<Record<Range, StatsPayload>>
-}
+export type { BootData }
 
 export interface Client {
   // Resolves once any fetch in flight has settled; for tests.
