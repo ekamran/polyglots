@@ -53,7 +53,7 @@ import {
 } from './draft/discover.js'
 import { localModelId, resolveLocalTarget, type LocalTarget } from './draft/local-chat.js'
 import { createPainter, type Painter } from './ui/paint.js'
-import { errorLine, header, hintLine, okLine, warnLine } from './ui/messages.js'
+import { errorLine, header, hintLine, nextLine, okLine, warnLine } from './ui/messages.js'
 import { table } from './ui/layout.js'
 import { reviewSummary, statsSummary, translateSummary } from './cli/summaries.js'
 import { LOCAL_REVIEW_NOTICE, localBatchAdvice, localReviewBatchSize } from './review/local.js'
@@ -515,7 +515,7 @@ function configAddName(cli: Cli, name: string, locale: Locale): number {
     return EXIT_OK
   }
   saveConfig({ properNouns: { ...existing, [locale]: [...current, trimmed] } })
-  cli.out(`Added ${JSON.stringify(trimmed)} to the ${locale} proper-noun list.`)
+  cli.out(okLine(cli.ui.out, `Added ${JSON.stringify(trimmed)} to the ${locale} proper-noun list.`))
   return EXIT_OK
 }
 
@@ -564,7 +564,7 @@ async function configSet(cli: Cli, key: string, raw: string): Promise<void> {
     const value = coerceServerValue(key, raw)
     const { [field]: _previous, ...rest } = cli.config()[group]
     const saved = saveConfig({ [group]: value === undefined ? rest : { ...rest, [field]: value } })
-    cli.out(value === undefined ? `${key} unset` : `${key} = ${value}`)
+    cli.out(okLine(cli.ui.out, value === undefined ? `${key} unset` : `${key} = ${value}`))
     // Saved first and checked after, with exit 0 either way: choosing a model
     // before pulling or loading it is ordinary, and the warning says what to run.
     if (field === 'model') {
@@ -578,7 +578,7 @@ async function configSet(cli: Cli, key: string, raw: string): Promise<void> {
   }
   if (!isConfigKey(key)) throw new UsageError(`Unknown config key "${key}"; expected one of ${SETTABLE_KEYS}`)
   const saved = saveConfig({ [key]: coerceConfigValue(key, raw) })
-  cli.out(`${key} = ${formatConfigValue(key, saved[key])}`)
+  cli.out(okLine(cli.ui.out, `${key} = ${formatConfigValue(key, saved[key])}`))
   // The one door to the experimental reviewer, so the warning is said here.
   if (key === 'reviewProvider' && saved.reviewProvider === 'local') cli.err(warnLine(cli.ui.err, LOCAL_REVIEW_NOTICE))
 }
@@ -593,7 +593,7 @@ async function configSetKey(cli: Cli, rawName: string, value: string | undefined
   const secret = entered.trim()
   if (!secret) throw new UsageError(`No value given for ${name}; pass it as an argument or on stdin`)
   saveSecret(name, secret)
-  cli.out(`Saved ${name} (${maskSecret(secret)}).`)
+  cli.out(okLine(cli.ui.out, `Saved ${name} (${maskSecret(secret)}).`))
   return EXIT_OK
 }
 
@@ -798,21 +798,21 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
     .description('Open the locale rules file in $VISUAL or $EDITOR, creating it with the defaults if needed')
     .action(async (raw: string | undefined) => {
       const locale = parseLocaleArg(raw ?? cli.config().defaultLocale)
-      for (const line of await editRules(locale, cli.openEditor)) cli.out(line)
+      for (const line of await editRules(locale, cli.openEditor, cli.ui.out)) cli.out(line)
     })
   rules
     .command('check [locale]')
     .description('Validate the locale rules file and summarise what it sets')
     .action((raw: string | undefined) => {
       const locale = parseLocaleArg(raw ?? cli.config().defaultLocale)
-      for (const line of describeRules(locale)) cli.out(line)
+      for (const line of describeRules(locale, cli.ui.out)) cli.out(line)
     })
   rules
     .command('copy <from> <to>')
     .description('Duplicate one locale\'s rules file as another\'s, e.g. nl_NL to nl_BE')
     .option('--force', 'Replace the target file if it exists')
     .action(async (from: string, to: string, flags: { force?: boolean }) => {
-      for (const line of await copyRules(parseLocaleArg(from), parseLocaleArg(to), flags.force === true)) cli.out(line)
+      for (const line of await copyRules(parseLocaleArg(from), parseLocaleArg(to), flags.force === true, cli.ui.out)) cli.out(line)
     })
   rules
     .command('path [locale]')
@@ -832,9 +832,9 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
       const result = await cli.importTmx(files, {
         locale,
         project: flags.project,
-        onProgress: (e) => cli.err(`${e.file}: ${e.entries} entries, ${e.upserted} upserted`),
+        onProgress: (e) => cli.err(hintLine(cli.ui.err, `${e.file}: ${e.entries} entries, ${e.upserted} upserted`)),
       })
-      cli.out(`Imported ${result.files} file(s): ${result.entries} entries, ${result.upserted} upserted (locale ${locale}).`)
+      cli.out(okLine(cli.ui.out, `Imported ${result.files} file(s): ${result.entries} entries, ${result.upserted} upserted (locale ${locale}).`))
     })
 
   program
@@ -983,12 +983,12 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
       // The last part's size is the one thing the arithmetic does not give
       // away, and it is what decides whether the tail is worth its own run.
       const tail = last && last.entries !== summary.size ? `, last ${last.entries}` : ''
-      cli.out(`${summary.entries} entries into ${summary.parts.length} parts of ${summary.size}${tail}.`)
-      cli.out(`Wrote ${summary.dir}`)
+      cli.out(okLine(cli.ui.out, `${summary.entries} entries into ${summary.parts.length} parts of ${summary.size}${tail}.`))
+      cli.out(nextLine(cli.ui.out, `Wrote ${cli.ui.out.paint('path', summary.dir)}`))
       // Higher-numbered parts from an earlier, finer split look exactly like
       // work waiting to be submitted. Nothing is deleted, so they are named.
       if (summary.leftBehind.length > 0) {
-        cli.err(`Left alone, not part of this split: ${summary.leftBehind.join(', ')}`)
+        cli.err(warnLine(cli.ui.err, `Left alone, not part of this split: ${summary.leftBehind.join(', ')}`))
       }
     })
 
@@ -1007,7 +1007,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
       // The dropped count is the whole reason a .po export is not the default:
       // saying nothing would hand back a file holding less than it was asked for.
       const lost = result.dropped > 0 ? `, ${result.dropped} alternative wording(s) dropped` : ''
-      cli.out(`Exported ${result.entries} translations (${locale}) to ${result.file}${lost}`)
+      cli.out(okLine(cli.ui.out, `Exported ${result.entries} translations (${locale}) to ${result.file}${lost}`))
     })
 
   const glossary = program.command('glossary').description('translate.wordpress.org glossary cache')
@@ -1018,7 +1018,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
     .action(async (flags: { locale?: string }) => {
       const locale = parseLocaleArg(flags.locale ?? cli.config().defaultLocale)
       const result = await cli.syncGlossary({ locale })
-      cli.out(`Synced ${result.entries} glossary entries for ${locale}.`)
+      cli.out(okLine(cli.ui.out, `Synced ${result.entries} glossary entries for ${locale}.`))
     })
   glossary
     .command('export [file]')
@@ -1029,7 +1029,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
       const locale = parseLocaleArg(flags.locale ?? cli.config().defaultLocale)
       const delimiter = parseCsvDelimiter(flags.delimiter ?? ';')
       const result = await cli.exportGlossary({ locale, file, delimiter })
-      if (result.file) cli.out(`Exported ${result.entries} glossary terms (${locale}) to ${result.file}`)
+      if (result.file) cli.out(okLine(cli.ui.out, `Exported ${result.entries} glossary terms (${locale}) to ${result.file}`))
       else cli.streams.stdout.write(result.csv)
     })
 

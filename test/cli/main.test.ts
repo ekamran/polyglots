@@ -317,7 +317,7 @@ describe('glossary sync', () => {
     const code = await h.run(['glossary', 'sync'], { syncGlossary: sync.fn })
     expect(code).toBe(0)
     expect(sync.calls).toEqual([{ locale: 'de' }])
-    expect(h.stdout.text).toBe('Synced 42 glossary entries for de.\n')
+    expect(h.stdout.text).toBe('✓ Synced 42 glossary entries for de.\n')
   })
 
   it('passes a normalized --locale override through', async () => {
@@ -326,7 +326,7 @@ describe('glossary sync', () => {
     const code = await h.run(['glossary', 'sync', '--locale', 'PT-BR'], { syncGlossary: sync.fn })
     expect(code).toBe(0)
     expect(sync.calls).toEqual([{ locale: 'pt-br' }])
-    expect(h.stdout.text).toBe('Synced 3 glossary entries for pt-br.\n')
+    expect(h.stdout.text).toBe('✓ Synced 3 glossary entries for pt-br.\n')
   })
 
   it('exits 1 with the error message when the sync throws', async () => {
@@ -747,7 +747,7 @@ describe('glossary export', () => {
     const code = await h.run(['glossary', 'export', '/tmp/g.csv'], { exportGlossary: exp.fn })
     expect(code).toBe(0)
     expect(exp.calls).toEqual([{ locale: 'tr', file: '/tmp/g.csv', delimiter: ';' }])
-    expect(h.stdout.text).toBe('Exported 511 glossary terms (tr) to /tmp/g.csv\n')
+    expect(h.stdout.text).toBe('✓ Exported 511 glossary terms (tr) to /tmp/g.csv\n')
   })
 
   it('prints the csv to stdout when no path is given', async () => {
@@ -803,7 +803,7 @@ describe('tm import', () => {
     expect(code).toBe(0)
     expect(calls).toEqual([{ files: [file], locale: 'de', project: 'woocommerce' }])
     expect(h.stderr.text).toContain(`${file}: 5 entries, 4 upserted`)
-    expect(h.stdout.text).toBe('Imported 1 file(s): 5 entries, 4 upserted (locale de).\n')
+    expect(h.stdout.text).toBe('✓ Imported 1 file(s): 5 entries, 4 upserted (locale de).\n')
   })
 })
 
@@ -1294,7 +1294,7 @@ describe('local models', () => {
       const code = await h.run(['config', 'set', 'ollama.model', ' llama3.2:1b '], { checkLocalModel: check.fn })
       expect(code).toBe(0)
       expect((await configJson()).ollama).toEqual({ baseUrl: 'http://localhost:11434', model: 'llama3.2:1b' })
-      expect(h.stdout.text).toBe('ollama.model = llama3.2:1b\n')
+      expect(h.stdout.text).toBe('✓ ollama.model = llama3.2:1b\n')
       expect(h.stderr.text).toContain('! llama3.2:1b is not installed')
       expect(check.calls).toEqual([{ kind: 'ollama', baseUrl: 'http://localhost:11434', model: 'llama3.2:1b' }])
     })
@@ -1670,5 +1670,54 @@ describe('stats', () => {
     expect(h.stdout.text).toMatch(/submissions\s+3/)
     expect(h.stdout.text).toMatch(/akismet\s+300 entries\s+10% flagged/)
     expect(h.stdout.text.trimEnd().split('\n').at(-1)).toBe('› Wrote /tmp/s.html')
+  })
+})
+
+describe('NO_COLOR', () => {
+  // Every command the suite can run without a network, on a TTY, with NO_COLOR
+  // set: none may emit an escape code on either stream.
+  it.each([
+    [['config', 'get']],
+    [['rules', 'check']],
+    [['rules', 'path']],
+    [['doctor']],
+    [['stats', '--out', '__TMP__/s.html']],
+    [['translate', '__FILE__']],
+  ])('%j prints no escape codes', async (argv) => {
+    const h = harness()
+    const tmp = await mkdtemp(join(tmpdir(), 'pg-nocolor-'))
+    const args = argv.map((a) => a.replace('__TMP__', tmp).replace('__FILE__', file))
+    await h.run(args, {
+      tty: true,
+      env: { NO_COLOR: '1' },
+      translate: fakeTranslate().fn,
+      discoverAgents: async () => [],
+      writeStats: async () => ({ file: join(tmp, 's.html'), submissions: 1, entries: 10, flagged: 1, incomplete: 0, translateRuns: 0, translateEntries: 0, weeks: [1, 3], topProjects: [{ project: 'p', runs: 1, entries: 10, flagged: 1 }] }),
+    })
+    await rm(tmp, { recursive: true, force: true })
+    expect(h.stdout.text + h.stderr.text).not.toMatch(/\x1b\[(?!2K)/)
+  })
+})
+
+describe('raw outputs', () => {
+  it('keeps config get raw on a coloured terminal', async () => {
+    const h = harness()
+    await h.run(['config', 'get', 'batchSize'], { tty: true, env: { FORCE_COLOR: '1' } })
+    expect(h.stdout.text).toMatch(/^\d+\n$/)
+  })
+
+  it('keeps rules path raw on a coloured terminal', async () => {
+    const h = harness()
+    await h.run(['rules', 'path'], { tty: true, env: { FORCE_COLOR: '1' } })
+    expect(h.stdout.text).not.toMatch(/\x1b\[/)
+    expect(h.stdout.text.trim().split('\n')).toHaveLength(1)
+  })
+})
+
+describe('confirmations', () => {
+  it('confirms config set with a check line', async () => {
+    const h = harness()
+    await h.run(['config', 'set', 'batchSize', '7'])
+    expect(h.stdout.text).toBe('✓ batchSize = 7\n')
   })
 })
