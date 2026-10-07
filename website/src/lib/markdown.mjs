@@ -22,13 +22,27 @@ export function siteHref(href) {
   return `${REPO}${repoPath}${anchor}`;
 }
 
-export function rehypeDocLinks() {
-  const visit = (node) => {
-    if (node.type === 'element' && node.tagName === 'a' && typeof node.properties?.href === 'string') {
-      const next = siteHref(node.properties.href);
-      if (next) node.properties.href = next;
-    }
-    for (const child of node.children ?? []) visit(child);
+// Sätteri mdast plugins (Astro 7's markdown processor).
+
+export const docLinks = {
+  name: 'polyglots-doc-links',
+  link(node, ctx) {
+    const next = siteHref(node.url);
+    if (next) ctx.setProperty(node, 'url', next);
+  },
+};
+
+// The pages print each doc's title in their own header, from the same heading
+// (lib/docs.ts), so the body's copy goes. A factory, so "first" is per
+// document rather than per build.
+export const dropTitle = () => {
+  let dropped = false;
+  return {
+    name: 'polyglots-drop-title',
+    heading(node, ctx) {
+      if (dropped || node.depth !== 1) return;
+      dropped = true;
+      ctx.removeNode(node);
+    },
   };
-  return (tree) => visit(tree);
-}
+};

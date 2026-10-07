@@ -168,15 +168,18 @@ async function commandReference(): Promise<HelpEntry[]> {
   return entries
 }
 
-// The TUI's wordmark, once #14 exports one. Imported by a computed path so the
-// snapshot typechecks and runs before that module exists, and the site falls
-// back to a plain name until it does.
+// The TUI's wordmark (app/src/ui/wordmark.ts, from #14): four rows of
+// quadrant blocks. Imported by a computed path so the snapshot typechecks and
+// runs on a tree that does not have the module yet; the site then sets the
+// plain name in the terminal font instead. WORDMARK_PLAIN is the string the
+// TUI shows in ASCII mode, not a drawing, so it is not a fallback here.
 async function wordmark(): Promise<string[] | null> {
   const path = join(appDir, 'src', 'ui', 'wordmark.ts')
   try {
-    const mod = (await import(path)) as { WORDMARK_PLAIN?: readonly string[]; WORDMARK?: readonly string[] }
-    const lines = mod.WORDMARK_PLAIN ?? mod.WORDMARK
-    return lines ? lines.map(ansiToText) : null
+    const mod = (await import(path)) as { WORDMARK?: unknown }
+    const lines = mod.WORDMARK
+    if (!Array.isArray(lines) || !lines.every((l) => typeof l === 'string')) return null
+    return lines.map((l: string) => ansiToText(l).trimEnd())
   } catch {
     return null
   }

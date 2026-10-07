@@ -1,0 +1,31 @@
+---
+import Doc from '../../layouts/Doc.astro';
+import { snapshot } from '../../lib/snapshot';
+
+// Captured from the CLI's own --help at build time (scripts/snapshot.ts), with
+// an empty configuration, so the defaults shown are the shipped ones.
+const anchor = (path: string[]) => (path.length === 0 ? 'polyglots' : `cmd-${path.join('-')}`);
+const top = snapshot.help.filter((h) => h.path.length <= 1);
+---
+<Doc title="Command reference" description="Every polyglots command and option, generated from the CLI's own --help." path="docs/commands/" current="commands">
+  <p class="lede">Generated from <code>polyglots --help</code> for version {snapshot.version}. Run <code>polyglots &lt;command&gt; --help</code> for the same text in your terminal.</p>
+  <nav class="toc" aria-label="Commands">
+    <ul>
+      {top.filter((h) => h.path.length === 1).map((h) => <li><a href={`#${anchor(h.path)}`}><code>{h.path[0]}</code></a></li>)}
+    </ul>
+  </nav>
+  {snapshot.help.map((h) => (
+    <section id={anchor(h.path)} class:list={['cmd', { sub: h.path.length === 2 }]}>
+      {h.path.length === 0 ? <h2>polyglots</h2> : h.path.length === 1 ? <h2><code>polyglots {h.path[0]}</code></h2> : <h3><code>polyglots {h.path.join(' ')}</code></h3>}
+      <pre>{h.text}</pre>
+    </section>
+  ))}
+</Doc>
+
+<style>
+  .toc ul { list-style: none; padding: 0; margin: 1.5rem 0 0; display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .toc a { text-decoration: none; }
+  .cmd h2 code, .cmd h3 code { background: none; border: 0; padding: 0; font-size: 0.95em; }
+  .cmd pre { white-space: pre; }
+  .sub { margin-left: 0; }
+</style>

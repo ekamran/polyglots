@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <style>
+    .tile { fill: #1c1b19; }
+    .ink { fill: #fbfaf7; }
+    .dot { fill: #5fd0d6; }
+    @media (prefers-color-scheme: dark) {
+      .tile { fill: #e9e6e0; }
+      .ink { fill: #131416; }
+      .dot { fill: #0b6f6a; }
+    }
+  </style>
+  <rect class="tile" width="64" height="64" rx="14" />
+  <!-- "pg", drawn as paths so the icon needs no font. -->
+  <path class="ink" d="M12 22h10.5c6 0 9.5 3.6 9.5 9s-3.5 9-9.5 9H18v10h-6Zm6 5v8h4.2c2.4 0 3.8-1.5 3.8-4s-1.4-4-3.8-4Z" />
+  <path class="ink" d="M44.5 21.5c2.6 0 4.5 1 5.6 2.4V22H56v18.6c0 6.4-4 10-10.6 10-4.4 0-7.7-1.6-9.2-4.6l5-2.6c.8 1.4 2.2 2.2 4.1 2.2 3 0 4.8-1.7 4.8-4.8v-1.2c-1.1 1.5-3 2.4-5.6 2.4-5.2 0-9-4-9-9.3s3.8-9.2 9-9.2Zm1.2 5c-2.4 0-4.2 1.8-4.2 4.2s1.8 4.3 4.2 4.3 4.3-1.8 4.3-4.3-1.9-4.2-4.3-4.2Z" />
+  <rect class="dot" x="12" y="53" width="8" height="3" rx="1.5" />
+</svg>

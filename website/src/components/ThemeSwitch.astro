@@ -1,0 +1,66 @@
+---
+import Icon from './Icon.astro';
+
+// Three radios rather than a button that cycles: all three states are visible
+// at once, and arrow keys move between them natively. The head script in
+// Base.astro has already applied the stored choice before first paint; this
+// only reflects it and stores changes.
+const options = [
+  { value: 'light', label: 'Light', icon: 'sun' },
+  { value: 'dark', label: 'Dark', icon: 'moon' },
+  { value: 'auto', label: 'Match system', icon: 'auto' },
+] as const;
+---
+<fieldset class="theme" data-theme-switch>
+  <legend class="sr-only">Colour theme</legend>
+  {options.map((o) => (
+    <label title={o.label}>
+      <input type="radio" name="theme" value={o.value} checked={o.value === 'light'} />
+      <Icon name={o.icon} />
+      <span class="sr-only">{o.label}</span>
+    </label>
+  ))}
+</fieldset>
+
+<style>
+  .theme {
+    display: inline-flex; gap: 2px; margin: 0; padding: 3px;
+    border: 1px solid var(--rule); border-radius: 999px; background: var(--bg-2);
+  }
+  label {
+    position: relative; display: grid; place-items: center;
+    width: 2rem; height: 2rem; border-radius: 999px;
+    color: var(--muted); cursor: pointer;
+    transition: color 0.15s, background 0.15s;
+  }
+  label:hover { color: var(--fg); }
+  input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+  label:has(input:checked) { background: var(--bg); color: var(--fg); box-shadow: 0 1px 2px rgb(0 0 0 / 0.12); }
+  label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
+</style>
+
+<script>
+  type Mode = 'light' | 'dark' | 'auto';
+  const KEY = 'pg-theme';
+  const root = document.documentElement;
+  const current = (root.dataset.theme as Mode | undefined) ?? 'light';
+
+  for (const input of document.querySelectorAll<HTMLInputElement>('[data-theme-switch] input')) {
+    input.checked = input.value === current;
+    input.addEventListener('change', () => {
+      const mode = input.value as Mode;
+      const apply = () => {
+        root.dataset.theme = mode;
+      };
+      const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown };
+      if (doc.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) doc.startViewTransition(apply);
+      else apply();
+      // Light is the default, so storing it would only pin a reader to today's
+      // default if it ever changed.
+      try {
+        if (mode === 'light') localStorage.removeItem(KEY);
+        else localStorage.setItem(KEY, mode);
+      } catch {}
+    });
+  }
+</script>

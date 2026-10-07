@@ -1,0 +1,56 @@
+---
+import { getEntry, render } from 'astro:content';
+import Base from '../layouts/Base.astro';
+import CopyButton from '../components/CopyButton.astro';
+import { AGENTS } from '../lib/docs';
+
+// The agent page, like pressship.org/ai: one URL an agent can be told to
+// fetch, readable by the person too. Built from docs/agents.md; /ai.txt
+// serves the same text plain, with the command reference appended.
+const entry = await getEntry('docs', AGENTS);
+if (!entry) throw new Error('docs/agents.md is missing');
+const { Content } = await render(entry);
+const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
+// The prompt is read from the doc's own "Give this to your agent" quote, so
+// the copy button and the markdown cannot disagree.
+const quoted = /## Give this to your agent\s+((?:>.*\n?)+)/.exec(entry.body ?? '');
+if (!quoted) throw new Error('docs/agents.md lost its "Give this to your agent" quote');
+const prompt = quoted[1]!.replace(/^> ?/gm, '').replace(/\s+/g, ' ').trim();
+---
+<Base title="polyglots for AI agents" description="The runbook an AI agent follows to review or translate WordPress .po files with polyglots: the order of work, what to ask first, exit codes." path="ai/">
+  <div class="wrap ai">
+    <header class="intro">
+      <p class="eyebrow">ada.tools/polyglots/ai</p>
+      <h1>polyglots for AI agents</h1>
+      <p class="lede">
+        Agents fetch this page; people can read it. Plain text, with the full command reference, is at <a href={`${base}ai.txt`}><code>/ai.txt</code></a>, and an index at <a href={`${base}llms.txt`}><code>/llms.txt</code></a>.
+      </p>
+      <div class="prompt">
+        <p class="label">Give this to your agent</p>
+        <div class="box">
+          <p>{prompt}</p>
+          <CopyButton text={prompt} label="Copy the prompt" />
+        </div>
+      </div>
+    </header>
+    <article class="prose">
+      <Content />
+    </article>
+  </div>
+</Base>
+
+<style>
+  .ai { padding-top: 3rem; display: grid; gap: 2.5rem; }
+  .intro { max-width: 46rem; }
+  .prompt { margin-top: 1.5rem; }
+  .label { font-size: 0.85rem; color: var(--muted); margin-bottom: 0.4rem; }
+  .box {
+    display: flex; gap: 0.75rem; align-items: flex-start;
+    background: var(--term-bg); color: var(--term-fg); border-radius: var(--radius);
+    padding: 0.9rem 0.6rem 0.9rem 1.1rem; font-family: var(--font-mono); font-size: 0.9rem; line-height: 1.55;
+  }
+  .box p { margin: 0; flex: 1; }
+  /* The markdown's own copy of the prompt is printed above, with a copy button. */
+  .prose :global(#give-this-to-your-agent),
+  .prose :global(#give-this-to-your-agent + blockquote) { display: none; }
+</style>

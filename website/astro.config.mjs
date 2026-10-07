@@ -1,6 +1,7 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
-import { rehypeDocLinks } from './src/lib/rehype-doc-links.mjs';
+import { satteri } from '@astrojs/markdown-satteri';
+import { docLinks, dropTitle } from './src/lib/markdown.mjs';
 
 export default defineConfig({
   site: 'https://ada.tools',
@@ -16,7 +17,7 @@ export default defineConfig({
     // terminal panels and need no second palette per theme; a highlighter would
     // ship two sets of inline colours for little gain.
     syntaxHighlight: false,
-    rehypePlugins: [rehypeDocLinks],
+    processor: satteri({ mdastPlugins: [docLinks, dropTitle] }),
   },
   vite: {
     // The snapshot step and the docs collection read ../app/src and ../docs.
