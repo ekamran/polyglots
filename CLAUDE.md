@@ -54,6 +54,11 @@ homes; follow that.
 `build`, `typecheck`, `test`, `dev`, `prepare`, `prebuild`, `release`, `prepack`.
 There is no `npm run lint`. Typecheck covers tests too (`tsconfig.test.json`).
 
+**The stats page ships a bundled client.** `src/stats/page/**` is compiled by
+esbuild into a checked-in bundle, and a test fails when the bundle is stale. After
+editing anything there, run `npm run stats-client`. `build` and `prepare` do it
+too, but tests run from source and will not.
+
 ## Language and style
 
 TypeScript ESM with `module: NodeNext`, so relative imports carry a `.js`
