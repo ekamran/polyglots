@@ -1,10 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import React from 'react'
-import { cleanup } from 'ink-testing-library'
 import { App } from '../../src/tui/App.js'
 import { loadConfig } from '../../src/config.js'
 import type { ModelServer } from '../../src/draft/discover.js'
-import { fakeCommands, flat, hopsTo, keys, makeHome, modelServer, render, tick, waitFor, waitForText, type Home } from './helpers.js'
+import { fakeCommands, flat, openFromHome, keys, makeHome, modelServer, render, tick, waitFor, waitForText, cleanup, type Home } from './helpers.js'
 
 let home: Home
 
@@ -42,11 +41,7 @@ const llamaCppDown: ModelServer = {
 
 async function openLocalModels(stdin: { write(data: string): void }, lastFrame: () => string) {
   await tick()
-  for (let i = 0; i < hopsTo('local-models'); i++) {
-    stdin.write(keys.down)
-    await tick()
-  }
-  stdin.write(keys.enter)
+  await openFromHome(stdin, 'local-models')
   await waitForText(lastFrame, 'r re-check')
 }
 

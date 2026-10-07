@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import React from 'react'
-import { cleanup } from 'ink-testing-library'
 import type { ReviewEvent } from '../../src/types.js'
 import { App } from '../../src/tui/App.js'
 import { ReviewProgress, reduceReviewProgress } from '../../src/tui/components/ReviewProgress.js'
@@ -38,6 +37,8 @@ import {
   tick,
   waitFor,
   waitForText,
+  cleanup,
+  openFromHome,
   type Home,
 } from './helpers.js'
 
@@ -402,10 +403,7 @@ describe('batchSizeChoices', () => {
 describe('Review screen', () => {
   const openReview = async (commands = fakeCommands()) => {
     const view = render(<App commands={commands} cwd={cwd} />)
-    await tick()
-    view.stdin.write(keys.down)
-    await tick()
-    view.stdin.write(keys.enter)
+    await openFromHome(view.stdin, 'review')
     await waitForText(view.lastFrame, 'submission.po')
     return view
   }
@@ -652,7 +650,7 @@ describe('Review screen', () => {
     const { lastFrame, stdin } = await openReview()
     stdin.write(keys.esc)
     await tick(ESC_DELAY)
-    await waitForText(lastFrame, 'Configure API keys')
+    await waitForText(lastFrame, 'Review statistics')
   })
 })
 
@@ -758,10 +756,7 @@ describe('the review screen names its provider', () => {
 
   const open = async (reviewProvider: 'claude' | 'antigravity') => {
     const view = render(<App commands={withProvider(reviewProvider)} cwd={cwd} />)
-    await tick()
-    view.stdin.write(keys.down)
-    await tick()
-    view.stdin.write(keys.enter)
+    await openFromHome(view.stdin, 'review')
     await waitForText(view.lastFrame, 'Review a submitted')
     return view
   }

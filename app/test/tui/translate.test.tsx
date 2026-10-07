@@ -2,13 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import React from 'react'
-import { cleanup } from 'ink-testing-library'
 import { saveConfig } from '../../src/config.js'
 import { configDir, configFile } from '../../src/paths.js'
 import type { TranslateOptions } from '../../src/commands/translate.js'
 import { CommandsProvider } from '../../src/tui/commands.js'
 import { Translate } from '../../src/tui/screens/Translate.js'
-import { ESC_DELAY, fakeCommands, flat, keys, makeHome, render, scriptedTranslate, tick, waitFor, waitForText, type Home } from './helpers.js'
+import { ESC_DELAY, fakeCommands, flat, keys, makeHome, render, scriptedTranslate, tick, waitFor, waitForText, cleanup, type Home } from './helpers.js'
 
 let home: Home
 let cwd: string

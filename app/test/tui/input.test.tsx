@@ -2,10 +2,9 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { useState } from 'react'
 import { Text } from 'ink'
-import { cleanup } from 'ink-testing-library'
 import { afterEach, describe, expect, it } from 'vitest'
 import { InputGate, TextInput, TypingProvider, useInput, useTyping } from '../../src/tui/input.js'
-import { render, tick } from './helpers.js'
+import { render, tick, cleanup } from './helpers.js'
 
 afterEach(() => cleanup())
 

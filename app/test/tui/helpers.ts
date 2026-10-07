@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ReactElement } from 'react'
-import { render as inkRender } from 'ink-testing-library'
+import { render as inkRender, type Instance } from 'ink'
 import { vi } from 'vitest'
 import { loadConfig, saveConfig, loadSecrets, saveSecret } from '../../src/config.js'
 import type { Fetched, Ready, Resolution } from '../../src/commands/fetch.js'
@@ -13,7 +13,8 @@ import type { ExportTmOptions } from '../../src/commands/tm-export.js'
 import type { TmImportOptions } from '../../src/commands/tm-import.js'
 import type { TranslateEvent, TranslateOptions, TranslateSummary } from '../../src/commands/translate.js'
 import type { ReviewFileOptions, TuiCommands } from '../../src/tui/commands.js'
-import { MENU_ITEMS, type MenuAction } from '../../src/tui/screens/Menu.js'
+import { walk, type ScreenId } from '../../src/tui/menu.js'
+import { DEFAULT_TUI_STATE, type TuiState } from '../../src/tui/state.js'
 import type { AgentStatus } from '../../src/agent/discover.js'
 import type { ModelCheck, ModelServer } from '../../src/draft/discover.js'
 import type { ReviewProvider, ReviewSummary } from '../../src/types.js'
@@ -24,16 +25,46 @@ const strip = (s: string | undefined): string => (s ?? '').replace(ANSI, '')
 const CSI = /\x1b\[[0-9;?]*[A-Za-z]/g
 const stripAll = (s: string | undefined): string => (s ?? '').replace(CSI, '')
 
-export function render(tree: ReactElement) {
-  const instance = inkRender(tree)
+// The size every App test renders at unless it says otherwise. Fixed rather
+// than read from the terminal running the tests: Ink falls back to the real
+// terminal's rows when a stream has none, and a layout test that passes in a
+// tall window and fails in CI has proved nothing.
+export const DEFAULT_SIZE = { columns: 120, rows: 40 }
+
+const mounted: Instance[] = []
+
+// ink-testing-library's renderer, rebuilt on these fakes because its stdout is
+// fixed at 100 columns with no rows, which cannot test a breakpoint or the
+// minimum size.
+export function render(tree: ReactElement, size: { columns: number; rows: number } = DEFAULT_SIZE) {
+  const stdout = new FakeStdout(size.columns, size.rows)
+  const stderr = new FakeStdout(size.columns, size.rows)
+  const stdin = new FakeStdin()
+  const instance = inkRender(tree, {
+    stdout: stdout.asStream(),
+    stderr: stderr.asStream(),
+    stdin: stdin.asStream(),
+    debug: true,
+    exitOnCtrlC: false,
+    patchConsole: false,
+  })
+  mounted.push(instance)
   return {
-    stdin: instance.stdin,
+    stdin,
     unmount: instance.unmount,
     rerender: instance.rerender,
-    lastFrame: (): string => strip(instance.lastFrame()),
+    resize: (columns: number, rows: number) => stdout.resize(columns, rows),
+    lastFrame: (): string => strip(stdout.rawLast()),
     get frames(): string[] {
-      return instance.frames.map(strip)
+      return stdout.frames.map(strip)
     },
+  }
+}
+
+export function cleanup(): void {
+  for (const instance of mounted.splice(0)) {
+    instance.unmount()
+    instance.cleanup()
   }
 }
 
@@ -42,13 +73,24 @@ export class FakeStdout extends EventEmitter {
   isTTY = true
   readonly frames: string[] = []
   private last: string | undefined
-  get columns(): number {
-    return 100
+  private raw: string | undefined
+  constructor(
+    public columns = 100,
+    public rows = 30,
+  ) {
+    super()
   }
+  resize(columns: number, rows: number): void {
+    this.columns = columns
+    this.rows = rows
+    this.emit('resize')
+  }
+  rawLast = (): string | undefined => this.raw
   // Ink writes cursor and synchronized-output markers as separate chunks around each frame;
   // only chunks with visible text count as frames.
   write = (chunk: string): boolean => {
     this.frames.push(chunk)
+    this.raw = chunk
     if (stripAll(chunk).trim().length > 0) this.last = stripAll(chunk)
     return true
   }
@@ -93,13 +135,17 @@ export const keys = {
   tab: '\t',
 }
 
-// How many times to press down to land on an action. Derived rather than
-// counted by hand: a new menu item used to shift every index below it and
-// break these tests for a reason that had nothing to do with what they test.
-export function hopsTo(action: MenuAction): number {
-  const at = MENU_ITEMS.findIndex((item) => item.value === action)
-  if (at < 0) throw new Error(`no menu item for ${action}`)
-  return at
+// Opens a screen the way a person would: by its hotkey, and its submenu's
+// first. Derived from the menu tree, so moving an item between submenus moves
+// every test that reaches it.
+export async function openFromHome(stdin: { write(data: string): void }, id: ScreenId): Promise<void> {
+  const entry = walk().find((e) => e.node.id === id)
+  if (!entry) throw new Error(`no menu entry for ${id}`)
+  await tick()
+  for (const key of entry.keys) {
+    stdin.write(key)
+    await tick()
+  }
 }
 
 export const tick = (ms = 0): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
@@ -301,6 +347,25 @@ export function fakeCommands(overrides: Partial<TuiCommands> = {}): TuiCommands 
     saveConfig,
     loadSecrets,
     saveSecret,
+    ...memoryTuiState(),
+    // Never polyglots.db: the status line is fed these, not the real memory.
+    glossaryCount: vi.fn(() => 0),
+    hasLocaleRules: vi.fn(() => false),
+    localeConfigured: vi.fn(() => false),
+    startStatsServer: vi.fn(async () => ({ url: 'http://127.0.0.1:4321/t0k3n/', port: 4321, close: vi.fn(async () => {}) })),
+    openInBrowser: vi.fn(async () => true),
     ...overrides,
+  }
+}
+
+// tui.json held in memory, with the wizard already dismissed: a test of a
+// screen should land on home, not on setup. A wizard test passes its own.
+export function memoryTuiState(initial: TuiState = { ...DEFAULT_TUI_STATE, wizard: { ...DEFAULT_TUI_STATE.wizard, dismissed: true } }) {
+  let state = initial
+  return {
+    loadTuiState: vi.fn(() => state),
+    saveTuiState: vi.fn((next: TuiState) => {
+      state = next
+    }),
   }
 }

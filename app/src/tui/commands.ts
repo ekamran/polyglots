@@ -11,6 +11,9 @@ import { writeStats } from '../commands/stats.js'
 import { translateFile } from '../commands/translate.js'
 import { DEFAULT_CONFIG, loadConfig, saveConfig, loadSecrets, saveSecret } from '../config.js'
 import type { Locale, PolyglotsConfig, ReviewEvent, ReviewSummary } from '../types.js'
+import { glossaryCount, hasLocaleRules, localeConfigured } from './setup.js'
+import { loadTuiState, saveTuiState } from './state.js'
+import { openInBrowser, startStatsServer, type StartStatsServer } from './stats-server.js'
 
 export type ReviewFile = typeof reviewFile
 export type ReviewFileOptions = Parameters<ReviewFile>[0]
@@ -32,6 +35,13 @@ export interface TuiCommands {
   discoverAgents: typeof discoverAgents
   discoverModels: typeof discoverModels
   checkLocalModel: typeof checkLocalModel
+  loadTuiState: typeof loadTuiState
+  saveTuiState: typeof saveTuiState
+  glossaryCount: (locale: Locale) => number | undefined
+  hasLocaleRules: typeof hasLocaleRules
+  localeConfigured: typeof localeConfigured
+  startStatsServer: StartStatsServer
+  openInBrowser: typeof openInBrowser
 }
 
 export const defaultCommands: TuiCommands = {
@@ -51,6 +61,13 @@ export const defaultCommands: TuiCommands = {
   discoverAgents,
   discoverModels,
   checkLocalModel,
+  loadTuiState,
+  saveTuiState,
+  glossaryCount: (locale) => glossaryCount(locale),
+  hasLocaleRules,
+  localeConfigured,
+  startStatsServer,
+  openInBrowser,
 }
 
 const CommandsContext = createContext<TuiCommands>(defaultCommands)

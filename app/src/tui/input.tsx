@@ -39,6 +39,15 @@ export function useInput(handler: (input: string, key: Key) => void, options: { 
   useInkInput(handler, { isActive: (options.isActive ?? true) && open })
 }
 
+/**
+ * The frame's own listener, which no gate closes: Ctrl+C, the palette and
+ * help must work over whatever is open, including the overlays themselves.
+ * Nothing but the frame should use it.
+ */
+export function useGlobalInput(handler: (input: string, key: Key) => void): void {
+  useInkInput(handler)
+}
+
 // Whether a text field has focus somewhere. The frame reads it before acting
 // on `?` or `:`, which are printable: in a locale search or a project list
 // they are characters the person meant to type. Counted rather than flagged,

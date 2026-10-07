@@ -3,10 +3,9 @@ import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import React from 'react'
-import { cleanup } from 'ink-testing-library'
 import { FilePicker, itemColor, nextSort, SORT_LABEL } from '../../src/tui/components/FilePicker.js'
 import { poEntryCount } from '../../src/po/count.js'
-import { keys, render, tick, waitForText } from './helpers.js'
+import { keys, render, tick, waitForText, cleanup } from './helpers.js'
 
 let root: string
 

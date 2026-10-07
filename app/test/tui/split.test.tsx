@@ -2,11 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import React from 'react'
-import { cleanup } from 'ink-testing-library'
 import { App } from '../../src/tui/App.js'
 import { digitsOnly } from '../../src/tui/screens/Split.js'
 import type { SplitOptions } from '../../src/commands/split.js'
-import { fakeCommands, hopsTo, keys, makeHome, render, tick, waitForText, type Home } from './helpers.js'
+import { fakeCommands, openFromHome, keys, makeHome, render, tick, waitForText, cleanup, type Home } from './helpers.js'
 
 let home: Home
 let cwd: string
@@ -49,11 +48,7 @@ async function typeSize(stdin: { write: (s: string) => void }, value: string) {
 async function openSplit(commands = fakeCommands()) {
   const view = render(<App commands={commands} cwd={cwd} />)
   await tick()
-  for (let i = 0; i < hopsTo('split'); i++) {
-    view.stdin.write(keys.down)
-    await tick()
-  }
-  view.stdin.write(keys.enter)
+  await openFromHome(view.stdin, 'split')
   await waitForText(view.lastFrame, 'Split')
   return view
 }

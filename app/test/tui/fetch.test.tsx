@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import React from 'react'
-import { cleanup } from 'ink-testing-library'
 import type { Fetched, Ready, Resolution } from '../../src/commands/fetch.js'
 import type { TranslateOptions } from '../../src/commands/translate.js'
 import { CommandsProvider, type ReviewFileOptions, type TuiCommands } from '../../src/tui/commands.js'
@@ -10,7 +9,7 @@ import type { ProjectRef } from '../../src/wporg/projects.js'
 import {
   fakeCommands,
   flat,
-  hopsTo,
+  openFromHome,
   keys,
   makeHome,
   render,
@@ -19,6 +18,7 @@ import {
   tick,
   waitFor,
   waitForText,
+  cleanup,
   type Home,
 } from './helpers.js'
 
@@ -308,11 +308,7 @@ describe('Menu entry', () => {
     const commands = fakeCommands({ resolveProjects, fetchProjects })
     const view = render(<App commands={commands} />)
     await waitForText(view.lastFrame, 'Fetch from translate.wordpress.org')
-    for (let i = 0; i < hopsTo('fetch'); i++) {
-      view.stdin.write(keys.down)
-      await tick()
-    }
-    view.stdin.write(keys.enter)
+    await openFromHome(view.stdin, 'fetch')
     await waitFor(() => /Projects/.test(view.lastFrame()))
   })
 })

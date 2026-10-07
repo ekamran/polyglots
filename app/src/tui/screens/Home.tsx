@@ -1,45 +1,14 @@
-import { createRequire } from 'node:module'
 import { useState } from 'react'
 import { Box, Text } from 'ink'
 import { usableProviders, type AgentStatus } from '../../agent/discover.js'
 import { PROVIDERS } from '../../agent/providers.js'
-import type { ReviewChoice, ReviewProvider } from '../../types.js'
-import { providerLabel } from '../local.js'
-import { Hint } from '../components/Hint.js'
-import { SelectInput, useInput } from '../input.js'
-
-// Read the same way the CLI reads it, so the two can never disagree about
-// which build is running.
-const { version: VERSION } = createRequire(import.meta.url)('../../../package.json') as { version: string }
-
-export type MenuAction =
-  | 'translate'
-  | 'review'
-  | 'fetch'
-  | 'split'
-  | 'stats'
-  | 'import-tm'
-  | 'export-tm'
-  | 'sync-glossary'
-  | 'locale-rules'
-  | 'agents'
-  | 'local-models'
-  | 'configure-keys'
-
-export const MENU_ITEMS: { label: string; value: MenuAction }[] = [
-  { label: 'Translate a .po file', value: 'translate' },
-  { label: 'Review a submitted .po', value: 'review' },
-  { label: 'Fetch from translate.wordpress.org', value: 'fetch' },
-  { label: 'Split a .po into parts', value: 'split' },
-  { label: 'Review statistics', value: 'stats' },
-  { label: 'Import Translation Memory (.tmx or .po)', value: 'import-tm' },
-  { label: 'Export Translation Memory', value: 'export-tm' },
-  { label: 'Sync WordPress.org glossary', value: 'sync-glossary' },
-  { label: 'Locale rules', value: 'locale-rules' },
-  { label: 'Check AI agents', value: 'agents' },
-  { label: 'Local models', value: 'local-models' },
-  { label: 'Configure API keys', value: 'configure-keys' },
-]
+import type { ReviewChoice } from '../../types.js'
+import { TOKENS } from '../../ui/tokens.js'
+import { MenuGrid, moveFocus } from '../components/MenuGrid.js'
+import { useInput } from '../input.js'
+import type { MenuNode, ScreenId } from '../menu.js'
+import type { SetupStatus } from '../setup.js'
+import { SETUP_STEPS, type SetupStep } from '../state.js'
 
 /**
  * The provider `p` moves to. Wraps, so one key reaches every candidate
@@ -64,9 +33,52 @@ export function nextProvider(current: ReviewChoice, usable?: readonly ReviewChoi
   return pool[(at + 1) % pool.length]!
 }
 
-export interface MenuProps {
-  onSelect: (action: MenuAction) => void
-  onQuit: () => void
+export interface MenuScreenProps {
+  items: MenuNode[]
+  layout: 'grid' | 'list'
+  width: number
+  onOpen: (id: ScreenId) => void
+  // q, and esc on a submenu. On home this quits; on a submenu it goes back.
+  onLeave: () => void
+}
+
+/** Cards, arrows, hotkeys and enter: what home and both submenus share. */
+function useMenuKeys(
+  { items, layout, onOpen, onLeave }: MenuScreenProps,
+  active: boolean,
+  extra?: (input: string) => boolean,
+  escLeaves = true,
+) {
+  const [focus, setFocus] = useState(0)
+  useInput(
+    (input, key) => {
+      // Esc is "back", and home has nowhere to go back to. Quitting on it
+      // would turn a stray press, or one too many on the way out of a
+      // submenu, into the end of the session.
+      if (key.escape) return escLeaves ? onLeave() : undefined
+      if (input === 'q' && !key.ctrl && !key.meta) return onLeave()
+      if (key.return) return onOpen(items[focus]!.id)
+      const dir = key.upArrow ? 'up' : key.downArrow ? 'down' : key.leftArrow ? 'left' : key.rightArrow ? 'right' : undefined
+      if (dir) return setFocus((f) => moveFocus(f, items.length, layout, dir))
+      if (key.ctrl || key.meta) return
+      if (extra?.(input)) return
+      // A hotkey opens its card at once rather than only moving to it: the
+      // letter is printed on the card, and a second keystroke to confirm what
+      // the person already named would only slow down the commonest path.
+      const hit = items.find((n) => n.key === input)
+      if (hit) onOpen(hit.id)
+    },
+    { isActive: active },
+  )
+  return focus
+}
+
+export function Submenu(props: MenuScreenProps) {
+  const focus = useMenuKeys(props, true)
+  return <MenuGrid items={props.items} focus={focus} layout={props.layout} width={props.width} />
+}
+
+export interface HomeProps extends MenuScreenProps {
   provider: ReviewChoice
   // Persisted by the caller rather than here, so this screen stays something
   // that can be rendered without writing to the user's config.
@@ -82,44 +94,80 @@ export interface MenuProps {
   // that `p` can return to it after a switch away even when it is unusable:
   // the choice was the person's, and the menu does not get to erase it.
   configured?: ReviewChoice
+  status: SetupStatus
+  // Where focus sits in the header's setup status, held by the app because
+  // the header draws it; undefined while focus is on the cards.
+  statusFocus?: SetupStep
+  onStatusFocus: (step: SetupStep | undefined) => void
+  onOpenStep: (step: SetupStep) => void
 }
 
-export function Menu({ onSelect, onQuit, provider, onProvider, providerError, agents, checking, configured }: MenuProps) {
+export function Home(props: HomeProps) {
+  const { provider, onProvider, providerError, agents, checking, configured, status, statusFocus, onStatusFocus, onOpenStep } = props
   const [notice, setNotice] = useState<string | undefined>(undefined)
   const usable = agents === undefined ? undefined : [...usableProviders(agents), ...(configured ? [configured] : [])]
   const unusable = (agents ?? []).filter((a) => !a.usable)
   const current = agents?.find((a) => a.provider === provider)
   const others = unusable.filter((a) => a.provider !== provider)
-  useInput((input, key) => {
-    if (input === 'q' && !key.ctrl && !key.meta) onQuit()
+
+  const onCards = statusFocus === undefined
+  const focus = useMenuKeys(props, onCards, (input) => {
     if (input === 'p') {
       const next = nextProvider(provider, usable)
       if (next === provider) {
         const why = others.map((a) => `${a.provider}: ${a.reason ?? 'unavailable'}`).join('; ')
         setNotice(`No other usable agent${why ? `: ${why}` : ''}`)
-        return
+        return true
       }
       setNotice(undefined)
       onProvider(next)
+      return true
     }
+    return false
+  }, false)
+
+  // Tab toggles between the cards and the setup status. On the status, the
+  // arrows walk the five steps and enter opens the wizard at the one chosen,
+  // which is how "selecting a step jumps to the fix" reads with a keyboard.
+  useInput((_input, key) => {
+    if (!key.tab) return
+    if (onCards) onStatusFocus(SETUP_STEPS.find((s) => status.steps[s] !== 'done') ?? SETUP_STEPS[0])
+    else onStatusFocus(undefined)
   })
+  useInput(
+    (input, key) => {
+      if (!statusFocus) return
+      const at = SETUP_STEPS.indexOf(statusFocus)
+      if (key.escape || input === 'q') onStatusFocus(undefined)
+      else if (key.leftArrow || key.upArrow) onStatusFocus(SETUP_STEPS[Math.max(0, at - 1)])
+      else if (key.rightArrow || key.downArrow) onStatusFocus(SETUP_STEPS[Math.min(SETUP_STEPS.length - 1, at + 1)])
+      else if (key.return) onOpenStep(statusFocus)
+    },
+    { isActive: !onCards },
+  )
+
+  // One line under the cards for whatever needs saying, most urgent first:
+  // there is no room at 80x24 for a list of them.
+  const line = providerError
+    ? { token: TOKENS.warn, text: `Could not save that: ${providerError}` }
+    : notice
+      ? { token: TOKENS.warn, text: notice }
+      : current && !current.usable
+        ? { token: TOKENS.warn, text: current.reason ?? 'unavailable' }
+        : checking
+          ? { token: TOKENS.muted, text: 'Checking agents…' }
+          : others.length > 0
+            ? { token: TOKENS.muted, text: `Unavailable: ${others.map((a) => `${a.provider} (${a.reason ?? 'unavailable'})`).join(', ')}` }
+            : undefined
+
   return (
     <Box flexDirection="column">
-      <Text bold>
-        polyglots <Text dimColor>v{VERSION}</Text>
-      </Text>
-      <Text dimColor>
-        Provider: {providerLabel(provider)} · p to switch
-      </Text>
-      {current && !current.usable && <Text color="yellow">{current.reason ?? 'unavailable'}</Text>}
-      {others.length > 0 && (
-        <Text dimColor>Unavailable: {others.map((a) => `${a.provider} (${a.reason ?? 'unavailable'})`).join(', ')}</Text>
+      <MenuGrid items={props.items} focus={focus} layout={props.layout} width={props.width} active={onCards} />
+      {line && (
+        <Text {...line.token.ink} wrap="truncate-end">
+          {line.text}
+        </Text>
       )}
-      {checking && <Text dimColor>Checking agents…</Text>}
-      {notice && <Text color="yellow">{notice}</Text>}
-      {providerError && <Text color="yellow">Could not save that: {providerError}</Text>}
-      <SelectInput items={MENU_ITEMS} onSelect={(item) => onSelect(item.value)} />
-      <Hint>↑↓ move · enter select · p provider · q quit</Hint>
     </Box>
   )
 }
