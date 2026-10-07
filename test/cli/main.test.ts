@@ -1655,3 +1655,20 @@ describe('local model support', () => {
     })
   })
 })
+
+describe('stats', () => {
+  const result = {
+    file: '/tmp/s.html', submissions: 3, entries: 300, flagged: 30, incomplete: 0,
+    translateRuns: 0, translateEntries: 0, weeks: [1, 4], topProjects: [{ project: 'akismet', runs: 3, entries: 300, flagged: 30 }],
+  }
+
+  it('summarises the page it wrote in a box, with the top projects below', async () => {
+    const h = harness()
+    const code = await h.run(['stats'], { writeStats: async () => result })
+    expect(code).toBe(0)
+    expect(h.stdout.text).toContain('• Statistics')
+    expect(h.stdout.text).toMatch(/submissions\s+3/)
+    expect(h.stdout.text).toMatch(/akismet\s+300 entries\s+10% flagged/)
+    expect(h.stdout.text.trimEnd().split('\n').at(-1)).toBe('› Wrote /tmp/s.html')
+  })
+})

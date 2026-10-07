@@ -55,7 +55,7 @@ import { localModelId, resolveLocalTarget, type LocalTarget } from './draft/loca
 import { createPainter, type Painter } from './ui/paint.js'
 import { errorLine, header, hintLine, okLine, warnLine } from './ui/messages.js'
 import { table } from './ui/layout.js'
-import { reviewSummary, translateSummary } from './cli/summaries.js'
+import { reviewSummary, statsSummary, translateSummary } from './cli/summaries.js'
 import { LOCAL_REVIEW_NOTICE, localBatchAdvice, localReviewBatchSize } from './review/local.js'
 import { engineId } from './jobs/hash.js'
 import type { RunTuiOptions } from './tui/index.js'
@@ -1043,20 +1043,10 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
         ...(flags.out ? { out: flags.out } : {}),
         ...(flags.since ? { since: flags.since } : {}),
       })
-      const parts: string[] = []
-      if (result.submissions > 0) parts.push(`${result.submissions} submissions reviewed, ${result.entries} entries`)
-      if (result.translateRuns > 0) parts.push(`${result.translateRuns} translate runs, ${result.translateEntries} entries drafted`)
       // Saying "nothing recorded yet" while the page holds real translate
-      // numbers would send the user to look at a page they think is empty.
-      if (parts.length === 0) {
-        cli.out(`Nothing recorded yet. Wrote ${result.file} anyway; it will fill in as you work.`)
-        return
-      }
-      cli.out(`${parts.join('. ')}. Wrote ${result.file}.`)
-      if (result.incomplete > 0) {
-        const were = result.incomplete === 1 ? 'review is' : 'reviews are'
-        cli.out(`${result.incomplete} unfinished ${were} left out of the totals.`)
-      }
+      // numbers would send the user to look at a page they think is empty, so
+      // the summary checks both before saying it.
+      for (const line of statsSummary(cli.ui.out, result)) cli.out(line)
     })
 
   const cfg = program.command('config').description('Settings and API keys')

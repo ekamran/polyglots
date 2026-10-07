@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { stripVTControlCharacters } from 'node:util'
-import { fetchTally, reviewSummary, translateSummary } from '../../src/cli/summaries.js'
+import { fetchTally, reviewSummary, statsSummary, translateSummary } from '../../src/cli/summaries.js'
 import { reviewSummaryOf } from '../tui/helpers.js'
 import type { ReviewSummary } from '../../src/types.js'
 import { createPainter, plainPainter } from '../../src/ui/paint.js'
@@ -95,5 +95,34 @@ describe('fetchTally', () => {
     expect(stopped[0]).toContain('! Stopped')
     expect(stopped.join('\n')).toMatch(/stopped\s+2/)
     expect(stopped.at(-1)).toBe('› Run the same list again to carry on.')
+  })
+})
+
+describe('statsSummary', () => {
+  const s = {
+    file: '/tmp/stats.html', submissions: 12, entries: 4102, flagged: 410, incomplete: 1,
+    translateRuns: 3, translateEntries: 900, weeks: [0, 2, 5, 9],
+    topProjects: [{ project: 'akismet', runs: 4, entries: 2000, flagged: 200 }],
+  }
+
+  it('frames the headline numbers with a weekly sparkline', () => {
+    const text = statsSummary(plainPainter, s).join('\n')
+    expect(text).toMatch(/submissions\s+12/)
+    expect(text).toMatch(/entries\s+4,102/)
+    expect(text).toMatch(/weekly\s+▁\S{3}/)
+  })
+
+  it('lists the top projects and points at the page', () => {
+    const lines = statsSummary(plainPainter, s)
+    expect(lines.join('\n')).toMatch(/akismet\s+2,000 entries\s+10% flagged/)
+    expect(lines.join('\n')).toContain('1 unfinished review is left out of the totals.')
+    expect(lines.at(-1)).toBe('› Wrote /tmp/stats.html')
+  })
+
+  it('says nothing is recorded yet when there is nothing', () => {
+    const empty = { ...s, submissions: 0, entries: 0, flagged: 0, translateRuns: 0, translateEntries: 0, weeks: [], topProjects: [], incomplete: 0 }
+    expect(statsSummary(plainPainter, empty)).toEqual([
+      '› Nothing recorded yet. Wrote /tmp/stats.html anyway; it will fill in as you work.',
+    ])
   })
 })

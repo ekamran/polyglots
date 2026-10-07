@@ -1,8 +1,9 @@
 import type { TranslateSummary } from '../commands/translate.js'
 import type { ReviewSummary } from '../types.js'
 import type { Tally } from '../commands/fetch-report.js'
-import { box, table } from '../ui/layout.js'
-import { nextLine } from '../ui/messages.js'
+import type { StatsSummary } from '../commands/stats.js'
+import { box, sparkline, table } from '../ui/layout.js'
+import { hintLine, nextLine } from '../ui/messages.js'
 import type { Painter } from '../ui/paint.js'
 
 // Each command's closing block, as pure functions of a painter and a summary.
@@ -80,5 +81,31 @@ export function fetchTally(p: Painter, t: Tally): string[] {
   )
   const out = box(p, title, rows)
   if (t.stopped > 0) out.push(nextLine(p, 'Run the same list again to carry on.'))
+  return out
+}
+
+const n = (v: number) => v.toLocaleString('en')
+
+export function statsSummary(p: Painter, s: StatsSummary): string[] {
+  if (s.submissions === 0 && s.translateRuns === 0) {
+    return [nextLine(p, `Nothing recorded yet. Wrote ${p.paint('path', s.file)} anyway; it will fill in as you work.`)]
+  }
+  const rows: string[][] = []
+  if (s.submissions > 0) {
+    const rate = s.entries === 0 ? 0 : Math.round((s.flagged / s.entries) * 100)
+    rows.push(['submissions', n(s.submissions)], ['entries', n(s.entries)], ['flagged', `${n(s.flagged)}`, p.paint('muted', `${rate}%`)])
+    if (s.weeks.length > 0) rows.push(['weekly', p.paint('accent', sparkline(s.weeks, p.glyphs.spark)), p.paint('muted', `last ${s.weeks.length} weeks`)])
+  }
+  if (s.translateRuns > 0) rows.push(['translate runs', n(s.translateRuns)], ['drafted', n(s.translateEntries)])
+  const out = box(p, `${p.paint('accent', p.glyphs.bullet)} Statistics`, table(rows, { align: ['left', 'right', 'left'] }))
+  if (s.topProjects.length > 0) {
+    out.push('', p.paint('heading', 'Top projects'))
+    out.push(...table(
+      s.topProjects.map((r) => [r.project, `${n(r.entries)} entries`, `${r.entries === 0 ? 0 : Math.round((r.flagged / r.entries) * 100)}% flagged`]),
+      { indent: 2, align: ['left', 'right', 'right'] },
+    ))
+  }
+  if (s.incomplete > 0) out.push(hintLine(p, `${s.incomplete} unfinished ${s.incomplete === 1 ? 'review is' : 'reviews are'} left out of the totals.`))
+  out.push(nextLine(p, `Wrote ${p.paint('path', s.file)}`))
   return out
 }
