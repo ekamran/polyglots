@@ -169,3 +169,391 @@ msgstr "Açık"
 msgctxt "themeDark"
 msgid "Dark"
 msgstr "Koyu"
+
+msgctxt "navOverview"
+msgid "Overview"
+msgstr "Genel bakış"
+
+msgctxt "navReviews"
+msgid "Reviews"
+msgstr "İncelemeler"
+
+msgctxt "navTranslation"
+msgid "Translation"
+msgstr "Çeviri"
+
+msgctxt "navProjects"
+msgid "Projects"
+msgstr "Projeler"
+
+msgctxt "navMethod"
+msgid "Method"
+msgstr "Yöntem"
+
+msgctxt "rangeLabel"
+msgid "Time range"
+msgstr "Zaman aralığı"
+
+msgctxt "range30d"
+msgid "30 days"
+msgstr "30 gün"
+
+msgctxt "range90d"
+msgid "90 days"
+msgstr "90 gün"
+
+msgctxt "range1y"
+msgid "1 year"
+msgstr "1 yıl"
+
+msgctxt "rangeAll"
+msgid "All time"
+msgstr "Tümü"
+
+msgctxt "language"
+msgid "Language"
+msgstr "Dil"
+
+msgctxt "inLast30"
+msgid "{n} in the last 30 days"
+msgstr "son 30 günde {n}"
+
+msgctxt "runningOne"
+msgid "{n} review in progress, not counted until it finishes."
+msgstr "{n} inceleme sürüyor; bitene kadar sayılmaz."
+
+msgctxt "runningMany"
+msgid "{n} reviews in progress, not counted until they finish."
+msgstr "{n} inceleme sürüyor; bitene kadar sayılmaz."
+
+msgctxt "busy"
+msgid "The job store is busy. Showing the last numbers and trying again."
+msgstr "İş deposu meşgul. Son sayılar gösteriliyor, yeniden deneniyor."
+
+msgctxt "activityHeading"
+msgid "Review activity, last 12 months"
+msgstr "İnceleme etkinliği, son 12 ay"
+
+msgctxt "activityLess"
+msgid "Less"
+msgstr "Az"
+
+msgctxt "activityMore"
+msgid "More"
+msgstr "Çok"
+
+msgctxt "flagsRule"
+msgid "Rule checks"
+msgstr "Kural denetimleri"
+
+msgctxt "flagsAi"
+msgid "AI review"
+msgstr "Yapay zekâ incelemesi"
+
+msgctxt "flagsProcess"
+msgid "Not reviewed"
+msgstr "İncelenemeyen"
+
+msgctxt "flagsOther"
+msgid "Other"
+msgstr "Diğer"
+
+msgctxt "flagsShareNote"
+msgid "Shares of all flags. One entry can carry several flags, so these add up to more than the flagged count."
+msgstr "Tüm işaretler içindeki paylar. Bir dizge birden çok işaret taşıyabilir; bu yüzden toplamları işaretlenen dizge sayısını aşar."
+
+msgctxt "flagShare"
+msgid "{n} of all flags"
+msgstr "tüm işaretlerin {n} kadarı"
+
+msgctxt "turnaroundHeading"
+msgid "How long reviews take"
+msgstr "İncelemeler ne kadar sürüyor"
+
+msgctxt "bucket0"
+msgid "under 1 min"
+msgstr "1 dk altı"
+
+msgctxt "bucket1"
+msgid "1–5 min"
+msgstr "1–5 dk"
+
+msgctxt "bucket2"
+msgid "5–15 min"
+msgstr "5–15 dk"
+
+msgctxt "bucket3"
+msgid "15–60 min"
+msgstr "15–60 dk"
+
+msgctxt "bucket4"
+msgid "1–4 h"
+msgstr "1–4 sa"
+
+msgctxt "bucket5"
+msgid "over 4 h"
+msgstr "4 sa üstü"
+
+msgctxt "showAll"
+msgid "Show all {n} projects"
+msgstr "{n} projenin tümünü göster"
+
+msgctxt "filterProjects"
+msgid "Filter projects"
+msgstr "Projeleri süz"
+
+msgctxt "noTranslate"
+msgid "No translate runs in this range."
+msgstr "Bu aralıkta çeviri çalıştırması yok."
+
+msgctxt "shareImage"
+msgid "Download share image"
+msgstr "Paylaşım görselini indir"
+
+msgctxt "shareTagline"
+msgid "WordPress translation review with polyglots"
+msgstr "polyglots ile WordPress çeviri incelemesi"
+
+msgctxt "shareTop"
+msgid "Top projects"
+msgstr "Öne çıkan projeler"
+
+msgctxt "methodHeading"
+msgid "How these numbers are made"
+msgstr "Bu sayılar nasıl elde ediliyor"
+
+msgctxt "methodEntries"
+msgid "An entry is one translatable string. A submission is one review run over one .po file. Only reviews that finished are counted: a review stopped part way has no honest totals yet."
+msgstr "Dizge, çevrilebilir tek bir metindir. Gönderi, tek bir .po dosyası üzerinde yapılan bir incelemedir. Yalnızca tamamlanan incelemeler sayılır: yarıda durdurulan bir incelemenin henüz dürüst bir toplamı yoktur."
+
+msgctxt "methodSplit"
+msgid "Rule checks are mechanical: a placeholder is either missing or it is not. AI findings are a model’s judgement about meaning, tone and fluency, and deserve a second look before anyone acts on them."
+msgstr "Kural denetimleri mekaniktir: bir yer tutucu ya eksiktir ya değildir. Yapay zekâ bulguları ise bir modelin anlam, üslup ve akıcılık hakkındaki yargısıdır; bunlara göre davranmadan önce ikinci bir göz gerekir."
+
+msgctxt "methodTurnaround"
+msgid "Turnaround runs from the start of a review to its end, including any time it was stopped and resumed. The median is shown because one overnight run would swamp an average."
+msgstr "Süre, bir incelemenin başlangıcından bitişine kadar ölçülür; durdurulup sürdürülen zaman da buna dahildir. Ortalama yerine ortanca gösterilir, çünkü tek bir gece boyu süren çalıştırma ortalamayı bozar."
+
+msgctxt "methodDays"
+msgid "Days on the activity map are in local time. Weeks start on Monday and are counted in UTC."
+msgstr "Etkinlik haritasındaki günler yerel saate göredir. Haftalar pazartesi başlar ve UTC ile sayılır."
+
+msgctxt "methodNoRanking"
+msgid "This page never ranks contributors, and it never will."
+msgstr "Bu sayfa katkıcıları hiçbir zaman sıralamaz ve sıralamayacak."
+
+msgctxt "rule:placeholder"
+msgid "Placeholder missing or added"
+msgstr "Eksik ya da fazla yer tutucu"
+
+msgctxt "rule:placeholder:desc"
+msgid "A placeholder such as %s or {name} in the source is missing from the translation, or one was added."
+msgstr "Kaynaktaki %s ya da {name} gibi bir yer tutucu çeviride yok ya da çeviriye fazladan eklenmiş."
+
+msgctxt "rule:html"
+msgid "HTML tags differ"
+msgstr "HTML etiketleri farklı"
+
+msgctxt "rule:html:desc"
+msgid "The translation has different HTML tags from the source."
+msgstr "Çevirideki HTML etiketleri kaynaktakilerden farklı."
+
+msgctxt "rule:plural-count"
+msgid "Wrong number of plural forms"
+msgstr "Yanlış sayıda çoğul biçim"
+
+msgctxt "rule:plural-count:desc"
+msgid "The translation fills a different number of plural forms than the language has."
+msgstr "Çeviri, dilin sahip olduğundan farklı sayıda çoğul biçim dolduruyor."
+
+msgctxt "rule:whitespace"
+msgid "Leading or trailing space"
+msgstr "Baştaki ya da sondaki boşluk"
+
+msgctxt "rule:whitespace:desc"
+msgid "Spaces or line breaks at the start or end differ from the source."
+msgstr "Baştaki ya da sondaki boşluklar veya satır sonları kaynaktan farklı."
+
+msgctxt "rule:untranslated"
+msgid "Left in English"
+msgstr "İngilizce bırakılmış"
+
+msgctxt "rule:untranslated:desc"
+msgid "The translation is identical to the English source."
+msgstr "Çeviri, İngilizce kaynakla aynı."
+
+msgctxt "rule:escaping"
+msgid "Escaped quotes differ"
+msgstr "Kaçışlı tırnaklar farklı"
+
+msgctxt "rule:escaping:desc"
+msgid "The source and translation escape quotes differently, so a backslash may show on screen."
+msgstr "Kaynak ve çeviri tırnakları farklı biçimde kaçışlıyor; ekranda ters eğik çizgi görünebilir."
+
+msgctxt "rule:punctuation"
+msgid "Ending punctuation differs"
+msgstr "Sondaki noktalama farklı"
+
+msgctxt "rule:punctuation:desc"
+msgid "A colon, ellipsis or full stop that ends the source is missing from the translation, or was added."
+msgstr "Kaynağın sonundaki iki nokta, üç nokta ya da nokta çeviride yok ya da çeviriye eklenmiş."
+
+msgctxt "rule:line-breaks"
+msgid "Line breaks differ"
+msgstr "Satır sonları farklı"
+
+msgctxt "rule:line-breaks:desc"
+msgid "The translation has a different number of line breaks."
+msgstr "Çeviride farklı sayıda satır sonu var."
+
+msgctxt "rule:ampersand"
+msgid "Ampersand written as a word"
+msgstr "Ve işareti yazıyla yazılmalı"
+
+msgctxt "rule:ampersand:desc"
+msgid "The translation keeps “&” where the language writes the conjunction as a word."
+msgstr "Çeviri, dilin bağlacı yazıyla yazdığı yerde “&” işaretini koruyor."
+
+msgctxt "rule:number-format"
+msgid "Number or percent format"
+msgstr "Sayı ya da yüzde biçimi"
+
+msgctxt "rule:number-format:desc"
+msgid "A number or percent sign is written the English way rather than the language’s."
+msgstr "Bir sayı ya da yüzde işareti dilin değil, İngilizcenin kuralına göre yazılmış."
+
+msgctxt "rule:title-case"
+msgid "Title case"
+msgstr "Başlık büyük harfi"
+
+msgctxt "rule:title-case:desc"
+msgid "Words are capitalised mid-sentence, usually copied from English headline style."
+msgstr "Cümle ortasındaki sözcükler büyük harfle başlıyor; çoğunlukla İngilizce başlık biçiminden kopyalanmış."
+
+msgctxt "rule:glossary"
+msgid "Glossary term not used"
+msgstr "Sözlük terimine uyulmamış"
+
+msgctxt "rule:glossary:desc"
+msgid "A term from the locale glossary is translated differently."
+msgstr "Yerel sözlükteki bir terim farklı çevrilmiş."
+
+msgctxt "rule:apostrophe"
+msgid "Missing apostrophe before a suffix"
+msgstr "Ekten önce kesme işareti eksik"
+
+msgctxt "rule:apostrophe:desc"
+msgid "A proper noun takes a suffix without the apostrophe the language requires."
+msgstr "Bir özel ada, dilin gerektirdiği kesme işareti olmadan ek getirilmiş."
+
+msgctxt "rule:inconsistent"
+msgid "Inconsistent within the file"
+msgstr "Dosya içinde tutarsız"
+
+msgctxt "rule:inconsistent:desc"
+msgid "The same English string is translated in different ways in one file."
+msgstr "Aynı İngilizce dizge tek bir dosyada farklı biçimlerde çevrilmiş."
+
+msgctxt "rule:tm-conflict"
+msgid "Differs from approved translations"
+msgstr "Onaylı çevirilerden farklı"
+
+msgctxt "rule:tm-conflict:desc"
+msgid "The translation memory holds a different approved translation of the same string."
+msgstr "Çeviri belleğinde aynı dizgenin farklı bir onaylı çevirisi var."
+
+msgctxt "rule:control"
+msgid "Setting translated as text"
+msgstr "Ayar metin olarak çevrilmiş"
+
+msgctxt "rule:control:desc"
+msgid "A value WordPress reads as a setting, such as “on” or “ltr”, was translated as if it were text."
+msgstr "WordPress’in ayar olarak okuduğu “on” ya da “ltr” gibi bir değer metinmiş gibi çevrilmiş."
+
+msgctxt "rule:custom"
+msgid "Locale rule"
+msgstr "Yerel kural"
+
+msgctxt "rule:custom:desc"
+msgid "A mistake or pattern from the locale’s own rules file."
+msgstr "Yerelin kendi kurallar dosyasındaki bir hata ya da kalıp."
+
+msgctxt "rule:repaired"
+msgid "Repaired automatically"
+msgstr "Otomatik düzeltilmiş"
+
+msgctxt "rule:repaired:desc"
+msgid "Whitespace or a locale fix pattern was corrected mechanically before review."
+msgstr "Boşluk ya da bir yerel düzeltme kalıbı, incelemeden önce mekanik olarak düzeltilmiş."
+
+msgctxt "rule:ai:meaning"
+msgid "Meaning (AI)"
+msgstr "Anlam (YZ)"
+
+msgctxt "rule:ai:meaning:desc"
+msgid "The model judged that the translation says something different from the source."
+msgstr "Model, çevirinin kaynaktan farklı bir şey söylediğine karar verdi."
+
+msgctxt "rule:ai:glossary"
+msgid "Glossary (AI)"
+msgstr "Sözlük (YZ)"
+
+msgctxt "rule:ai:glossary:desc"
+msgid "The model judged that a glossary term was not followed."
+msgstr "Model, bir sözlük terimine uyulmadığına karar verdi."
+
+msgctxt "rule:ai:title-case"
+msgid "Capitalisation (AI)"
+msgstr "Büyük harf kullanımı (YZ)"
+
+msgctxt "rule:ai:title-case:desc"
+msgid "The model judged that words are capitalised where the language would not."
+msgstr "Model, dilin büyük harf kullanmayacağı yerlerde büyük harf kullanıldığına karar verdi."
+
+msgctxt "rule:ai:register"
+msgid "Tone and formality (AI)"
+msgstr "Üslup ve resmiyet (YZ)"
+
+msgctxt "rule:ai:register:desc"
+msgid "The model judged the tone too casual, too stiff, or inconsistent in how it addresses the reader."
+msgstr "Model, üslubu fazla gündelik, fazla katı ya da okura hitapta tutarsız buldu."
+
+msgctxt "rule:ai:fluency"
+msgid "Fluency (AI)"
+msgstr "Akıcılık (YZ)"
+
+msgctxt "rule:ai:fluency:desc"
+msgid "The model judged the wording correct but unnatural, often a word-for-word calque."
+msgstr "Model, ifadeyi doğru ama doğal olmayan, çoğunlukla sözcüğü sözcüğüne bir çeviri olarak değerlendirdi."
+
+msgctxt "rule:ai:placeholder"
+msgid "Placeholder (AI)"
+msgstr "Yer tutucu (YZ)"
+
+msgctxt "rule:ai:placeholder:desc"
+msgid "The model judged that a placeholder is misused or misplaced."
+msgstr "Model, bir yer tutucunun yanlış kullanıldığına ya da yanlış yere konduğuna karar verdi."
+
+msgctxt "rule:ai:other"
+msgid "Other (AI)"
+msgstr "Diğer (YZ)"
+
+msgctxt "rule:ai:other:desc"
+msgid "The model flagged a problem that fits none of the other categories."
+msgstr "Model, diğer kategorilerin hiçbirine uymayan bir sorun işaretledi."
+
+msgctxt "rule:fix-rejected"
+msgid "AI fix rejected"
+msgstr "YZ düzeltmesi reddedildi"
+
+msgctxt "rule:fix-rejected:desc"
+msgid "The model proposed a fix that failed the mechanical checks, so it was not applied."
+msgstr "Modelin önerdiği düzeltme mekanik denetimlerden geçemedi, bu yüzden uygulanmadı."
+
+msgctxt "rule:unreviewed"
+msgid "Could not be reviewed"
+msgstr "İncelenemedi"
+
+msgctxt "rule:unreviewed:desc"
+msgid "The automated review failed for this entry, so it was set aside for a human."
+msgstr "Bu dizgenin otomatik incelemesi başarısız oldu; bir insanın bakması için ayrıldı."

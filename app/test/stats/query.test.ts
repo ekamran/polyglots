@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { spawnSync } from 'node:child_process'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -427,5 +428,82 @@ describe('translateStats', () => {
     const s = translateStats(db)
     expect(s.byWeek).toHaveLength(2)
     expect(s.byProject[0]).toMatchObject({ project: 'Patterns', runs: 2, entries: 30 })
+  })
+
+  it('buckets by day and turnaround too, like the review side', () => {
+    drafted({ startedAt: MONDAY + DAY / 2, tookMs: 20 * 60_000, entries: 10, fuzzy: 1 })
+    const s = translateStats(db)
+    expect(s.byDay).toEqual([{ day: '2026-09-07', runs: 1, entries: 10 }])
+    expect(s.turnaroundBuckets).toEqual([0, 0, 0, 1, 0, 0])
+  })
+})
+
+describe('reviewStats by day', () => {
+  // Noon UTC, so the local calendar day is the same date in every timezone a
+  // test machine is likely to sit in.
+  const NOON = MONDAY + DAY / 2
+
+  it('buckets entries into the local calendar day each run started on', () => {
+    reviewed({ startedAt: NOON, tookMs: 1000, entries: 10, flagged: 1 })
+    reviewed({ startedAt: NOON + 60_000, tookMs: 1000, entries: 5, flagged: 0 })
+    reviewed({ startedAt: NOON + 2 * DAY, tookMs: 1000, entries: 7, flagged: 0 })
+    expect(reviewStats(db).byDay).toEqual([
+      { day: '2026-09-07', runs: 2, entries: 15 },
+      { day: '2026-09-09', runs: 1, entries: 7 },
+    ])
+  })
+
+  it('is empty when nothing is recorded', () => {
+    expect(reviewStats(db).byDay).toEqual([])
+  })
+
+  // Noon UTC lands on the same date nearly everywhere, so the test above
+  // cannot tell local time from UTC. Fourteen hours ahead of UTC can.
+  it('uses local time, so a run just after local midnight lands on the local day', () => {
+    const previous = process.env.TZ
+    process.env.TZ = 'Pacific/Kiritimati'
+    try {
+      // 2026-09-07 12:30 UTC is 2026-09-08 02:30 at UTC+14.
+      reviewed({ startedAt: MONDAY + 12.5 * 3_600_000, tookMs: 1000, entries: 3, flagged: 0 })
+      expect(reviewStats(db).byDay).toEqual([{ day: '2026-09-08', runs: 1, entries: 3 }])
+    } finally {
+      if (previous === undefined) delete process.env.TZ
+      else process.env.TZ = previous
+    }
+  })
+})
+
+describe('reviewStats turnaround distribution', () => {
+  it('counts each run into the bucket its turnaround falls in', () => {
+    reviewed({ startedAt: MONDAY, tookMs: 30_000, entries: 1, flagged: 0 })
+    reviewed({ startedAt: MONDAY, tookMs: 3 * 60_000, entries: 1, flagged: 0 })
+    reviewed({ startedAt: MONDAY, tookMs: 3 * 60_000, entries: 1, flagged: 0 })
+    reviewed({ startedAt: MONDAY, tookMs: 5 * 3_600_000, entries: 1, flagged: 0 })
+    expect(reviewStats(db).turnaroundBuckets).toEqual([1, 2, 0, 0, 0, 1])
+  })
+
+  it('has a zero for every bucket when nothing is recorded, so a chart can still draw its axis', () => {
+    expect(reviewStats(db).turnaroundBuckets).toEqual([0, 0, 0, 0, 0, 0])
+  })
+})
+
+describe('runs still in progress', () => {
+  it('are counted per command, without adding to any total', () => {
+    startRun(db, { file: '/tmp/x.po', command: 'review', locale: 'tr', nplurals: 2, batchSize: 25, engine: 'claude' }, () => MONDAY)
+    startRun(db, { file: '/tmp/y.po', command: 'translate', locale: 'tr', nplurals: 2, batchSize: 25, engine: 'deepl' }, () => MONDAY)
+    startRun(db, { file: '/tmp/z.po', command: 'translate', locale: 'tr', nplurals: 2, batchSize: 25, engine: 'deepl' }, () => MONDAY)
+    const s = reviewStats(db)
+    expect(s.running).toBe(1)
+    expect(s.submissions).toBe(0)
+    expect(translateStats(db).running).toBe(2)
+  })
+
+  // A kill -9 leaves the row at running until the reaper runs at the next
+  // start. Counting it would say "in progress" about a process that is gone.
+  it('leaves out a run whose process is gone', () => {
+    const id = startRun(db, { file: '/tmp/x.po', command: 'review', locale: 'tr', nplurals: 2, batchSize: 25, engine: 'claude' }, () => MONDAY)
+    const dead = spawnSync(process.execPath, ['-e', '']).pid
+    db.prepare('UPDATE run SET pid = ? WHERE id = ?').run(dead, id)
+    expect(reviewStats(db).running).toBe(0)
   })
 })

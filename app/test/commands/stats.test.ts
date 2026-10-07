@@ -6,13 +6,18 @@ import { join } from 'node:path'
 import type Database from 'better-sqlite3'
 import { openJobsDb } from '../../src/jobs/db.js'
 import { finishRun, startRun } from '../../src/jobs/runs.js'
-import { writeStats } from '../../src/commands/stats.js'
+import { serveStats, summarizeStats, writeStats } from '../../src/commands/stats.js'
+import type { StatsServer } from '../../src/stats/server.js'
 
 let db: Database.Database
 let dir: string
 
 const MONDAY = Date.UTC(2026, 8, 7)
 const DAY = 86_400_000
+// Bytes. The fixture below came to about 530 KB when this was set. Most mail
+// servers take 10 MB or more, so the budget is about not drifting: a change
+// that doubles the copy should have to say so here.
+const BUDGET = 1_000_000
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'polyglots-stats-cmd-'))
@@ -90,5 +95,121 @@ describe('writeStats', () => {
   it('leaves a database it was handed open, because the caller owns it', async () => {
     await writeStats({ out: join(dir, 'r.html'), jobsDb: db })
     expect(db.open).toBe(true)
+  })
+})
+
+function embedded(html: string): { mode: string; payloads: Record<string, unknown> } {
+  const m = /<script type="application\/json" id="stats-data">([^<]*)<\/script>/.exec(html)!
+  return JSON.parse(m[1]!)
+}
+
+describe('writeStats standalone copy', () => {
+  it('carries every range, so its range buttons work with no server behind it', async () => {
+    reviewed(Date.now() - 5 * DAY, 10, 4)
+    const out = join(dir, 'r.html')
+    await writeStats({ out, jobsDb: db })
+    const data = embedded(await readFile(out, 'utf8'))
+    expect(data.mode).toBe('static')
+    expect(Object.keys(data.payloads).sort()).toEqual(['1y', '30d', '90d', 'all'])
+  })
+
+  // The copy is for mailing and archiving. A locale with a long history
+  // should still produce something an inbox accepts without a second look.
+  it('stays small enough to email with two years of daily reviews over 500 projects', async () => {
+    const insert = db.transaction(() => {
+      const start = Date.now() - 730 * DAY
+      for (let d = 0; d < 730; d++) {
+        for (let k = 0; k < 2; k++) reviewed(start + d * DAY + k * 1000, 50, 5, `Project ${(d * 2 + k) % 500}`)
+      }
+    })
+    insert()
+    const out = join(dir, 'big.html')
+    await writeStats({ out, jobsDb: db })
+    const size = Buffer.byteLength(await readFile(out, 'utf8'))
+    expect(size).toBeLessThan(BUDGET)
+  })
+})
+
+describe('summarizeStats', () => {
+  it('gives the terminal summary without writing anything', () => {
+    reviewed(MONDAY, 10, 4)
+    const s = summarizeStats(db, {})
+    expect(s).toMatchObject({ submissions: 1, entries: 10, flagged: 4 })
+    expect(s).not.toHaveProperty('file')
+  })
+})
+
+describe('serveStats', () => {
+  function fakeServer(): { server: StatsServer; closed: () => boolean } {
+    let closed = false
+    return {
+      server: { url: 'http://127.0.0.1:9/t/', port: 9, close: async () => void (closed = true) },
+      closed: () => closed,
+    }
+  }
+
+  it('starts the server, opens the browser, reports, and closes everything once stopped', async () => {
+    reviewed(MONDAY, 10, 4)
+    const fake = fakeServer()
+    let stop!: () => void
+    const ready: unknown[] = []
+    const done = serveStats(
+      {
+        jobsDb: db,
+        start: async () => fake.server,
+        openBrowser: async () => true,
+        untilStopped: () => new Promise<void>((r) => (stop = r)),
+      },
+      (r) => ready.push(r),
+    )
+    await new Promise((r) => setTimeout(r, 0))
+    expect(ready).toEqual([expect.objectContaining({ url: 'http://127.0.0.1:9/t/', opened: true, summary: expect.objectContaining({ entries: 10 }) })])
+    expect(fake.closed()).toBe(false)
+    stop()
+    await done
+    expect(fake.closed()).toBe(true)
+  })
+
+  it('does not open the browser when asked not to', async () => {
+    const fake = fakeServer()
+    let opened = false
+    const ready: Array<{ opened: boolean }> = []
+    await serveStats(
+      {
+        jobsDb: db,
+        open: false,
+        start: async () => fake.server,
+        openBrowser: async () => (opened = true),
+        untilStopped: async () => {},
+      },
+      (r) => ready.push(r),
+    )
+    expect(opened).toBe(false)
+    expect(ready[0]!.opened).toBe(false)
+  })
+
+  it('hands the caller\'s error reporter to the server', async () => {
+    const seen: Error[] = []
+    let given: ((e: Error) => void) | undefined
+    await serveStats(
+      {
+        jobsDb: db,
+        open: false,
+        onError: (e) => seen.push(e),
+        start: async (o) => ((given = o?.onError), fakeServer().server),
+        untilStopped: async () => {},
+      },
+      () => {},
+    )
+    given?.(new Error('boom'))
+    expect(seen.map((e) => e.message)).toEqual(['boom'])
+  })
+
+  it('refuses a --since it cannot read before starting anything', async () => {
+    let started = false
+    await expect(
+      serveStats({ jobsDb: db, since: 'yesterday-ish', start: async () => ((started = true), fakeServer().server) }, () => {}),
+    ).rejects.toThrow(/since/i)
+    expect(started).toBe(false)
   })
 })

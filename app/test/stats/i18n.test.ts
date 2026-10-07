@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 // @ts-expect-error plain ESM script without types
 import { embedTranslations, render } from '../../scripts/stats-i18n.mjs'
-import { NOTES, PHRASES } from '../../src/stats/i18n.js'
+import { ALL_NOTES, ALL_PHRASES, ENGLISH, NOTES, PHRASES, negotiate, percent, ruleText, type StatsLanguage } from '../../src/stats/i18n.js'
 import { renderPot } from '../../src/stats/pot.js'
 import { STATS_TRANSLATIONS } from '../../src/stats/translations-data.js'
 
@@ -35,7 +35,7 @@ describe('the stats template', () => {
   // what translators get. A string added to one and not the other is a string
   // nobody can translate.
   it('is current with the phrases in code', () => {
-    expect(read('stats.pot')).toBe(renderPot(PHRASES, NOTES))
+    expect(read('stats.pot')).toBe(renderPot(ALL_PHRASES, ALL_NOTES))
   })
 
   it('names each string by its key and carries the note for translators', () => {
@@ -100,6 +100,63 @@ describe('the embedded translations', () => {
 
   it('carry the whole Turkish page', () => {
     const tr = STATS_TRANSLATIONS.find((l) => l.tag === 'tr')
-    expect(Object.keys(tr?.phrases ?? {}).sort()).toEqual(Object.keys(PHRASES).sort())
+    expect(Object.keys(tr?.phrases ?? {}).sort()).toEqual(Object.keys(ALL_PHRASES).sort())
+  })
+})
+
+describe('rule names in the template', () => {
+  it('carry a name and a description for every finding key, with a note', () => {
+    const pot = renderPot(ALL_PHRASES, ALL_NOTES)
+    expect(pot).toContain('msgctxt "rule:ai:register"\nmsgid "Tone and formality (AI)"')
+    expect(pot).toContain('msgctxt "rule:ampersand:desc"')
+    expect(pot).toMatch(/#\. .*"ampersand".*\nmsgctxt "rule:ampersand"/)
+  })
+})
+
+describe('ruleText', () => {
+  const tr: StatsLanguage = { tag: 'tr', phrases: { 'rule:ampersand': 'Ve işareti' } }
+
+  it('takes the translation when there is one and the English otherwise', () => {
+    expect(ruleText('ampersand', tr).name).toBe('Ve işareti')
+    expect(ruleText('ampersand', tr).description).toMatch(/conjunction/)
+  })
+
+  it('shows a key with no label as itself, so the legend still adds up', () => {
+    expect(ruleText('retired-rule', ENGLISH)).toEqual({ name: 'retired-rule', description: '' })
+  })
+})
+
+describe('negotiate', () => {
+  const langs: StatsLanguage[] = [
+    { tag: 'tr', phrases: {} },
+    { tag: 'pt-BR', phrases: {} },
+  ]
+
+  it('matches a regional tag to the language by its primary subtag', () => {
+    expect(negotiate('tr-TR,tr;q=0.9,en;q=0.8', langs).tag).toBe('tr')
+  })
+
+  it('follows q weights rather than order', () => {
+    expect(negotiate('en;q=0.5,tr;q=0.9', langs).tag).toBe('tr')
+  })
+
+  it('prefers an exact regional match', () => {
+    expect(negotiate('pt-br', langs).tag).toBe('pt-BR')
+  })
+
+  it('falls back to English for a missing header or nothing it carries', () => {
+    expect(negotiate(undefined, langs)).toBe(ENGLISH)
+    expect(negotiate('ja,ko;q=0.5', langs)).toBe(ENGLISH)
+  })
+
+  it('ignores a language the reader refused with q=0', () => {
+    expect(negotiate('tr;q=0,en', langs)).toBe(ENGLISH)
+  })
+})
+
+describe('percent', () => {
+  it('follows the language, which puts the sign first in Turkish', () => {
+    expect(percent(0.12, ENGLISH)).toBe('12%')
+    expect(percent(0.12, { tag: 'tr', phrases: {} })).toBe('%12')
   })
 })

@@ -177,3 +177,455 @@ msgstr ""
 msgctxt "themeDark"
 msgid "Dark"
 msgstr ""
+
+msgctxt "navOverview"
+msgid "Overview"
+msgstr ""
+
+msgctxt "navReviews"
+msgid "Reviews"
+msgstr ""
+
+msgctxt "navTranslation"
+msgid "Translation"
+msgstr ""
+
+msgctxt "navProjects"
+msgid "Projects"
+msgstr ""
+
+msgctxt "navMethod"
+msgid "Method"
+msgstr ""
+
+msgctxt "rangeLabel"
+msgid "Time range"
+msgstr ""
+
+#. A button choosing the time range the page covers.
+msgctxt "range30d"
+msgid "30 days"
+msgstr ""
+
+msgctxt "range90d"
+msgid "90 days"
+msgstr ""
+
+msgctxt "range1y"
+msgid "1 year"
+msgstr ""
+
+#. A button: count everything ever recorded.
+msgctxt "rangeAll"
+msgid "All time"
+msgstr ""
+
+msgctxt "language"
+msgid "Language"
+msgstr ""
+
+#. A context line under a big figure. {n} is a formatted number. Keep {n} as it is.
+msgctxt "inLast30"
+msgid "{n} in the last 30 days"
+msgstr ""
+
+#. {n} is the number 1. Keep {n} as it is.
+msgctxt "runningOne"
+msgid "{n} review in progress, not counted until it finishes."
+msgstr ""
+
+#. {n} is a number above 1. Keep {n} as it is.
+msgctxt "runningMany"
+msgid "{n} reviews in progress, not counted until they finish."
+msgstr ""
+
+msgctxt "busy"
+msgid "The job store is busy. Showing the last numbers and trying again."
+msgstr ""
+
+msgctxt "activityHeading"
+msgid "Review activity, last 12 months"
+msgstr ""
+
+msgctxt "activityLess"
+msgid "Less"
+msgstr ""
+
+msgctxt "activityMore"
+msgid "More"
+msgstr ""
+
+msgctxt "flagsRule"
+msgid "Rule checks"
+msgstr ""
+
+msgctxt "flagsAi"
+msgid "AI review"
+msgstr ""
+
+msgctxt "flagsProcess"
+msgid "Not reviewed"
+msgstr ""
+
+msgctxt "flagsOther"
+msgid "Other"
+msgstr ""
+
+msgctxt "flagsShareNote"
+msgid "Shares of all flags. One entry can carry several flags, so these add up to more than the flagged count."
+msgstr ""
+
+#. In a tooltip. {n} is a percentage such as "12%". Keep {n} as it is.
+msgctxt "flagShare"
+msgid "{n} of all flags"
+msgstr ""
+
+msgctxt "turnaroundHeading"
+msgid "How long reviews take"
+msgstr ""
+
+#. A bar label in a chart of how long reviews take.
+msgctxt "bucket0"
+msgid "under 1 min"
+msgstr ""
+
+msgctxt "bucket1"
+msgid "1–5 min"
+msgstr ""
+
+msgctxt "bucket2"
+msgid "5–15 min"
+msgstr ""
+
+msgctxt "bucket3"
+msgid "15–60 min"
+msgstr ""
+
+msgctxt "bucket4"
+msgid "1–4 h"
+msgstr ""
+
+msgctxt "bucket5"
+msgid "over 4 h"
+msgstr ""
+
+#. {n} is the number of projects. Keep {n} as it is.
+msgctxt "showAll"
+msgid "Show all {n} projects"
+msgstr ""
+
+msgctxt "filterProjects"
+msgid "Filter projects"
+msgstr ""
+
+msgctxt "noTranslate"
+msgid "No translate runs in this range."
+msgstr ""
+
+msgctxt "shareImage"
+msgid "Download share image"
+msgstr ""
+
+#. The footer of an image people post on social media and forums.
+msgctxt "shareTagline"
+msgid "WordPress translation review with polyglots"
+msgstr ""
+
+msgctxt "shareTop"
+msgid "Top projects"
+msgstr ""
+
+msgctxt "methodHeading"
+msgid "How these numbers are made"
+msgstr ""
+
+msgctxt "methodEntries"
+msgid "An entry is one translatable string. A submission is one review run over one .po file. Only reviews that finished are counted: a review stopped part way has no honest totals yet."
+msgstr ""
+
+msgctxt "methodSplit"
+msgid "Rule checks are mechanical: a placeholder is either missing or it is not. AI findings are a model’s judgement about meaning, tone and fluency, and deserve a second look before anyone acts on them."
+msgstr ""
+
+msgctxt "methodTurnaround"
+msgid "Turnaround runs from the start of a review to its end, including any time it was stopped and resumed. The median is shown because one overnight run would swamp an average."
+msgstr ""
+
+msgctxt "methodDays"
+msgid "Days on the activity map are in local time. Weeks start on Monday and are counted in UTC."
+msgstr ""
+
+#. A promise to the contributors who read this page. Keep it as firm as the English.
+msgctxt "methodNoRanking"
+msgid "This page never ranks contributors, and it never will."
+msgstr ""
+
+#. The name of a check ("placeholder") in the legend of "What gets flagged". Sentence case.
+msgctxt "rule:placeholder"
+msgid "Placeholder missing or added"
+msgstr ""
+
+#. One line explaining the check "placeholder", shown in a tooltip.
+msgctxt "rule:placeholder:desc"
+msgid "A placeholder such as %s or {name} in the source is missing from the translation, or one was added."
+msgstr ""
+
+#. The name of a check ("html") in the legend of "What gets flagged". Sentence case.
+msgctxt "rule:html"
+msgid "HTML tags differ"
+msgstr ""
+
+#. One line explaining the check "html", shown in a tooltip.
+msgctxt "rule:html:desc"
+msgid "The translation has different HTML tags from the source."
+msgstr ""
+
+#. The name of a check ("plural-count") in the legend of "What gets flagged". Sentence case.
+msgctxt "rule:plural-count"
+msgid "Wrong number of plural forms"
+msgstr ""
+
+#. One line explaining the check "plural-count", shown in a tooltip.
+msgctxt "rule:plural-count:desc"
+msgid "The translation fills a different number of plural forms than the language has."
+msgstr ""
+
+#. The name of a check ("whitespace") in the legend of "What gets flagged". Sentence case.
+msgctxt "rule:whitespace"
+msgid "Leading or trailing space"
+msgstr ""
+
+#. One line explaining the check "whitespace", shown in a tooltip.
+msgctxt "rule:whitespace:desc"
+msgid "Spaces or line breaks at the start or end differ from the source."
+msgstr ""
+
+#. The name of a check ("untranslated") in the legend of "What gets flagged". Sentence case.
+msgctxt "rule:untranslated"
+msgid "Left in English"
+msgstr ""
+
+#. One line explaining the check "untranslated", shown in a tooltip.
+msgctxt "rule:untranslated:desc"
+msgid "The translation is identical to the English source."
+msgstr ""
+
+#. The name of a check ("escaping") in the legend of "What gets flagged". Sentence case.
+msgctxt "rule:escaping"
+msgid "Escaped quotes differ"
+msgstr ""
+
+#. One line explaining the check "escaping", shown in a tooltip.
+msgctxt "rule:escaping:desc"
+msgid "The source and translation escape quotes differently, so a backslash may show on screen."
+msgstr ""
+
+#. The name of a check ("punctuation") in the legend of "What gets flagged". Sentence case.
+msgctxt "rule:punctuation"
+msgid "Ending punctuation differs"
+msgstr ""
+
+#. One line explaining the check "punctuation", shown in a tooltip.
+msgctxt "rule:punctuation:desc"
+msgid "A colon, ellipsis or full stop that ends the source is missing from the translation, or was added."
+msgstr ""
+
+#. The name of a check ("line-breaks") in the legend of "What gets flagged". Sentence case.
+msgctxt "rule:line-breaks"
+msgid "Line breaks differ"
+msgstr ""
+
+#. One line explaining the check "line-breaks", shown in a tooltip.
+msgctxt "rule:line-breaks:desc"
+msgid "The translation has a different number of line breaks."
+msgstr ""
+
+#. The name of a check ("ampersand") in the legend of "What gets flagged". Sentence case.
+msgctxt "rule:ampersand"
+msgid "Ampersand written as a word"
+msgstr ""
+
+#. One line explaining the check "ampersand", shown in a tooltip.
+msgctxt "rule:ampersand:desc"
+msgid "The translation keeps “&” where the language writes the conjunction as a word."
+msgstr ""
+
+#. The name of a check ("number-format") in the legend of "What gets flagged". Sentence case.
+msgctxt "rule:number-format"
+msgid "Number or percent format"
+msgstr ""
+
+#. One line explaining the check "number-format", shown in a tooltip.
+msgctxt "rule:number-format:desc"
+msgid "A number or percent sign is written the English way rather than the language’s."
+msgstr ""
+
+#. The name of a check ("title-case") in the legend of "What gets flagged". Sentence case.
+msgctxt "rule:title-case"
+msgid "Title case"
+msgstr ""
+
+#. One line explaining the check "title-case", shown in a tooltip.
+msgctxt "rule:title-case:desc"
+msgid "Words are capitalised mid-sentence, usually copied from English headline style."
+msgstr ""
+
+#. The name of a check ("glossary") in the legend of "What gets flagged". Sentence case.
+msgctxt "rule:glossary"
+msgid "Glossary term not used"
+msgstr ""
+
+#. One line explaining the check "glossary", shown in a tooltip.
+msgctxt "rule:glossary:desc"
+msgid "A term from the locale glossary is translated differently."
+msgstr ""
+
+#. The name of a check ("apostrophe") in the legend of "What gets flagged". Sentence case.
+msgctxt "rule:apostrophe"
+msgid "Missing apostrophe before a suffix"
+msgstr ""
+
+#. One line explaining the check "apostrophe", shown in a tooltip.
+msgctxt "rule:apostrophe:desc"
+msgid "A proper noun takes a suffix without the apostrophe the language requires."
+msgstr ""
+
+#. The name of a check ("inconsistent") in the legend of "What gets flagged". Sentence case.
+msgctxt "rule:inconsistent"
+msgid "Inconsistent within the file"
+msgstr ""
+
+#. One line explaining the check "inconsistent", shown in a tooltip.
+msgctxt "rule:inconsistent:desc"
+msgid "The same English string is translated in different ways in one file."
+msgstr ""
+
+#. The name of a check ("tm-conflict") in the legend of "What gets flagged". Sentence case.
+msgctxt "rule:tm-conflict"
+msgid "Differs from approved translations"
+msgstr ""
+
+#. One line explaining the check "tm-conflict", shown in a tooltip.
+msgctxt "rule:tm-conflict:desc"
+msgid "The translation memory holds a different approved translation of the same string."
+msgstr ""
+
+#. The name of a check ("control") in the legend of "What gets flagged". Sentence case.
+msgctxt "rule:control"
+msgid "Setting translated as text"
+msgstr ""
+
+#. One line explaining the check "control", shown in a tooltip.
+msgctxt "rule:control:desc"
+msgid "A value WordPress reads as a setting, such as “on” or “ltr”, was translated as if it were text."
+msgstr ""
+
+#. The name of a check ("custom") in the legend of "What gets flagged". Sentence case.
+msgctxt "rule:custom"
+msgid "Locale rule"
+msgstr ""
+
+#. One line explaining the check "custom", shown in a tooltip.
+msgctxt "rule:custom:desc"
+msgid "A mistake or pattern from the locale’s own rules file."
+msgstr ""
+
+#. The name of a check ("repaired") in the legend of "What gets flagged". Sentence case.
+msgctxt "rule:repaired"
+msgid "Repaired automatically"
+msgstr ""
+
+#. One line explaining the check "repaired", shown in a tooltip.
+msgctxt "rule:repaired:desc"
+msgid "Whitespace or a locale fix pattern was corrected mechanically before review."
+msgstr ""
+
+#. The name of a check ("ai:meaning") in the legend of "What gets flagged". Sentence case.
+msgctxt "rule:ai:meaning"
+msgid "Meaning (AI)"
+msgstr ""
+
+#. One line explaining the check "ai:meaning", shown in a tooltip.
+msgctxt "rule:ai:meaning:desc"
+msgid "The model judged that the translation says something different from the source."
+msgstr ""
+
+#. The name of a check ("ai:glossary") in the legend of "What gets flagged". Sentence case.
+msgctxt "rule:ai:glossary"
+msgid "Glossary (AI)"
+msgstr ""
+
+#. One line explaining the check "ai:glossary", shown in a tooltip.
+msgctxt "rule:ai:glossary:desc"
+msgid "The model judged that a glossary term was not followed."
+msgstr ""
+
+#. The name of a check ("ai:title-case") in the legend of "What gets flagged". Sentence case.
+msgctxt "rule:ai:title-case"
+msgid "Capitalisation (AI)"
+msgstr ""
+
+#. One line explaining the check "ai:title-case", shown in a tooltip.
+msgctxt "rule:ai:title-case:desc"
+msgid "The model judged that words are capitalised where the language would not."
+msgstr ""
+
+#. The name of a check ("ai:register") in the legend of "What gets flagged". Sentence case.
+msgctxt "rule:ai:register"
+msgid "Tone and formality (AI)"
+msgstr ""
+
+#. One line explaining the check "ai:register", shown in a tooltip.
+msgctxt "rule:ai:register:desc"
+msgid "The model judged the tone too casual, too stiff, or inconsistent in how it addresses the reader."
+msgstr ""
+
+#. The name of a check ("ai:fluency") in the legend of "What gets flagged". Sentence case.
+msgctxt "rule:ai:fluency"
+msgid "Fluency (AI)"
+msgstr ""
+
+#. One line explaining the check "ai:fluency", shown in a tooltip.
+msgctxt "rule:ai:fluency:desc"
+msgid "The model judged the wording correct but unnatural, often a word-for-word calque."
+msgstr ""
+
+#. The name of a check ("ai:placeholder") in the legend of "What gets flagged". Sentence case.
+msgctxt "rule:ai:placeholder"
+msgid "Placeholder (AI)"
+msgstr ""
+
+#. One line explaining the check "ai:placeholder", shown in a tooltip.
+msgctxt "rule:ai:placeholder:desc"
+msgid "The model judged that a placeholder is misused or misplaced."
+msgstr ""
+
+#. The name of a check ("ai:other") in the legend of "What gets flagged". Sentence case.
+msgctxt "rule:ai:other"
+msgid "Other (AI)"
+msgstr ""
+
+#. One line explaining the check "ai:other", shown in a tooltip.
+msgctxt "rule:ai:other:desc"
+msgid "The model flagged a problem that fits none of the other categories."
+msgstr ""
+
+#. The name of a check ("fix-rejected") in the legend of "What gets flagged". Sentence case.
+msgctxt "rule:fix-rejected"
+msgid "AI fix rejected"
+msgstr ""
+
+#. One line explaining the check "fix-rejected", shown in a tooltip.
+msgctxt "rule:fix-rejected:desc"
+msgid "The model proposed a fix that failed the mechanical checks, so it was not applied."
+msgstr ""
+
+#. The name of a check ("unreviewed") in the legend of "What gets flagged". Sentence case.
+msgctxt "rule:unreviewed"
+msgid "Could not be reviewed"
+msgstr ""
+
+#. One line explaining the check "unreviewed", shown in a tooltip.
+msgctxt "rule:unreviewed:desc"
+msgid "The automated review failed for this entry, so it was set aside for a human."
+msgstr ""

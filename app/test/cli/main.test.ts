@@ -1672,6 +1672,71 @@ describe('stats', () => {
     expect(h.stdout.text).toMatch(/akismet\s+300 entries\s+10% flagged/)
     expect(h.stdout.text.trimEnd().split('\n').at(-1)).toBe('› Wrote /tmp/s.html')
   })
+
+  // A cron job or a pipe has no one to open a browser for and nothing to
+  // press Ctrl+C, so off a terminal it writes the file, as it always did.
+  it('writes the file rather than serving when stdout is not a terminal', async () => {
+    const h = harness()
+    let served = false
+    await h.run(['stats'], { writeStats: async () => result, serveStats: async () => void (served = true) })
+    expect(served).toBe(false)
+    expect(h.stdout.text).toContain('Wrote /tmp/s.html')
+  })
+
+  it('serves the page on a terminal, prints where, and says when it stopped', async () => {
+    const h = harness()
+    const calls: Array<{ open?: boolean; since?: string }> = []
+    let wrote = false
+    const code = await h.run(['stats', '--since', '2026-09-01'], {
+      stdoutTty: true,
+      env: { NO_COLOR: '1' },
+      writeStats: async () => ((wrote = true), result),
+      serveStats: async (opts, onReady) => {
+        calls.push({ ...(opts.open === undefined ? {} : { open: opts.open }), ...(opts.since ? { since: opts.since } : {}) })
+        const { file: _file, ...summary } = result
+        onReady({ url: 'http://127.0.0.1:5/tok/', opened: true, summary })
+      },
+    })
+    expect(code).toBe(0)
+    expect(wrote).toBe(false)
+    expect(calls).toEqual([{ open: true, since: '2026-09-01' }])
+    expect(h.stdout.text).toContain('Serving http://127.0.0.1:5/tok/')
+    expect(h.stdout.text).toContain('Opened in your browser. Ctrl+C to stop.')
+    expect(h.stdout.text.trimEnd().split('\n').at(-1)).toContain('Stopped')
+  })
+
+  // The TUI keeps the server silent; on the command line a failed request
+  // would otherwise leave no trace but a 500 in the browser.
+  it('writes server errors to stderr while serving', async () => {
+    const h = harness()
+    await h.run(['stats'], {
+      stdoutTty: true,
+      env: { NO_COLOR: '1' },
+      serveStats: async (opts) => opts.onError?.(new Error('no such table: run')),
+    })
+    expect(h.stderr.text).toContain('no such table: run')
+  })
+
+  it('passes --no-open through, for a machine where the browser is somewhere else', async () => {
+    const h = harness()
+    const calls: Array<boolean | undefined> = []
+    await h.run(['stats', '--no-open'], {
+      stdoutTty: true,
+      serveStats: async (opts) => void calls.push(opts.open),
+    })
+    expect(calls).toEqual([false])
+  })
+
+  it('writes the file with --out even on a terminal', async () => {
+    const h = harness()
+    let served = false
+    await h.run(['stats', '--out', '/tmp/s.html'], {
+      stdoutTty: true,
+      writeStats: async () => result,
+      serveStats: async () => void (served = true),
+    })
+    expect(served).toBe(false)
+  })
 })
 
 describe('NO_COLOR', () => {
