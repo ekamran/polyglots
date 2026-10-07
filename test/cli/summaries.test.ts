@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { stripVTControlCharacters } from 'node:util'
-import { reviewSummary, translateSummary } from '../../src/cli/summaries.js'
+import { fetchTally, reviewSummary, translateSummary } from '../../src/cli/summaries.js'
 import { reviewSummaryOf } from '../tui/helpers.js'
 import type { ReviewSummary } from '../../src/types.js'
 import { createPainter, plainPainter } from '../../src/ui/paint.js'
@@ -84,5 +84,16 @@ describe('reviewSummary', () => {
     const s = reviewed({ problems: 2 }, 'p.po')
     const painted = reviewSummary(createPainter({ isTTY: true }, {}), s, 'msg')
     expect(painted.map((l) => stripVTControlCharacters(l))).toEqual(reviewSummary(plainPainter, s, 'msg'))
+  })
+})
+
+describe('fetchTally', () => {
+  it('frames the counts and titles by the worst outcome', () => {
+    expect(fetchTally(plainPainter, { done: 3, failed: 0, skipped: 1, stopped: 0 })[0]).toContain('✓ Fetched')
+    expect(fetchTally(plainPainter, { done: 2, failed: 1, skipped: 0, stopped: 0 })[0]).toContain('✗ Fetched with failures')
+    const stopped = fetchTally(plainPainter, { done: 1, failed: 0, skipped: 0, stopped: 2 })
+    expect(stopped[0]).toContain('! Stopped')
+    expect(stopped.join('\n')).toMatch(/stopped\s+2/)
+    expect(stopped.at(-1)).toBe('› Run the same list again to carry on.')
   })
 })

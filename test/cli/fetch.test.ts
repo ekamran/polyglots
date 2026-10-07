@@ -221,7 +221,10 @@ describe('fetch', () => {
       },
     })
     expect(r.code).toBe(1)
-    expect(r.stdout).toContain('1 done, 2 failed, 1 skipped')
+    expect(r.stdout).toContain('✗ Fetched with failures')
+    expect(r.stdout).toMatch(/done\s+1/)
+    expect(r.stdout).toMatch(/failed\s+2/)
+    expect(r.stdout).toMatch(/skipped\s+1/)
     expect(r.stdout).toMatch(/boom.*quota exhausted/)
     expect(r.stdout).toMatch(/broken.*export answered 500/)
   })
