@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { stripVTControlCharacters } from 'node:util'
+import { createPainter } from '../../src/ui/paint.js'
 import type { TranslateEvent } from '../../src/commands/translate.js'
 import { applyEvent, createProgressReporter, formatProgress, initialProgress, noticeFor, createReviewProgressReporter, estimateRemainingMs, formatDuration, renderBar } from '../../src/cli/progress.js'
 
@@ -504,5 +506,15 @@ describe('formatDuration', () => {
   it('rounds rather than truncating', () => {
     expect(formatDuration(89_000)).toBe('1m')
     expect(formatDuration(91_000)).toBe('2m')
+  })
+})
+
+describe('painted progress', () => {
+  it('colours the bar on a painted stream and leaves the text identical', () => {
+    const painter = createPainter({ isTTY: true }, {})
+    const state = { ...initialProgress, done: 3, pending: 10 }
+    const painted = formatProgress(state, 0, painter)
+    expect(painted).toMatch(/\x1b\[/)
+    expect(stripVTControlCharacters(painted)).toBe(formatProgress(state, 0))
   })
 })

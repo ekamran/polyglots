@@ -120,16 +120,31 @@ describe('per-stream colour', () => {
     })
     expect(code).toBe(0)
     expect(h.stdout.text).not.toMatch(/\x1b\[/)
+    expect(h.stderr.text).toMatch(/\x1b\[/)
   })
 })
 
 describe('translate summary output', () => {
+  it('prints a header on stderr naming the file, locale and reviewer', async () => {
+    const h = harness()
+    await h.run(['translate', file, '--draft-engine', 'deepl'], { translate: fakeTranslate().fn })
+    expect(h.stderr.text).toContain(`polyglots translate  ${file}`)
+    expect(h.stderr.text).toMatch(/locale\s+tr/)
+    expect(h.stderr.text).toMatch(/draft\s+deepl/)
+    expect(h.stderr.text).toMatch(/review\s+claude/)
+  })
+
   it('prints the contract summary line on stdout and exits 0', async () => {
     const h = harness()
     const translate = fakeTranslate()
     const code = await h.run(['translate', file], { translate: translate.fn })
     expect(code).toBe(0)
-    expect(h.stdout.text).toBe(`Done. 6 translated, 1 fuzzy, 1 from TM, 0 skipped. Open ${file} in PoEdit to review.\n`)
+    expect(h.stdout.text).toContain('✓ Done')
+    expect(h.stdout.text).toMatch(/translated\s+6/)
+    expect(h.stdout.text).toMatch(/fuzzy\s+1  check before upload/)
+    expect(h.stdout.text).toMatch(/from TM\s+1/)
+    expect(h.stdout.text).toMatch(/skipped\s+0/)
+    expect(h.stdout.text).toContain(`› Open ${file} in PoEdit to review.`)
     expect(h.stderr.text).toContain('▰▰▰▰▰▰▰▰▰▰ 7/7  batch 1/1  fuzzy 1')
   })
 
@@ -156,7 +171,9 @@ describe('translate summary output', () => {
     const code = await h.run(['translate', file, '--dry-run'], { translate: translate.fn })
     expect(code).toBe(0)
     expect(translate.calls[0]?.dryRun).toBe(true)
-    expect(h.stdout.text).toBe('Dry run. 6 translated, 1 fuzzy, 1 from TM, 0 skipped. Nothing was written.\n')
+    expect(h.stdout.text).toContain('• Dry run')
+    expect(h.stdout.text).toMatch(/translated\s+6/)
+    expect(h.stdout.text).toContain('› Nothing was written.')
     expect(h.stdout.text).not.toContain('PoEdit')
   })
 
@@ -179,10 +196,9 @@ describe('translate summary output', () => {
     const code = await h.run(['translate', file, second], { translate: translate.fn })
     expect(code).toBe(0)
     expect(translate.calls.map((c) => c.file)).toEqual([file, second])
-    const lines = h.stdout.text.trim().split('\n')
-    expect(lines).toHaveLength(2)
-    expect(lines[0]).toContain(`Open ${file} in PoEdit`)
-    expect(lines[1]).toContain(`Open ${second} in PoEdit`)
+    const lines = h.stdout.text.trim().split('\n').filter((l) => l.startsWith('›'))
+    expect(h.stdout.text.match(/✓ Done/g)).toHaveLength(2)
+    expect(lines).toEqual([`› Open ${file} in PoEdit to review.`, `› Open ${second} in PoEdit to review.`])
   })
 
   it('reports a file that throws, continues with the next file and exits 1 at the end', async () => {
@@ -194,9 +210,9 @@ describe('translate summary output', () => {
     expect(code).toBe(1)
     expect(translate.calls.map((c) => c.file)).toEqual([file, second])
     expect(h.stderr.text).toContain(`✗ ${file}: bad po syntax`)
-    const lines = h.stdout.text.trim().split('\n')
-    expect(lines).toHaveLength(1)
-    expect(lines[0]).toContain(`Open ${second} in PoEdit`)
+    expect(h.stdout.text.match(/✓ Done/g)).toHaveLength(1)
+    expect(h.stdout.text).toContain(`› Open ${second} in PoEdit to review.`)
+    expect(h.stdout.text).not.toContain(`Open ${file} in PoEdit`)
   })
 
   it('exits 3 with a Stopped summary on a quota stop and does not touch later files', async () => {
@@ -207,8 +223,10 @@ describe('translate summary output', () => {
     const code = await h.run(['translate', file, second], { translate: translate.fn })
     expect(code).toBe(3)
     expect(translate.calls).toHaveLength(1)
-    expect(h.stdout.text).not.toContain('Done.')
-    expect(h.stdout.text).toMatch(/^Stopped\. 2 translated, 0 fuzzy, 1 from TM, 0 skipped\./)
+    expect(h.stdout.text).not.toContain('✓ Done')
+    expect(h.stdout.text).toContain('! Stopped')
+    expect(h.stdout.text).toMatch(/translated\s+2/)
+    expect(h.stdout.text).toContain('› Re-run the same command to resume.')
     expect(h.stderr.text).toContain('Stopped: DeepL quota exceeded')
   })
 })

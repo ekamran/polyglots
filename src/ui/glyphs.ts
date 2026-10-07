@@ -14,7 +14,9 @@ export interface GlyphSet {
 }
 
 // The bar keeps the parallelograms progress.ts has always drawn, moved here so
-// the CLI and the TUI draw one bar.
+// the CLI and the TUI draw one bar. Parallelograms rather than hashes in
+// brackets: the filled and empty cells are the same shape and width, so the
+// bar reads as one object at a glance instead of as punctuation.
 export const UNICODE_GLYPHS: GlyphSet = {
   ok: '✓',
   fail: '✗',

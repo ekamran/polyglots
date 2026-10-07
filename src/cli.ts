@@ -36,7 +36,7 @@ import {
 import { createProgressReporter, createReviewProgressReporter } from './cli/progress.js'
 import { loadPo } from './po/po-file.js'
 import { buildReport } from './review/message.js'
-import { agentBinOverride, batchAdvice } from './agent/providers.js'
+import { agentBinOverride, batchAdvice, configuredModel } from './agent/providers.js'
 import { discoverAgents, type AgentStatus } from './agent/discover.js'
 import {
   checkLocalModel,
@@ -53,7 +53,8 @@ import {
 } from './draft/discover.js'
 import { localModelId, resolveLocalTarget, type LocalTarget } from './draft/local-chat.js'
 import { createPainter, type Painter } from './ui/paint.js'
-import { errorLine, warnLine } from './ui/messages.js'
+import { errorLine, header, hintLine, warnLine } from './ui/messages.js'
+import { translateSummary } from './cli/summaries.js'
 import { LOCAL_REVIEW_NOTICE, localBatchAdvice, localReviewBatchSize } from './review/local.js'
 import { engineId } from './jobs/hash.js'
 import type { RunTuiOptions } from './tui/index.js'
@@ -195,11 +196,19 @@ async function readSecretFromStdin(streams: CliStreams, name: string): Promise<s
   }
 }
 
-function summaryLine(s: TranslateSummary, dryRun: boolean): string {
-  const counts = `${s.translated} translated, ${s.fuzzy} fuzzy, ${s.fromTm} from TM, ${s.skipped} skipped.`
-  if (s.stopped) return `Stopped. ${counts} ${dryRun ? 'Nothing was written.' : 'Re-run the same command to resume.'}`
-  if (dryRun) return `Dry run. ${counts} Nothing was written.`
-  return `Done. ${counts} Open ${s.file} in PoEdit to review.`
+// What the header names as the reviewer: provider and, when known, model,
+// the same id the verdict cache keys on, so the line says whose judgement the
+// run is about to record.
+function reviewerLabel(config: PolyglotsConfig, model: string | undefined): string {
+  if (config.reviewProvider === 'local') {
+    try {
+      return localModelId(resolveLocalTarget(config, model))
+    } catch {
+      return 'local (no model chosen)'
+    }
+  }
+  const chosen = model ?? configuredModel(config.reviewProvider)
+  return chosen ? `${config.reviewProvider}:${chosen}` : config.reviewProvider
 }
 
 async function countTranslated(files: string[]): Promise<number> {
@@ -281,7 +290,12 @@ async function runTranslate(cli: Cli, patterns: string[], flags: TranslateFlags)
   // One unreadable file must not abort the rest of a multi-file run; report it and move on.
   let failed = 0
   for (const file of files) {
-    const report = createProgressReporter(cli.streams.stderr)
+    for (const line of header(cli.ui.err, 'translate', file, [
+      ['locale', locale],
+      ['draft', draftEngine],
+      ['review', reviewerLabel(config, flags.model)],
+    ])) cli.err(line)
+    const report = createProgressReporter(cli.streams.stderr, cli.ui.err)
     let summary: TranslateSummary
     try {
       summary = await cli.translate({
@@ -305,10 +319,10 @@ async function runTranslate(cli: Cli, patterns: string[], flags: TranslateFlags)
       continue
     }
     report.finish()
-    cli.out(summaryLine(summary, dryRun))
+    for (const line of translateSummary(cli.ui.out, summary, dryRun)) cli.out(line)
     if (summary.stopped) {
       cli.err(`Stopped: ${summary.stopped}`)
-      cli.err('Already-written entries are kept; re-run the same command to resume.')
+      cli.err(hintLine(cli.ui.err, 'Already-written entries are kept; re-run the same command to resume.'))
       return EXIT_STOPPED
     }
   }

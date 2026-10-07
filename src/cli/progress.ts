@@ -1,5 +1,7 @@
 import type { TranslateEvent } from '../commands/translate.js'
 import type { ReviewEvent } from '../types.js'
+import { UNICODE_GLYPHS, type GlyphSet } from '../ui/glyphs.js'
+import { plainPainter, type Painter } from '../ui/paint.js'
 
 export type BatchPhase = 'drafting' | 'reviewing'
 
@@ -38,20 +40,14 @@ export const initialProgress: ProgressState = {
 
 const BAR_WIDTH = 10
 
-// Parallelograms rather than hashes in brackets: the filled and empty cells are
-// the same shape and width, so the bar reads as one object at a glance instead
-// of as punctuation.
-const FILLED = '▰'
-const EMPTY = '▱'
-
 // The one bar every surface draws. A total of zero means there was nothing to
 // do, which is finished, not stalled; and the last cell stays empty until the
 // work really is done, because rounding fills it several percent early and a
 // full bar on a run with entries left reads as a hang.
-export function renderBar(done: number, total: number, width: number): string {
+export function renderBar(done: number, total: number, width: number, glyphs: GlyphSet = UNICODE_GLYPHS): string {
   const ratio = total === 0 ? 1 : Math.min(1, Math.max(0, done / total))
   const filled = ratio === 1 ? width : Math.min(width - 1, Math.round(ratio * width))
-  return FILLED.repeat(filled) + EMPTY.repeat(width - filled)
+  return glyphs.bar.filled.repeat(filled) + glyphs.bar.empty.repeat(width - filled)
 }
 
 function closeBatch(state: ProgressState, at: number): Partial<ProgressState> {
@@ -111,10 +107,12 @@ export function applyEvent(state: ProgressState, event: TranslateEvent): Progres
   }
 }
 
-export function formatProgress(state: ProgressState, now: number = Date.now()): string {
-  const parts = [`${renderBar(state.done, state.pending, BAR_WIDTH)} ${state.done}/${state.pending}`]
+// Colour marks the three things worth finding on the line: the bar, a fuzzy
+// count that needs a human, and the estimate, muted because it is a guess.
+export function formatProgress(state: ProgressState, now: number = Date.now(), p: Painter = plainPainter): string {
+  const parts = [`${p.paint('accent', renderBar(state.done, state.pending, BAR_WIDTH, p.glyphs))} ${state.done}/${state.pending}`]
   if (state.batch) {
-    parts.push(`batch ${state.batch.index}/${state.batch.of}`, `fuzzy ${state.fuzzy}`)
+    parts.push(`batch ${state.batch.index}/${state.batch.of}`, `fuzzy ${state.fuzzy > 0 ? p.paint('warn', String(state.fuzzy)) : state.fuzzy}`)
   }
   if (state.phase) {
     parts.push(`${state.phase.name} ${Math.max(0, Math.round((now - state.phase.since) / 1000))}s`)
@@ -132,7 +130,7 @@ export function formatProgress(state: ProgressState, now: number = Date.now()): 
   }
   const remaining = estimateRemainingMs(state.batchDurations, (state.batch?.of ?? 0) - state.batchesDone, state.batchSize)
   if (remaining !== undefined) {
-    parts.push(`~${formatDuration(remaining)} left, done by ${formatFinishTime(remaining, now)}`)
+    parts.push(p.paint('muted', `~${formatDuration(remaining)} left, done by ${formatFinishTime(remaining, now)}`))
   }
   return parts.join('  ')
 }
@@ -184,7 +182,7 @@ export interface ProgressReporter {
 // it can never hold the process open.
 const TICK_MS = 1000
 
-export function createProgressReporter(stream: ProgressStream): ProgressReporter {
+export function createProgressReporter(stream: ProgressStream, p: Painter = plainPainter): ProgressReporter {
   let state = initialProgress
   let liveLine = false
   let ticker: NodeJS.Timeout | undefined
@@ -200,7 +198,7 @@ export function createProgressReporter(stream: ProgressStream): ProgressReporter
     if (!tty || ticker) return
     ticker = setInterval(() => {
       if (!state.phase) return
-      stream.write(`${CLEAR_LINE}${formatProgress(state)}`)
+      stream.write(`${CLEAR_LINE}${formatProgress(state, Date.now(), p)}`)
       liveLine = true
     }, TICK_MS)
     ticker.unref?.()
@@ -216,7 +214,7 @@ export function createProgressReporter(stream: ProgressStream): ProgressReporter
   const report = (event: TranslateEvent): void => {
     state = applyEvent(state, event)
     const notice = noticeFor(event, state)
-    const line = formatProgress(state)
+    const line = formatProgress(state, Date.now(), p)
 
     if (!tty) {
       if (notice) stream.write(`${notice}\n`)
@@ -282,7 +280,7 @@ export interface ReviewProgressReporter {
   finish(): void
 }
 
-export function createReviewProgressReporter(stream: ProgressStream): ReviewProgressReporter {
+export function createReviewProgressReporter(stream: ProgressStream, p: Painter = plainPainter): ReviewProgressReporter {
   let of = 0
   let index = 0
   let flagged = 0
@@ -340,7 +338,8 @@ export function createReviewProgressReporter(stream: ProgressStream): ReviewProg
     const total = skipped + of
     // `total || 1` because a total of zero means no batch has started yet,
     // which is an empty bar; renderBar reads zero as nothing to do, so full.
-    const base = `${renderBar(done, total || 1, BAR_WIDTH)} batch ${skipped + index}/${total}  flagged ${flagged}`
+    const bar = p.paint('accent', renderBar(done, total || 1, BAR_WIDTH, p.glyphs))
+    const base = `${bar} batch ${skipped + index}/${total}  flagged ${flagged > 0 ? p.paint('warn', String(flagged)) : flagged}`
     const parts = [base]
     if (inFlightSince !== undefined) {
       parts.push(`reviewing ${Math.max(0, Math.round((now - inFlightSince) / 1000))}s`)
@@ -357,7 +356,7 @@ export function createReviewProgressReporter(stream: ProgressStream): ReviewProg
     }
     const remaining = estimateRemainingMs(durations, of - done, batchSize)
     if (remaining !== undefined) {
-      parts.push(`~${formatDuration(remaining)} left, done by ${formatFinishTime(remaining, now)}`)
+      parts.push(p.paint('muted', `~${formatDuration(remaining)} left, done by ${formatFinishTime(remaining, now)}`))
     }
     return parts.join('  ')
   }
