@@ -19,6 +19,32 @@ SITE_DIR="$ROOT/website"
 DRY=""
 [ "${1:-}" = "--dry-run" ] && DRY="--dry-run"
 
+# rsync --delete and chown -R both act on REMOTE_PATH as a whole. Pointed one
+# level up, at the directory holding every site, they would delete and re-own every other site
+# on the host. So the path must be absolute, free of anything that climbs out
+# of it, and name the polyglots directory itself.
+case "$REMOTE_PATH" in
+  /*) ;;
+  *) echo "POLYGLOTS_DEPLOY_PATH must be absolute, got '$REMOTE_PATH'."; exit 1 ;;
+esac
+case "$REMOTE_PATH" in
+  *..*|*//*|*' '*) echo "POLYGLOTS_DEPLOY_PATH must not contain '..', '//' or spaces, got '$REMOTE_PATH'."; exit 1 ;;
+esac
+REMOTE_PATH="${REMOTE_PATH%/}/"
+case "$REMOTE_PATH" in
+  */polyglots/) ;;
+  *) echo "POLYGLOTS_DEPLOY_PATH must end in /polyglots/, got '$REMOTE_PATH'. Refusing to rsync --delete anywhere else."; exit 1 ;;
+esac
+# The host goes into rsync and ssh as a destination; anything that looks like
+# an option or carries a path or a command is a typo at best.
+case "$HOST" in
+  -*|*[!A-Za-z0-9._@-]*) echo "POLYGLOTS_DEPLOY_HOST looks wrong: '$HOST'."; exit 1 ;;
+esac
+
+case "$OWNER" in
+  *[!A-Za-z0-9._:-]*) echo "POLYGLOTS_DEPLOY_OWNER looks wrong: '$OWNER'."; exit 1 ;;
+esac
+
 # The site renders its terminal demos and command reference from app/src, which
 # needs the app's dependencies. This script never installs them: `npm ci` in
 # app/ runs `prepare`, which rebuilds app/dist, and a review or translate in
@@ -28,9 +54,18 @@ if [ ! -d "$ROOT/app/node_modules" ]; then
   exit 1
 fi
 
+COMMIT="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+echo "==> Deploying $COMMIT"
+# Not a refusal: a docs typo fixed and deployed before it is committed is a
+# normal thing to do. But the site then shows something no commit holds.
+if [ -n "$(git -C "$ROOT" status --porcelain -- website docs app/src 2>/dev/null)" ]; then
+  echo "    Warning: uncommitted changes in website/, docs/ or app/src/ will be deployed too."
+fi
+
 cd "$SITE_DIR"
 echo "==> Building"
 npm ci
+npm test
 npm run build
 
 # The pages agents and the app itself link to. A build that lost one of them
@@ -38,11 +73,15 @@ npm run build
 for f in index.html ai/index.html ai.txt llms.txt docs/antigravity/index.html docs/local-models/index.html; do
   [ -f "dist/$f" ] || { echo "dist/$f missing, aborting."; exit 1; }
 done
-# Every asset URL must carry the /polyglots base. One that does not works in
-# `astro preview` and 404s on the server, so it is cheaper to catch here.
-if grep -rqE '(src|href)="/(_astro|fonts)/' dist; then
-  echo "An asset URL is missing the /polyglots base, aborting:"
-  grep -rlE '(src|href)="/(_astro|fonts)/' dist
+# Every root-relative URL must carry the /polyglots base. One that does not
+# works in `astro preview` and 404s on the server, so it is cheaper to catch
+# here: attributes in HTML, url() in CSS, inline or in a stylesheet.
+BAD_ATTR='(src|href|srcset|content|action)="/([^/p]|p[^o]|$)|(src|href|srcset|content|action)="/(po[^l]|pol[^y]|poly[^g]|polyg[^l]|polygl[^o]|polyglo[^t]|polyglot[^s]|polyglots[^/"])'
+BAD_URL='url\(["'"'"']?/([^/p]|p[^o]|po[^l]|pol[^y]|poly[^g]|polyg[^l]|polygl[^o]|polyglo[^t]|polyglot[^s]|polyglots[^/])'
+if grep -rqE "$BAD_ATTR" --include='*.html' dist || grep -rqE "$BAD_URL" --include='*.html' --include='*.css' dist; then
+  echo "A root-relative URL is missing the /polyglots base, aborting:"
+  grep -rnoE "$BAD_ATTR" --include='*.html' dist | head
+  grep -rnoE "$BAD_URL" --include='*.html' --include='*.css' dist | head
   exit 1
 fi
 
@@ -63,4 +102,4 @@ else
   ssh "$HOST" "chown -R $OWNER '$REMOTE_PATH' && chmod -R u=rwX,go=rX '$REMOTE_PATH'"
 fi
 
-echo "==> Done: https://ada.tools/polyglots/"
+echo "==> Done: https://ada.tools/polyglots/ ($COMMIT)"
