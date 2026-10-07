@@ -19,7 +19,7 @@ import { watchKeys } from './cli/keys.js'
 import { createRunControl, type RunState } from './run-control.js'
 import { importTmx } from './commands/tm-import.js'
 import { translateFile, type TranslateSummary } from './commands/translate.js'
-import { DEFAULT_STATS_FILE, writeStats } from './commands/stats.js'
+import { DEFAULT_STATS_FILE, serveStats, writeStats } from './commands/stats.js'
 import { DEFAULT_CONFIG, isHttpUrl, loadConfig, loadSecrets, maskSecret, saveConfig, saveSecret } from './config.js'
 import {
   UsageError,
@@ -55,7 +55,7 @@ import { localModelId, resolveLocalTarget, type LocalTarget } from './draft/loca
 import { createPainter, type Painter } from './ui/paint.js'
 import { errorLine, header, hintLine, nextLine, okLine, warnLine } from './ui/messages.js'
 import { table } from './ui/layout.js'
-import { reviewSummary, statsSummary, translateSummary } from './cli/summaries.js'
+import { reviewSummary, statsServingSummary, statsSummary, translateSummary } from './cli/summaries.js'
 import { LOCAL_REVIEW_NOTICE, localBatchAdvice, localReviewBatchSize } from './review/local.js'
 import { engineId } from './jobs/hash.js'
 import type { RunTuiOptions } from './tui/index.js'
@@ -86,6 +86,7 @@ export interface CliDeps {
   reviewFile?: typeof reviewFile
   splitPo?: typeof splitPo
   writeStats?: typeof writeStats
+  serveStats?: typeof serveStats
   resolveProjects?: typeof resolveProjects
   fetchProjects?: typeof fetchProjects
   openEditor?: OpenEditor
@@ -108,6 +109,7 @@ interface Cli {
   reviewFile: typeof reviewFile
   splitPo: typeof splitPo
   writeStats: typeof writeStats
+  serveStats: typeof serveStats
   resolveProjects: typeof resolveProjects
   fetchProjects: typeof fetchProjects
   openEditor: OpenEditor
@@ -148,6 +150,7 @@ function createCli(deps: CliDeps): Cli {
     reviewFile: deps.reviewFile ?? reviewFile,
     splitPo: deps.splitPo ?? splitPo,
     writeStats: deps.writeStats ?? writeStats,
+    serveStats: deps.serveStats ?? serveStats,
     resolveProjects: deps.resolveProjects ?? resolveProjects,
     fetchProjects: deps.fetchProjects ?? fetchProjects,
     openEditor: deps.openEditor ?? openInEditor,
@@ -1035,18 +1038,27 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
 
   program
     .command('stats')
-    .description('Write review statistics to a self-contained HTML page')
-    .option('--out <file>', `Where to write it (default: ${DEFAULT_STATS_FILE})`)
+    .description('Open review statistics in the browser, or write them to a self-contained HTML page')
+    .option('--out <file>', `Write a standalone copy instead of serving (default off a terminal: ${DEFAULT_STATS_FILE})`)
     .option('--since <date>', 'Only count reviews started on or after this date, e.g. 2026-09-01')
-    .action(async (flags: { out?: string; since?: string }) => {
-      const result = await cli.writeStats({
-        ...(flags.out ? { out: flags.out } : {}),
-        ...(flags.since ? { since: flags.since } : {}),
+    .option('--no-open', 'Serve without opening the browser; the URL is printed either way')
+    .action(async (flags: { out?: string; since?: string; open: boolean }) => {
+      const since = flags.since ? { since: flags.since } : {}
+      // Off a terminal (cron, a pipe) there is no one to open a browser for
+      // and no Ctrl+C to stop a server, so it writes the file, as it did
+      // before the page was served. Scripts that relied on that keep working.
+      if (flags.out || cli.streams.stdout.isTTY !== true) {
+        const result = await cli.writeStats({ ...(flags.out ? { out: flags.out } : {}), ...since })
+        // Saying "nothing recorded yet" while the page holds real translate
+        // numbers would send the user to look at a page they think is empty, so
+        // the summary checks both before saying it.
+        for (const line of statsSummary(cli.ui.out, result)) cli.out(line)
+        return
+      }
+      await cli.serveStats({ ...since, open: flags.open }, ({ url, opened, summary }) => {
+        for (const line of statsServingSummary(cli.ui.out, summary, url, opened)) cli.out(line)
       })
-      // Saying "nothing recorded yet" while the page holds real translate
-      // numbers would send the user to look at a page they think is empty, so
-      // the summary checks both before saying it.
-      for (const line of statsSummary(cli.ui.out, result)) cli.out(line)
+      cli.out(okLine(cli.ui.out, 'Stopped'))
     })
 
   const cfg = program.command('config').description('Settings and API keys')
