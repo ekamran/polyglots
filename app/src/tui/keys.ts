@@ -2,9 +2,9 @@ import type { ScreenId } from './menu.js'
 
 // The one table of keys. The footer, the `?` overlay and the help page all
 // read it, so a screen's keys are written down once. The screens still bind
-// their own keys, as they did before this table existed; a binding moved
-// without its line here shows up as a wrong footer, which is what the help
-// test watches for on the screens that matter most.
+// their own keys, as they did before this table existed, so a binding moved
+// without its line here leaves the footer wrong; moving each screen onto a
+// hook that binds from this table is the follow-up that would close that.
 
 export interface KeyHelp {
   keys: string
