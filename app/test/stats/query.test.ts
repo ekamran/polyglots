@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { spawnSync } from 'node:child_process'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -455,6 +456,21 @@ describe('reviewStats by day', () => {
   it('is empty when nothing is recorded', () => {
     expect(reviewStats(db).byDay).toEqual([])
   })
+
+  // Noon UTC lands on the same date nearly everywhere, so the test above
+  // cannot tell local time from UTC. Fourteen hours ahead of UTC can.
+  it('uses local time, so a run just after local midnight lands on the local day', () => {
+    const previous = process.env.TZ
+    process.env.TZ = 'Pacific/Kiritimati'
+    try {
+      // 2026-09-07 12:30 UTC is 2026-09-08 02:30 at UTC+14.
+      reviewed({ startedAt: MONDAY + 12.5 * 3_600_000, tookMs: 1000, entries: 3, flagged: 0 })
+      expect(reviewStats(db).byDay).toEqual([{ day: '2026-09-08', runs: 1, entries: 3 }])
+    } finally {
+      if (previous === undefined) delete process.env.TZ
+      else process.env.TZ = previous
+    }
+  })
 })
 
 describe('reviewStats turnaround distribution', () => {
@@ -480,5 +496,14 @@ describe('runs still in progress', () => {
     expect(s.running).toBe(1)
     expect(s.submissions).toBe(0)
     expect(translateStats(db).running).toBe(2)
+  })
+
+  // A kill -9 leaves the row at running until the reaper runs at the next
+  // start. Counting it would say "in progress" about a process that is gone.
+  it('leaves out a run whose process is gone', () => {
+    const id = startRun(db, { file: '/tmp/x.po', command: 'review', locale: 'tr', nplurals: 2, batchSize: 25, engine: 'claude' }, () => MONDAY)
+    const dead = spawnSync(process.execPath, ['-e', '']).pid
+    db.prepare('UPDATE run SET pid = ? WHERE id = ?').run(dead, id)
+    expect(reviewStats(db).running).toBe(0)
   })
 })

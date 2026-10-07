@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3'
 import { basename } from 'node:path'
 import { parseTally } from '../jobs/json.js'
+import { liveRuns } from '../jobs/runs.js'
 
 export interface WeekRow {
   // The Monday the week starts on, as YYYY-MM-DD.
@@ -163,11 +164,13 @@ function finishedRuns(db: Database.Database, command: 'review' | 'translate', si
 }
 
 // Not windowed: a run in progress started recently by definition, and the
-// question it answers is "is something happening now".
+// question it answers is "is something happening now". Counted through
+// liveRuns, which checks the pid, rather than by state alone: a kill -9
+// leaves its row at running until the next start reaps it, and the page would
+// otherwise say "in progress" about a process that is gone. liveRuns reads and
+// never writes, which keeps the server read-only.
 function runningRuns(db: Database.Database, command: 'review' | 'translate'): number {
-  return db
-    .prepare<[string], { n: number }>(`SELECT COUNT(*) AS n FROM run WHERE command = ? AND state = 'running'`)
-    .get(command)!.n
+  return liveRuns(db).filter((r) => r.command === command).length
 }
 
 function dayOf(at: number): string {
