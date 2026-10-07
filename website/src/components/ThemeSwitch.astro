@@ -23,6 +23,9 @@ const options = [
 </fieldset>
 
 <style>
+  /* Without JavaScript nothing could store or apply a choice, so the switch
+     is not offered. The head script sets data-theme whenever it runs. */
+  :global(:root:not([data-theme])) .theme { display: none; }
   .theme {
     display: inline-flex; gap: 2px; margin: 0; padding: 3px;
     border: 1px solid var(--rule); border-radius: 999px; background: var(--bg-2);
@@ -51,6 +54,7 @@ const options = [
       const mode = input.value as Mode;
       const apply = () => {
         root.dataset.theme = mode;
+        (window as Window & { pgThemeColor?: (m: Mode) => void }).pgThemeColor?.(mode);
       };
       const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown };
       if (doc.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) doc.startViewTransition(apply);

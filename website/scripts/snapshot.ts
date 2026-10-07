@@ -12,6 +12,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
+// Type-only, so erased: nothing from the app loads before the sandbox below.
+import type { CliDeps } from '../../app/src/cli.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const appDir = join(here, '..', '..', 'app')
@@ -40,6 +42,40 @@ const { main } = await import('../../app/src/cli.js')
 const { ansiToHtml, ansiToText, Screen } = await import('./ansi.js')
 const { SCENARIOS } = await import('./demos.js')
 type Clock = import('./demos.js').Clock
+
+// Every dependency main() can be handed, listed so that each one a scenario
+// does not fake is replaced by a stub that throws. Without that, a command
+// that grows a new call would run the real thing during a build: spawn
+// claude, probe local model ports, hit translate.wordpress.org. The
+// `satisfies` makes a member added to CliDeps fail this typecheck until it is
+// listed here.
+const INJECTABLE = {
+  translate: true,
+  importTmx: true,
+  syncGlossary: true,
+  exportGlossary: true,
+  exportTm: true,
+  reviewFile: true,
+  splitPo: true,
+  writeStats: true,
+  resolveProjects: true,
+  fetchProjects: true,
+  openEditor: true,
+  runTui: true,
+  discoverAgents: true,
+  discoverModels: true,
+  checkLocalModel: true,
+} satisfies Record<Exclude<keyof CliDeps, 'streams' | 'env'>, true>
+
+function refuseUnfaked(what: string): CliDeps {
+  const stubs: Record<string, unknown> = {}
+  for (const name of Object.keys(INJECTABLE)) {
+    stubs[name] = () => {
+      throw new Error(`${what} called ${name}, which it does not fake. Fake it in scripts/demos.ts, or the build would run the real thing.`)
+    }
+  }
+  return stubs as CliDeps
+}
 
 interface Frame {
   /** How long the panel holds this frame before the next, in ms. */
@@ -108,6 +144,7 @@ async function record(scenario: (typeof SCENARIOS)[number]): Promise<Demo> {
   let exitCode: number
   try {
     exitCode = await main(scenario.argv, {
+      ...refuseUnfaked(`The ${scenario.name} demo`),
       ...scenario.deps(clock),
       streams: { stdin, stdout: tty, stderr: tty },
       env: { LANG: 'en_US.UTF-8' },
@@ -138,7 +175,7 @@ async function help(path: string[]): Promise<string> {
   const tty = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY')
   Object.defineProperty(process.stdout, 'isTTY', { value: false, configurable: true })
   try {
-    await main([...path, '--help'], { streams: { stdin, stdout: sink, stderr: sink }, env: { NO_COLOR: '1' } })
+    await main([...path, '--help'], { ...refuseUnfaked(`polyglots ${path.join(' ')} --help`), streams: { stdin, stdout: sink, stderr: sink }, env: { NO_COLOR: '1' } })
   } finally {
     if (tty) Object.defineProperty(process.stdout, 'isTTY', tty)
     else delete (process.stdout as { isTTY?: boolean }).isTTY

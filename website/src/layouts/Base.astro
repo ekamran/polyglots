@@ -23,19 +23,6 @@ const ogImage = new URL(`${base}og.png`, Astro.site);
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <!-- Before any stylesheet, so a stored theme is in place for first paint.
-         Light is the default and the no-JavaScript reading; this only ever
-         moves away from it. -->
-    <script is:inline>
-      (function () {
-        var mode = 'light';
-        try {
-          var stored = localStorage.getItem('pg-theme');
-          if (stored === 'dark' || stored === 'auto') mode = stored;
-        } catch (e) {}
-        document.documentElement.dataset.theme = mode;
-      })();
-    </script>
     <title>{title}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
@@ -45,6 +32,31 @@ const ogImage = new URL(`${base}og.png`, Astro.site);
     <link rel="alternate" type="text/plain" title="Agent runbook" href={`${base}ai.txt`} />
     <meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#131416" media="(prefers-color-scheme: dark)" />
+    <!-- Blocking, so a stored theme is in place for first paint. Light is the
+         default and the no-JavaScript reading; this only ever moves away from
+         it. The browser chrome colour follows the choice too: both metas take
+         the chosen colour, so whichever one the system scheme matches says
+         the same thing, and "auto" puts them back. ThemeSwitch calls the same
+         function on a change. -->
+    <script is:inline>
+      (function () {
+        var mode = 'light';
+        try {
+          var stored = localStorage.getItem('pg-theme');
+          if (stored === 'dark' || stored === 'auto') mode = stored;
+        } catch (e) {}
+        document.documentElement.dataset.theme = mode;
+        window.pgThemeColor = function (m) {
+          var colours = { light: '#fbfaf7', dark: '#131416' };
+          var metas = document.querySelectorAll('meta[name="theme-color"]');
+          for (var i = 0; i < metas.length; i++) {
+            var own = /dark/.test(metas[i].getAttribute('media') || '') ? 'dark' : 'light';
+            metas[i].setAttribute('content', colours[m === 'auto' ? own : m]);
+          }
+        };
+        window.pgThemeColor(mode);
+      })();
+    </script>
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="polyglots" />
     <meta property="og:title" content={title} />

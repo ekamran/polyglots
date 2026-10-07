@@ -1,8 +1,8 @@
 {
   // The snapshot scripts import app/src directly, so they are checked by the
-  // app's own compiler under the app's own settings (npm run snapshot:check).
-  // Astro's checker never sees them: it would hold app code to another
-  // TypeScript version and another module resolution.
+  // app's own compiler under the app's own settings, as the first half of
+  // `npm run snapshot`. Astro's checker never sees them: it would hold app
+  // code to another TypeScript version and another module resolution.
   "extends": "../../app/tsconfig.json",
   "compilerOptions": {
     "rootDir": "../..",
