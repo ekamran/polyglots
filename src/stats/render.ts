@@ -1,5 +1,5 @@
 import type { EngineRow, ProjectRow, ReviewStats, TranslateStats, WeekRow } from './query.js'
-import { PHRASES, count, duration, type Lang, type Phrase, type PhraseKey } from './i18n.js'
+import { BUILT_IN_LANGUAGES, ENGLISH, count, duration, phrase, type PhraseKey, type StatsLanguage } from './i18n.js'
 
 // Everything is inline. The page has to open from an email attachment, on a
 // machine that has never heard of this tool, years after it was written, so it
@@ -8,15 +8,13 @@ import { PHRASES, count, duration, type Lang, type Phrase, type PhraseKey } from
 // bundling one inline costs more than the few dozen lines of SVG below.
 //
 // It also rules out scripted switches, so the theme and language controls are
-// hidden radios that CSS reads with :has(). The page carries both languages at
-// once and shows one; that is a few hundred bytes against keeping the file
-// inert, which is the property that makes it safe to send to anyone.
+// hidden radios that CSS reads with :has(). The page carries every language at
+// once and shows one; that is a few hundred bytes per language against keeping
+// the file inert, which is the property that makes it safe to send to anyone.
 
 // Adjacent segments have to be told apart at a glance, so this varies hue and
 // lightness together rather than stepping down one blue ramp.
 const PALETTE = ['#2a6f97', '#e07a5f', '#81b29a', '#f2cc8f', '#6b705c', '#9d8189']
-
-const LANGS: Lang[] = ['en', 'tr']
 
 // A project name is text a contributor chose, and real ones carry ampersands
 // ("Malware Removal &amp; Auto Cleanup"). Unescaped it would also let a name
@@ -29,23 +27,41 @@ function escapeHtml(text: string): string {
     .replace(/"/g, '&quot;')
 }
 
-// Both languages, side by side, one of them hidden. `lang="tr"` is not
-// decoration: without it `text-transform: uppercase` renders "istatistik" as
-// "ISTATISTIK" rather than "İSTATİSTİK", which is the exact class of mistake
-// this tool exists to catch in other people's work.
-function both(en: string, tr: string, tag = 'span'): string {
-  return `<${tag} class="l en">${en}</${tag}><${tag} class="l tr" lang="tr">${tr}</${tag}>`
+// The tag in a class name and a selector: lowercase, so pt-BR and pt-br are one
+// language, and already held to [a-z0-9-] by the build step that embeds it.
+const slug = (lang: StatsLanguage) => lang.tag.toLowerCase()
+
+// Every language, side by side, all but one hidden. The lang attribute is not
+// decoration: without lang="tr", `text-transform: uppercase` renders
+// "istatistik" as "ISTATISTIK" rather than "İSTATİSTİK", which is the exact
+// class of mistake this tool exists to catch in other people's work. English
+// goes without one because the document already says it.
+function each(langs: readonly StatsLanguage[], text: (lang: StatsLanguage) => string): string {
+  return langs
+    .map((lang) =>
+      lang === ENGLISH
+        ? `<span class="l en">${text(lang)}</span>`
+        : `<span class="l ${slug(lang)}" lang="${lang.tag}">${text(lang)}</span>`,
+    )
+    .join('')
 }
+
+// Set once per render, so the section builders below stay as they were when
+// the page had exactly two languages and did not need them passed down.
+let langs: readonly StatsLanguage[] = [ENGLISH]
 
 function say(key: PhraseKey): string {
-  const phrase: Phrase = PHRASES[key]
-  return both(escapeHtml(phrase.en), escapeHtml(phrase.tr))
+  return each(langs, (lang) => escapeHtml(phrase(key, lang)))
 }
 
-// A figure printed once in a neutral format would be wrong in one language or
-// the other: Turkish groups thousands with a dot.
+// A figure printed once in a neutral format would be wrong in all but one
+// language: Turkish groups thousands with a dot.
 function num(n: number): string {
-  return both(count(n, 'en'), count(n, 'tr'))
+  return each(langs, (lang) => count(n, lang))
+}
+
+function took(ms: number): string {
+  return each(langs, (lang) => escapeHtml(duration(ms, lang)))
 }
 
 function percent(fraction: number): string {
@@ -73,7 +89,7 @@ function weeklyChart(weeks: WeekRow[], heading: PhraseKey): string {
       return (
         `<rect class="bar" x="${(x + width * 0.2).toFixed(2)}" y="${(100 - height).toFixed(2)}" ` +
         `width="${(width * 0.6).toFixed(2)}" height="${height.toFixed(2)}" rx="0.6">` +
-        `<title>${escapeHtml(w.week)}: ${count(w.entries, 'en')}</title>` +
+        `<title>${escapeHtml(w.week)}: ${count(w.entries, ENGLISH)}</title>` +
         `</rect>`
       )
     })
@@ -154,7 +170,7 @@ function engineTable(rows: EngineRow[]): string {
         `<td>${
           e.medianTurnaroundMs === undefined
             ? '—'
-            : both(duration(e.medianTurnaroundMs, 'en'), duration(e.medianTurnaroundMs, 'tr'))
+            : took(e.medianTurnaroundMs)
         }</td></tr>`,
     )
     .join('')
@@ -177,12 +193,22 @@ function controls(): string {
       )
     })
     .join('')
-  const lang = LANGS.map(
-    (code, i) =>
-      `<input type="radio" name="lang" id="lang-${code}" class="sw"${i === 0 ? ' checked' : ''}>` +
-      `<label for="lang-${code}">${code.toUpperCase()}</label>`,
-  ).join('')
-  return `<div class="bar-controls"><div class="group">${theme}</div><div class="group">${lang}</div></div>`
+  // The language code alone reads best (EN, TR), until two languages share it
+  // and only the full tag tells pt-BR from pt-PT.
+  const primary = (lang: StatsLanguage) => lang.tag.split('-')[0]!
+  const label = (lang: StatsLanguage) =>
+    (langs.filter((l) => primary(l) === primary(lang)).length > 1 ? lang.tag : primary(lang)).toUpperCase()
+  const lang =
+    langs.length < 2
+      ? ''
+      : `<div class="group">${langs
+          .map(
+            (l, i) =>
+              `<input type="radio" name="lang" id="lang-${slug(l)}" class="sw"${i === 0 ? ' checked' : ''}>` +
+              `<label for="lang-${slug(l)}">${label(l)}</label>`,
+          )
+          .join('')}</div>`
+  return `<div class="bar-controls"><div class="group">${theme}</div>${lang}</div>`
 }
 
 const STYLE = `:root{--ink:#14202b;--dim:#5b6b7a;--bg:#fbfcfd;--card:#fff;--rule:#e6ecf1;--accent:#2a6f97;--on:#eef3f7}
@@ -229,10 +255,19 @@ tr:last-child td{border-bottom:0}
 .group label:last-child{border-right:0}
 .sw:checked+label{background:var(--on);color:var(--ink)}
 .sw:focus-visible+label{outline:2px solid var(--accent);outline-offset:-2px}
-.l.tr{display:none}
-:root:has(#lang-tr:checked) .l.en{display:none}
-:root:has(#lang-tr:checked) .l.tr{display:inline}
-:root:has(#lang-tr:checked) p.l.tr,:root:has(#lang-tr:checked) span.l.tr{display:inline}`
+.l:not(.en){display:none}`
+
+// One pair of rules per language besides English, which shows by default.
+function languageStyle(): string {
+  return langs
+    .filter((lang) => lang !== ENGLISH)
+    .map(
+      (lang) =>
+        `\n:root:has(#lang-${slug(lang)}:checked) .l:not(.${slug(lang)}){display:none}` +
+        `\n:root:has(#lang-${slug(lang)}:checked) .l.${slug(lang)}{display:inline}`,
+    )
+    .join('')
+}
 
 function translateSection(t: TranslateStats): string {
   if (t.runs === 0) return ''
@@ -249,7 +284,7 @@ ${t.skipped === 0 ? '' : figure(num(t.skipped), 'skippedEntries')}
 ${
   t.medianTurnaroundMs === undefined
     ? ''
-    : figure(both(duration(t.medianTurnaroundMs, 'en'), duration(t.medianTurnaroundMs, 'tr')), 'turnaround')
+    : figure(took(t.medianTurnaroundMs), 'turnaround')
 }
 </div></section>
 ${weeklyChart(t.byWeek, 'translateWeekly')}
@@ -259,17 +294,20 @@ ${projectTable(t.byProject, 'colRuns')}
 }
 
 /**
- * One self-contained HTML page carrying both languages, with CSS-only theme and
+ * One self-contained HTML page carrying every language, with CSS-only theme and
  * language switches. Takes the numbers and nothing else, so the counts can be
  * asserted without parsing markup.
  */
 export interface RenderOptions {
   translate?: TranslateStats
   now?: Date
+  // The languages besides English; the ones built from i18n/stats by default.
+  languages?: readonly StatsLanguage[]
 }
 
 export function renderStats(stats: ReviewStats, options: RenderOptions = {}): string {
   const now = options.now ?? new Date()
+  langs = [ENGLISH, ...(options.languages ?? BUILT_IN_LANGUAGES)]
   const span =
     stats.from === undefined || stats.to === undefined
       ? say('noneYet')
@@ -286,10 +324,7 @@ ${figure(num(stats.repaired), 'repaired')}
 ${
   stats.medianTurnaroundMs === undefined
     ? ''
-    : figure(
-        both(duration(stats.medianTurnaroundMs, 'en'), duration(stats.medianTurnaroundMs, 'tr')),
-        'turnaround',
-      )
+    : figure(took(stats.medianTurnaroundMs), 'turnaround')
 }
 </div></section>`
 
@@ -303,8 +338,8 @@ ${
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>polyglots · review statistics · inceleme istatistikleri</title>
-<style>${STYLE}</style></head>
+<title>${escapeHtml(['polyglots', ...langs.map((lang) => phrase('title', lang))].join(' · '))}</title>
+<style>${STYLE}${languageStyle()}</style></head>
 <body>
 ${controls()}
 <main>

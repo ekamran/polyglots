@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { renderStats } from '../../src/stats/render.js'
 import type { ReviewStats, TranslateStats } from '../../src/stats/query.js'
+import type { StatsLanguage } from '../../src/stats/i18n.js'
 
 const HOUR = 3_600_000
 
@@ -250,6 +251,34 @@ describe('renderStats language switch', () => {
 
   it('translates the empty state', () => {
     expect(renderStats(empty)).toContain('Henüz tamamlanmış inceleme')
+  })
+
+  it('writes durations the way each language does', () => {
+    expect(renderStats(full)).toContain('2,1 saat')
+  })
+
+  // A language arrives from a .po file, often half done. What it has not
+  // translated still has to read as something, and English is that.
+  it('adds a switch for every embedded language and falls back to English where it has no string', () => {
+    const de: StatsLanguage = { tag: 'de', phrases: { title: 'Prüfstatistik' } }
+    const html = renderStats(full, { languages: [de] })
+    expect(html).toContain('<span class="l de" lang="de">Prüfstatistik</span>')
+    expect(html).toContain('<span class="l de" lang="de">submissions reviewed</span>')
+    expect(html).toContain('<span class="l de" lang="de">4.102</span>')
+    expect(html).toContain(':has(#lang-de:checked)')
+    expect(html).toContain('for="lang-de">DE</label>')
+    expect(html).not.toContain('incelenen gönderi')
+  })
+
+  it('labels languages that share a code by their full tag', () => {
+    const html = renderStats(full, {
+      languages: [
+        { tag: 'pt-BR', phrases: {} },
+        { tag: 'pt-PT', phrases: {} },
+      ],
+    })
+    expect(html).toContain('for="lang-pt-br">PT-BR</label>')
+    expect(html).toContain('for="lang-pt-pt">PT-PT</label>')
   })
 })
 

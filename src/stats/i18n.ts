@@ -1,94 +1,117 @@
-// The page carries both languages at once and CSS shows one, because the
+import { STATS_TRANSLATIONS } from './translations-data.js'
+
+// The page carries every language at once and CSS shows one, because the
 // alternative is JavaScript and this file has to survive being mailed as an
 // attachment and opened offline years later.
+//
+// English lives here, beside the code that renders it, and nowhere else. Every
+// other language comes from a .po file in i18n/stats, translated against the
+// template generated from this table (npm run stats-pot) and embedded at build
+// time by scripts/stats-i18n.mjs. Turkish used to sit in this table as a second
+// column; it moved out so the next language is a file a translator sends, not a
+// change to the code.
 
-export type Lang = 'en' | 'tr'
-
-export interface Phrase {
-  en: string
-  tr: string
-}
-
-// Turkish capitalises only the first word of a heading and proper nouns, which
-// is the same rule the review command enforces on contributors. A stats page
-// that broke it while reporting on it would be quietly ridiculous.
+// Keys are the msgctxt of each template entry, so renaming one orphans every
+// translation of it. Change the English freely: a translation whose msgid no
+// longer matches is left out and English shows until it is updated.
 export const PHRASES = {
-  title: { en: 'Review statistics', tr: 'İnceleme istatistikleri' },
-  generated: { en: 'generated', tr: 'oluşturuldu' },
-  rangeTo: { en: 'to', tr: '–' },
-  noneYet: { en: 'No finished reviews recorded yet.', tr: 'Henüz tamamlanmış inceleme yok.' },
+  title: 'Review statistics',
+  generated: 'generated',
+  rangeTo: 'to',
+  noneYet: 'No finished reviews recorded yet.',
 
-  submissions: { en: 'submissions reviewed', tr: 'incelenen gönderi' },
-  entries: { en: 'entries', tr: 'dizge' },
-  flagged: { en: 'flagged', tr: 'işaretlenen' },
-  repaired: { en: 'repaired automatically', tr: 'otomatik düzeltilen' },
-  turnaround: { en: 'median turnaround', tr: 'ortanca süre' },
+  submissions: 'submissions reviewed',
+  entries: 'entries',
+  flagged: 'flagged',
+  repaired: 'repaired automatically',
+  turnaround: 'median turnaround',
 
-  weeklyHeading: { en: 'Entries reviewed, by week', tr: 'Haftalara göre incelenen dizgeler' },
-  peak: { en: 'peak', tr: 'en yüksek' },
-  donutHeading: { en: 'What gets flagged', tr: 'Neler işaretleniyor' },
-  projectHeading: { en: 'By project', tr: 'Projeye göre' },
+  weeklyHeading: 'Entries reviewed, by week',
+  peak: 'peak',
+  donutHeading: 'What gets flagged',
+  projectHeading: 'By project',
 
-  colProject: { en: 'Project', tr: 'Proje' },
-  colSubmissions: { en: 'Submissions', tr: 'Gönderi' },
-  colEntries: { en: 'Entries', tr: 'Dizge' },
-  colFlagged: { en: 'Flagged', tr: 'İşaretlenen' },
-  colRate: { en: 'Rate', tr: 'Oran' },
+  colProject: 'Project',
+  colSubmissions: 'Submissions',
+  colEntries: 'Entries',
+  colFlagged: 'Flagged',
+  colRate: 'Rate',
 
-  emptyBody: {
-    en: 'No finished reviews have been recorded yet. Run a review over a submission and its totals will appear here.',
-    tr: 'Henüz tamamlanmış inceleme kaydı yok. Bir gönderiyi incelediğinizde toplamları burada görünür.',
-  },
-  // Said plainly and in both languages, because the people who volunteered
-  // these translations may be the ones reading the page.
-  caveat: {
-    en: '“Flagged” counts entries polyglots raised for a human to look at: a mix of mechanical faults and judgement calls. It measures what this tool flags, not the quality of anyone’s work, and a flag is not a judgement about the contributor who submitted it.',
-    tr: '“İşaretlenen”, polyglots’un bir insanın bakması için öne çıkardığı dizgeleri sayar; bunlar hem mekanik hatalar hem de yorum gerektiren durumlardır. Bu sayı, aracın neyi işaretlediğini ölçer; kimsenin emeğinin kalitesini değil. Bir işaret, gönderiyi yapan katkıcı hakkında bir yargı değildir.',
-  },
-  incompleteOne: { en: 'review did not finish and contributed nothing to these totals.', tr: 'inceleme tamamlanmadı ve bu toplamlara katkı vermedi.' },
-  incompleteMany: { en: 'reviews did not finish and contributed nothing to these totals.', tr: 'inceleme tamamlanmadı ve bu toplamlara katkı vermedi.' },
+  emptyBody: 'No finished reviews have been recorded yet. Run a review over a submission and its totals will appear here.',
+  caveat:
+    '“Flagged” counts entries polyglots raised for a human to look at: a mix of mechanical faults and judgement calls. It measures what this tool flags, not the quality of anyone’s work, and a flag is not a judgement about the contributor who submitted it.',
+  incompleteOne: 'review did not finish and contributed nothing to these totals.',
+  incompleteMany: 'reviews did not finish and contributed nothing to these totals.',
 
-  translateHeading: { en: 'Translation', tr: 'Çeviri' },
-  translateWeekly: { en: 'Entries drafted, by week', tr: 'Haftalara göre çevrilen dizgeler' },
-  runs: { en: 'runs', tr: 'çalıştırma' },
-  drafted: { en: 'entries drafted', tr: 'çevrilen dizge' },
-  leftFuzzy: { en: 'left fuzzy', tr: 'bulanık bırakılan' },
-  skippedEntries: { en: 'skipped by the engine', tr: 'motorun atladığı' },
-  engineHeading: { en: 'By engine', tr: 'Motora göre' },
-  colEngine: { en: 'Engine', tr: 'Motor' },
-  colRuns: { en: 'Runs', tr: 'Çalıştırma' },
-  colMedian: { en: 'Median', tr: 'Ortanca' },
-  // Said separately from the review caveat because it is a different claim: a
-  // fuzzy draft is the engine asking for a human, not the tool saying the text
-  // is wrong.
-  translateCaveat: {
-    en: '“Left fuzzy” counts drafts marked for a human to check before they ship. It is what the draft engine and its review were unsure about, not a count of mistakes.',
-    tr: '“Bulanık bırakılan”, yayına girmeden önce bir insanın denetlemesi için işaretlenen taslakları sayar. Taslak motorunun ve onun incelemesinin emin olamadığı yerlerdir; hata sayısı değildir.',
-  },
+  translateHeading: 'Translation',
+  translateWeekly: 'Entries drafted, by week',
+  runs: 'runs',
+  drafted: 'entries drafted',
+  leftFuzzy: 'left fuzzy',
+  skippedEntries: 'skipped by the engine',
+  engineHeading: 'By engine',
+  colEngine: 'Engine',
+  colRuns: 'Runs',
+  colMedian: 'Median',
+  translateCaveat:
+    '“Left fuzzy” counts drafts marked for a human to check before they ship. It is what the draft engine and its review were unsure about, not a count of mistakes.',
 
-  theme: { en: 'Theme', tr: 'Tema' },
-  themeAuto: { en: 'Auto', tr: 'Otomatik' },
-  themeLight: { en: 'Light', tr: 'Açık' },
-  themeDark: { en: 'Dark', tr: 'Koyu' },
-} as const satisfies Record<string, Phrase>
+  durationSeconds: '{n}s',
+  durationMinutes: '{n}m',
+  durationHours: '{n}h',
+
+  theme: 'Theme',
+  themeAuto: 'Auto',
+  themeLight: 'Light',
+  themeDark: 'Dark',
+} as const satisfies Record<string, string>
 
 export type PhraseKey = keyof typeof PHRASES
 
-// Turkish groups thousands with a dot and marks decimals with a comma, so the
-// same figure has to be printed twice rather than once in a neutral format.
-export function count(n: number, lang: Lang): string {
-  return n.toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-US')
+// What a translator cannot see from the string alone. They go into the template
+// as extracted comments, which every .po editor shows beside the entry.
+export const NOTES: Partial<Record<PhraseKey, string>> = {
+  rangeTo: 'Between two dates, as in "2026-09-01 to 2026-09-30". A dash is fine.',
+  entries: 'Follows a number: "4,102 entries". Also the word after "peak 310".',
+  incompleteOne: 'Follows the number 1: "1 review did not finish…".',
+  incompleteMany: 'Follows a number above 1: "3 reviews did not finish…".',
+  caveat:
+    'Read by the contributors whose work is being counted. Keep it plain and keep its point: a flag is about the tool, not the person.',
+  translateCaveat: 'A fuzzy draft is the engine asking for a human, not a mistake. Keep that distinction.',
+  durationSeconds: '{n} is a whole number of seconds. Keep {n} as it is.',
+  durationMinutes: '{n} is a whole number of minutes. Keep {n} as it is.',
+  durationHours: '{n} is hours with one decimal, already written the way your language writes decimals. Keep {n} as it is.',
 }
 
-export function duration(ms: number, lang: Lang): string {
-  if (ms < 60_000) {
-    const s = Math.round(ms / 1000)
-    return lang === 'tr' ? `${s} sn` : `${s}s`
-  }
-  if (ms < 3_600_000) {
-    const m = Math.round(ms / 60_000)
-    return lang === 'tr' ? `${m} dk` : `${m}m`
-  }
-  const h = ms / 3_600_000
-  return lang === 'tr' ? `${h.toFixed(1).replace('.', ',')} saat` : `${h.toFixed(1)}h`
+export interface StatsLanguage {
+  // A BCP 47 tag. It becomes the page's lang attribute, which is not
+  // decoration: without lang="tr", text-transform: uppercase turns "istatistik"
+  // into "ISTATISTIK" rather than "İSTATİSTİK".
+  tag: string
+  phrases: Partial<Record<string, string>>
+}
+
+export const ENGLISH: StatsLanguage = { tag: 'en', phrases: PHRASES }
+
+/** The languages built into this copy, English excluded. */
+export const BUILT_IN_LANGUAGES: readonly StatsLanguage[] = STATS_TRANSLATIONS
+
+/** A phrase in a language, or the English when that language has not translated it. */
+export function phrase(key: PhraseKey, lang: StatsLanguage): string {
+  return lang.phrases[key] || PHRASES[key]
+}
+
+// Grouping and decimal marks differ (Turkish groups thousands with a dot), so
+// the same figure is printed once per language rather than once in a neutral
+// format that would be wrong in all but one.
+export function count(n: number, lang: StatsLanguage): string {
+  return n.toLocaleString(lang.tag)
+}
+
+export function duration(ms: number, lang: StatsLanguage): string {
+  const unit = (key: PhraseKey, n: string) => phrase(key, lang).replace('{n}', n)
+  if (ms < 60_000) return unit('durationSeconds', count(Math.round(ms / 1000), lang))
+  if (ms < 3_600_000) return unit('durationMinutes', count(Math.round(ms / 60_000), lang))
+  const hours = (ms / 3_600_000).toLocaleString(lang.tag, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+  return unit('durationHours', hours)
 }

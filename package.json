@@ -14,9 +14,11 @@
     "typecheck": "tsc -p tsconfig.test.json",
     "test": "vitest run",
     "dev": "tsx src/cli.ts",
-    "prepare": "node scripts/no-live-run.mjs && node scripts/update-locales.mjs && tsc",
-    "prebuild": "node scripts/no-live-run.mjs && node scripts/update-locales.mjs",
-    "update-locales": "node scripts/update-locales.mjs"
+    "prepare": "node scripts/no-live-run.mjs && node scripts/update-locales.mjs && node scripts/stats-i18n.mjs && tsc",
+    "prebuild": "node scripts/no-live-run.mjs && node scripts/update-locales.mjs && node scripts/stats-i18n.mjs",
+    "update-locales": "node scripts/update-locales.mjs",
+    "stats-pot": "tsx scripts/stats-pot.ts",
+    "stats-i18n": "node scripts/stats-i18n.mjs"
   },
   "license": "MIT",
   "dependencies": {

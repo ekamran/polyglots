@@ -1,0 +1,171 @@
+# Turkish strings of the polyglots stats page.
+# Turkish capitalises only the first word of a heading and proper nouns, the
+# same rule the review command enforces on contributors; a stats page that
+# broke it while reporting on it would be quietly ridiculous.
+msgid ""
+msgstr ""
+"Project-Id-Version: polyglots stats\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: tr\n"
+
+msgctxt "title"
+msgid "Review statistics"
+msgstr "İnceleme istatistikleri"
+
+msgctxt "generated"
+msgid "generated"
+msgstr "oluşturuldu"
+
+msgctxt "rangeTo"
+msgid "to"
+msgstr "–"
+
+msgctxt "noneYet"
+msgid "No finished reviews recorded yet."
+msgstr "Henüz tamamlanmış inceleme yok."
+
+msgctxt "submissions"
+msgid "submissions reviewed"
+msgstr "incelenen gönderi"
+
+msgctxt "entries"
+msgid "entries"
+msgstr "dizge"
+
+msgctxt "flagged"
+msgid "flagged"
+msgstr "işaretlenen"
+
+msgctxt "repaired"
+msgid "repaired automatically"
+msgstr "otomatik düzeltilen"
+
+msgctxt "turnaround"
+msgid "median turnaround"
+msgstr "ortanca süre"
+
+msgctxt "weeklyHeading"
+msgid "Entries reviewed, by week"
+msgstr "Haftalara göre incelenen dizgeler"
+
+msgctxt "peak"
+msgid "peak"
+msgstr "en yüksek"
+
+msgctxt "donutHeading"
+msgid "What gets flagged"
+msgstr "Neler işaretleniyor"
+
+msgctxt "projectHeading"
+msgid "By project"
+msgstr "Projeye göre"
+
+msgctxt "colProject"
+msgid "Project"
+msgstr "Proje"
+
+msgctxt "colSubmissions"
+msgid "Submissions"
+msgstr "Gönderi"
+
+msgctxt "colEntries"
+msgid "Entries"
+msgstr "Dizge"
+
+msgctxt "colFlagged"
+msgid "Flagged"
+msgstr "İşaretlenen"
+
+msgctxt "colRate"
+msgid "Rate"
+msgstr "Oran"
+
+msgctxt "emptyBody"
+msgid "No finished reviews have been recorded yet. Run a review over a submission and its totals will appear here."
+msgstr "Henüz tamamlanmış inceleme kaydı yok. Bir gönderiyi incelediğinizde toplamları burada görünür."
+
+msgctxt "caveat"
+msgid "“Flagged” counts entries polyglots raised for a human to look at: a mix of mechanical faults and judgement calls. It measures what this tool flags, not the quality of anyone’s work, and a flag is not a judgement about the contributor who submitted it."
+msgstr "“İşaretlenen”, polyglots’un bir insanın bakması için öne çıkardığı dizgeleri sayar; bunlar hem mekanik hatalar hem de yorum gerektiren durumlardır. Bu sayı, aracın neyi işaretlediğini ölçer; kimsenin emeğinin kalitesini değil. Bir işaret, gönderiyi yapan katkıcı hakkında bir yargı değildir."
+
+msgctxt "incompleteOne"
+msgid "review did not finish and contributed nothing to these totals."
+msgstr "inceleme tamamlanmadı ve bu toplamlara katkı vermedi."
+
+msgctxt "incompleteMany"
+msgid "reviews did not finish and contributed nothing to these totals."
+msgstr "inceleme tamamlanmadı ve bu toplamlara katkı vermedi."
+
+msgctxt "translateHeading"
+msgid "Translation"
+msgstr "Çeviri"
+
+msgctxt "translateWeekly"
+msgid "Entries drafted, by week"
+msgstr "Haftalara göre çevrilen dizgeler"
+
+msgctxt "runs"
+msgid "runs"
+msgstr "çalıştırma"
+
+msgctxt "drafted"
+msgid "entries drafted"
+msgstr "çevrilen dizge"
+
+msgctxt "leftFuzzy"
+msgid "left fuzzy"
+msgstr "bulanık bırakılan"
+
+msgctxt "skippedEntries"
+msgid "skipped by the engine"
+msgstr "motorun atladığı"
+
+msgctxt "engineHeading"
+msgid "By engine"
+msgstr "Motora göre"
+
+msgctxt "colEngine"
+msgid "Engine"
+msgstr "Motor"
+
+msgctxt "colRuns"
+msgid "Runs"
+msgstr "Çalıştırma"
+
+msgctxt "colMedian"
+msgid "Median"
+msgstr "Ortanca"
+
+msgctxt "translateCaveat"
+msgid "“Left fuzzy” counts drafts marked for a human to check before they ship. It is what the draft engine and its review were unsure about, not a count of mistakes."
+msgstr "“Bulanık bırakılan”, yayına girmeden önce bir insanın denetlemesi için işaretlenen taslakları sayar. Taslak motorunun ve onun incelemesinin emin olamadığı yerlerdir; hata sayısı değildir."
+
+msgctxt "durationSeconds"
+msgid "{n}s"
+msgstr "{n} sn"
+
+msgctxt "durationMinutes"
+msgid "{n}m"
+msgstr "{n} dk"
+
+msgctxt "durationHours"
+msgid "{n}h"
+msgstr "{n} saat"
+
+msgctxt "theme"
+msgid "Theme"
+msgstr "Tema"
+
+msgctxt "themeAuto"
+msgid "Auto"
+msgstr "Otomatik"
+
+msgctxt "themeLight"
+msgid "Light"
+msgstr "Açık"
+
+msgctxt "themeDark"
+msgid "Dark"
+msgstr "Koyu"

@@ -10,6 +10,11 @@ Entries say what changed. For why and how, read the commit.
 
 ## [Unreleased]
 
+### Changed
+
+- The stats page strings are translatable: an English template at `i18n/stats/stats.pot`, with each
+  `<locale>.po` beside it embedded at build time. Turkish moved into `tr_TR.po`.
+
 ## [0.22.0] - 2026-10-07
 
 ### Added
