@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { stripVTControlCharacters } from 'node:util'
-import { fetchTally, reviewSummary, statsSummary, translateSummary } from '../../src/cli/summaries.js'
+import { fetchTally, reviewSummary, statsServingSummary, statsSummary, translateSummary } from '../../src/cli/summaries.js'
 import { reviewSummaryOf } from '../tui/helpers.js'
 import type { ReviewSummary } from '../../src/types.js'
 import { createPainter, plainPainter } from '../../src/ui/paint.js'
@@ -123,6 +123,37 @@ describe('statsSummary', () => {
     const empty = { ...s, submissions: 0, entries: 0, flagged: 0, translateRuns: 0, translateEntries: 0, weeks: [], topProjects: [], incomplete: 0 }
     expect(statsSummary(plainPainter, empty)).toEqual([
       '› Nothing recorded yet. Wrote /tmp/stats.html anyway; it will fill in as you work.',
+    ])
+  })
+})
+
+describe('statsServingSummary', () => {
+  const { file: _file, ...s } = {
+    file: '/tmp/stats.html', submissions: 12, entries: 4102, flagged: 410, incomplete: 2,
+    translateRuns: 0, translateEntries: 0, weeks: [1, 5],
+    topProjects: [{ project: 'akismet', runs: 4, entries: 2000, flagged: 200 }],
+  }
+  const url = 'http://127.0.0.1:51234/tok/'
+
+  it('frames the same numbers, then says where the page is served and how to stop it', () => {
+    const lines = statsServingSummary(plainPainter, s, url, true)
+    expect(lines[0]).toContain('• Statistics')
+    expect(lines.join('\n')).toMatch(/akismet\s+2,000 entries/)
+    expect(lines).toContain('  2 unfinished reviews are left out of the totals.')
+    expect(lines.slice(-2)).toEqual([`› Serving ${url}`, '  Opened in your browser. Ctrl+C to stop.'])
+    expect(lines.join('\n')).not.toContain('Wrote')
+  })
+
+  it('asks the reader to open the page when no browser was opened', () => {
+    expect(statsServingSummary(plainPainter, s, url, false).at(-1)).toBe('  Open it in a browser. Ctrl+C to stop.')
+  })
+
+  it('says the page fills in as you work when nothing is recorded yet', () => {
+    const empty = { ...s, submissions: 0, entries: 0, flagged: 0, incomplete: 0, weeks: [], topProjects: [] }
+    expect(statsServingSummary(plainPainter, empty, url, true)).toEqual([
+      '› Nothing recorded yet. The page fills in as you work.',
+      `› Serving ${url}`,
+      '  Opened in your browser. Ctrl+C to stop.',
     ])
   })
 })

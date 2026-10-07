@@ -86,10 +86,10 @@ export function fetchTally(p: Painter, t: Tally): string[] {
 
 const n = (v: number) => v.toLocaleString('en')
 
-export function statsSummary(p: Painter, s: StatsSummary): string[] {
-  if (s.submissions === 0 && s.translateRuns === 0) {
-    return [nextLine(p, `Nothing recorded yet. Wrote ${p.paint('path', s.file)} anyway; it will fill in as you work.`)]
-  }
+// The numbers both endings share: the totals box, the top projects and the
+// unfinished-review hint. Empty means nothing has been recorded at all, which
+// each caller words for its own ending.
+function statsBody(p: Painter, s: Omit<StatsSummary, 'file'>): string[] {
   const rows: string[][] = []
   if (s.submissions > 0) {
     const rate = s.entries === 0 ? 0 : Math.round((s.flagged / s.entries) * 100)
@@ -105,7 +105,29 @@ export function statsSummary(p: Painter, s: StatsSummary): string[] {
       { indent: 2, align: ['left', 'right', 'right'] },
     ))
   }
-  if (s.incomplete > 0) out.push(hintLine(p, `${s.incomplete} unfinished ${s.incomplete === 1 ? 'review is' : 'reviews are'} left out of the totals.`))
-  out.push(nextLine(p, `Wrote ${p.paint('path', s.file)}`))
   return out
+}
+
+const nothingRecorded = (s: Omit<StatsSummary, 'file'>): boolean => s.submissions === 0 && s.translateRuns === 0
+
+const incompleteHint = (p: Painter, s: Omit<StatsSummary, 'file'>): string[] =>
+  s.incomplete > 0 ? [hintLine(p, `${s.incomplete} unfinished ${s.incomplete === 1 ? 'review is' : 'reviews are'} left out of the totals.`)] : []
+
+export function statsSummary(p: Painter, s: StatsSummary): string[] {
+  if (nothingRecorded(s)) {
+    return [nextLine(p, `Nothing recorded yet. Wrote ${p.paint('path', s.file)} anyway; it will fill in as you work.`)]
+  }
+  return [...statsBody(p, s), ...incompleteHint(p, s), nextLine(p, `Wrote ${p.paint('path', s.file)}`)]
+}
+
+// The ending while the page is served rather than written: where it is, and
+// how to stop the server, since the command keeps running until Ctrl+C.
+export function statsServingSummary(p: Painter, s: Omit<StatsSummary, 'file'>, url: string, opened: boolean): string[] {
+  const body = nothingRecorded(s) ? [nextLine(p, 'Nothing recorded yet. The page fills in as you work.')] : statsBody(p, s)
+  return [
+    ...body,
+    ...incompleteHint(p, s),
+    nextLine(p, `Serving ${p.paint('path', url)}`),
+    hintLine(p, opened ? 'Opened in your browser. Ctrl+C to stop.' : 'Open it in a browser. Ctrl+C to stop.'),
+  ]
 }
