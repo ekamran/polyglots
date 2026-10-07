@@ -63,7 +63,7 @@ describe('renderRoot', () => {
     const total = demo.all.review.byProject.length
     expect(total).toBeGreaterThan(PROJECTS_SHOWN)
     expect(html).toContain(`<summary>Show all ${total} projects</summary>`)
-    const top = html.slice(html.indexOf('class="sortable top"'), html.indexOf('</table>', html.indexOf('class="sortable top"')))
+    const top = html.slice(html.indexOf('class="sortable proj-top"'), html.indexOf('</table>', html.indexOf('class="sortable proj-top"')))
     expect(top.match(/<tr>/g)).toHaveLength(PROJECTS_SHOWN + 1)
   })
 

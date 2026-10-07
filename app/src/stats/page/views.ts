@@ -143,12 +143,12 @@ function projectsBlock(rows: ProjectRow[], runs: PhraseKey, s: Say): string {
   if (rows.length === 0) return ''
   const sorted = [...rows].sort((a, b) => b.entries - a.entries || a.project.localeCompare(b.project))
   const cols = projectColumns(runs, s)
-  const top = sortableTable(cols, projectRows(sorted.slice(0, PROJECTS_SHOWN), s), 'top')
+  const top = sortableTable(cols, projectRows(sorted.slice(0, PROJECTS_SHOWN), s), 'proj-top')
   if (sorted.length <= PROJECTS_SHOWN) return top
   return (
     `<div class="projects">${top}<details><summary>${s.tn('showAll', s.n(sorted.length))}</summary>` +
     `<label class="filter js-only"><span>${s.t('filterProjects')}</span><input type="search" data-filter autocomplete="off"></label>` +
-    `${sortableTable(cols, projectRows(sorted, s), 'all')}</details></div>`
+    `${sortableTable(cols, projectRows(sorted, s), 'proj-all')}</details></div>`
   )
 }
 

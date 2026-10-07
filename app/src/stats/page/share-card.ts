@@ -62,7 +62,7 @@ export function shareCard(p: StatsPayload, lang: StatsLanguage): string {
   const projects = top
     .map((x, i) => {
       const y = 250 + i * 64
-      const w = Math.max(4, Math.round((x.entries / most) * 340))
+      const w = Math.max(4, Math.round((x.entries / most) * 290))
       return (
         `<text x="780" y="${y}" font-size="20" fill="${c.fg}">${esc(shorten(x.project, 30))}</text>` +
         `<rect x="780" y="${y + 12}" width="${w}" height="12" rx="6" fill="${c.series[1]}"/>` +

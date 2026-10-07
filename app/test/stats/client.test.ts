@@ -74,7 +74,7 @@ describe('boot', () => {
   it('sorts a table numerically when its header is pressed, and says so with aria-sort', () => {
     mount({ mode: 'static', range: 'all', lang: 'en', payloads: demo })
     client = boot(document, window)
-    const table = document.querySelector('#projects table.top')!
+    const table = document.querySelector('#projects table.proj-top')!
     const runs = table.querySelectorAll('th')[1]!
     click(runs.querySelector('button'))
     expect(runs.getAttribute('aria-sort')).toBe('descending')
@@ -90,7 +90,7 @@ describe('boot', () => {
     const input = document.querySelector<HTMLInputElement>('#projects [data-filter]')!
     input.value = 'harbor'
     input.dispatchEvent(new Event('input', { bubbles: true }))
-    const shown = [...document.querySelectorAll('#projects table.all tbody tr')].filter((tr) => !(tr as HTMLElement).hidden)
+    const shown = [...document.querySelectorAll('#projects table.proj-all tbody tr')].filter((tr) => !(tr as HTMLElement).hidden)
     expect(shown.map((tr) => tr.children[0]!.textContent)).toEqual(['Harbor Booking'])
   })
 

@@ -77,7 +77,7 @@ export const STYLE =
   `.scroll{overflow-x:auto;max-width:100%}` +
   `.bars{width:100%;height:150px;display:block}.bar{fill:var(--accent)}` +
   `.ticks{display:flex;margin-top:.3rem}.ticks span{flex:1;text-align:center;font-size:.68rem;color:var(--muted);white-space:nowrap;overflow:visible}` +
-  `.heat{display:block}.heat-legend{display:flex;align-items:center;gap:.25rem;margin:.4rem 0 0}` +
+  `.heat{display:block;width:100%;height:auto;min-width:36rem}.heat-legend{display:flex;align-items:center;gap:.25rem;margin:.4rem 0 0}` +
   [0, 1, 2, 3, 4].map((i) => `.h${i}{fill:var(--h${i})}`).join('') +
   `.donut-row{display:flex;flex-wrap:wrap;gap:1.5rem;align-items:flex-start}` +
   `.donut{width:170px;height:170px;flex:none;transform:rotate(-90deg)}` +
@@ -106,7 +106,7 @@ export const STYLE =
   `.rate-cell{display:inline-flex;align-items:center;gap:.4rem}` +
   `.rate{width:4.5rem;height:6px}.rate .track{fill:var(--rule)}` +
   `details{margin-top:.6rem}summary{cursor:pointer;color:var(--accent);padding:.3rem 0}` +
-  `.projects:has(details[open]) .top{display:none}` +
+  `.projects:has(details[open]) .proj-top{display:none}` +
   `.filter{display:flex;gap:.5rem;align-items:center;margin:.5rem 0;font-size:.85rem;color:var(--muted)}` +
   `.filter input{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--rule);border-radius:6px;padding:.3rem .5rem;min-width:0;flex:1;max-width:18rem}` +
   `.note{color:var(--muted);font-size:.85rem;margin:1rem 0 0}` +
