@@ -59,6 +59,13 @@ esbuild into a checked-in bundle, and a test fails when the bundle is stale. Aft
 editing anything there, run `npm run stats-client`. `build` and `prepare` do it
 too, but tests run from source and will not.
 
+**The website's demos run the real CLI.** `website/scripts/snapshot.ts` calls
+`main()` with every `CliDeps` member either faked in `scripts/demos.ts` or
+stubbed to throw. A new `CliDeps` member fails the snapshot's typecheck, and a
+command that starts calling an unfaked one fails the snapshot, and so the
+release, until the demo fakes it. That is deliberate: the alternative is a
+build that quietly runs the real thing.
+
 ## Language and style
 
 TypeScript ESM with `module: NodeNext`, so relative imports carry a `.js`

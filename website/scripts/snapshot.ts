@@ -58,6 +58,7 @@ const INJECTABLE = {
   reviewFile: true,
   splitPo: true,
   writeStats: true,
+  serveStats: true,
   resolveProjects: true,
   fetchProjects: true,
   openEditor: true,

@@ -152,27 +152,33 @@ export const fetch: Scenario = {
 
 // A summary with a few months behind it, enough for the sparkline to have a
 // shape. Project names are invented.
+const STATS_SUMMARY: Omit<StatsSummary, 'file'> = {
+  submissions: 148,
+  entries: 21_734,
+  incomplete: 2,
+  translateRuns: 37,
+  translateEntries: 4_912,
+  flagged: 2_391,
+  weeks: [310, 420, 380, 520, 610, 480, 700, 655, 590, 810, 760, 905],
+  topProjects: [
+    { project: 'lunar-forms', runs: 9, entries: 2_870, flagged: 344 },
+    { project: 'harbor', runs: 6, entries: 1_402, flagged: 98 },
+    { project: 'quiet-gallery', runs: 4, entries: 966, flagged: 151 },
+  ],
+}
+
+// On a terminal, which is what the demo panel is, `stats` serves the page
+// rather than writing a file, and stays up until Ctrl+C. The fake reports the
+// server as ready and then returns, which is the Ctrl+C the panel cannot
+// press; the port and token are made up.
 export const stats: Scenario = {
   name: 'stats',
   argv: ['stats'],
   deps: (clock) => ({
-    writeStats: async (): Promise<StatsSummary> => {
+    serveStats: async (_opts, onReady) => {
       clock.advance(400, 300)
-      return {
-        file: 'polyglots-stats.html',
-        submissions: 148,
-        entries: 21_734,
-        incomplete: 2,
-        translateRuns: 37,
-        translateEntries: 4_912,
-        flagged: 2_391,
-        weeks: [310, 420, 380, 520, 610, 480, 700, 655, 590, 810, 760, 905],
-        topProjects: [
-          { project: 'lunar-forms', runs: 9, entries: 2_870, flagged: 344 },
-          { project: 'harbor', runs: 6, entries: 1_402, flagged: 98 },
-          { project: 'quiet-gallery', runs: 4, entries: 966, flagged: 151 },
-        ],
-      }
+      onReady({ url: 'http://127.0.0.1:52817/k3v9q2/', opened: true, summary: STATS_SUMMARY })
+      clock.advance(1800, 0)
     },
   }),
 }
