@@ -129,6 +129,61 @@ describe('runTui', () => {
     expect(exit).toHaveBeenCalledWith(0)
   })
 
+  // The error path closes the server too, and a close that hangs there
+  // would keep Node alive behind the printed error just the same.
+  it('exits non-zero after a render crash when closing the stats server hangs', async () => {
+    let calls = 0
+    const state = memoryTuiState()
+    const commands = fakeCommands({
+      startStatsServer: vi.fn(async () => ({ url: 'http://127.0.0.1:9/x/', port: 9, close: () => new Promise<void>(() => {}) })),
+      // The shell reads it once at launch; Interface settings reads it again
+      // on opening, which is where this crash is planted.
+      loadTuiState: () => {
+        calls++
+        if (calls > 1) throw new Error('settings exploded')
+        return state.loadTuiState()
+      },
+    })
+    const { stdin, stdout, exit, done, lastFrame } = start(commands, { closeTimeoutMs: 20 })
+    await waitForText(lastFrame, 'Translate a .po file')
+    stdin.write('s')
+    await waitForText(lastFrame, 'Serving at')
+    stdin.write('q')
+    await waitForText(lastFrame, 'Translate a .po file')
+    stdin.write('c')
+    await waitForText(lastFrame, 'Interface settings')
+    stdin.write('i')
+    await expect(done).rejects.toThrow('settings exploded')
+    expect(exit).toHaveBeenCalledWith(1)
+    expect(stdout.frames.join('')).toContain('settings exploded')
+  })
+
+  // On a pipe the write is asynchronous, and exiting before it drains cuts
+  // the one line the summary exists to leave behind.
+  it('lets the last-output line drain before exiting on a hung close', async () => {
+    const commands = fakeCommands({
+      startStatsServer: vi.fn(async () => ({ url: 'http://127.0.0.1:9/x/', port: 9, close: () => new Promise<void>(() => {}) })),
+    })
+    const { stdin, stdout, exit, done, lastFrame } = start(commands, { closeTimeoutMs: 20 })
+    stdout.flushDelayMs = 30
+    let flushedAtExit: string[] = []
+    exit.mockImplementation(() => {
+      flushedAtExit = [...stdout.flushed]
+    })
+    await openTranslateAndStart(stdin, lastFrame)
+    await waitForText(lastFrame, /Done\./)
+    stdin.write('q')
+    await waitForText(lastFrame, 'About')
+    stdin.write('s')
+    await waitForText(lastFrame, 'Serving at')
+    stdin.write('q')
+    await waitForText(lastFrame, 'About')
+    stdin.write('q')
+    await done
+    expect(exit).toHaveBeenCalledWith(0)
+    expect(flushedAtExit.some((c) => c.startsWith('Last output:'))).toBe(true)
+  })
+
   it('closes the stats server when the app quits', async () => {
     const close = vi.fn(async () => {})
     const commands = fakeCommands({ startStatsServer: vi.fn(async () => ({ url: 'http://127.0.0.1:9/x/', port: 9, close })) })

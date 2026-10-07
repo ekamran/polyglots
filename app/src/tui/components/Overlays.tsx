@@ -152,7 +152,7 @@ export function Palette({ onPick, onClose, blocked = false }: { onPick: (id: Scr
         </Text>
       ))}
       {matches.length === 0 && <Text {...TOKENS.muted.ink}>Nothing matches.</Text>}
-      {blocked && <Text {...TOKENS.warn.ink}>A run is in progress on this screen. Stop it with q, or let it finish, before going elsewhere.</Text>}
+      {blocked && <Text {...TOKENS.warn.ink}>A run is in progress on this screen. Leave it once the run has finished or been stopped.</Text>}
       <Text {...TOKENS.muted.ink}>type to filter · ↑↓ choose · enter go · esc close</Text>
     </Box>
   )

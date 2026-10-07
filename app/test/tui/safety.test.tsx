@@ -85,8 +85,30 @@ describe('a run in flight', () => {
     view.stdin.write(keys.esc)
     await tick(ESC_DELAY)
     await waitForText(view.lastFrame, /0\/2/)
-    expect(view.lastFrame()).not.toContain('Version, paths')
+    // The About page, which the palette was asked for.
+    expect(view.lastFrame()).not.toContain('licence')
     run.release()
+  })
+
+  it('drops the warning once the run is over, so the next palette is clean', async () => {
+    const run = heldTranslate()
+    const view = render(<App commands={fakeCommands({ translateFile: run.translateFile })} cwd={cwd} />)
+    await startTranslate(view)
+    view.stdin.write('\u000b')
+    await waitForText(view.lastFrame, 'Go to')
+    await type(view.stdin, 'about')
+    view.stdin.write(keys.enter)
+    await waitForText(view.lastFrame, 'A run is in progress')
+    // Sync and import are runs too, and their screens do not all stop on q,
+    // so the warning does not promise a key.
+    expect(view.lastFrame()).not.toMatch(/with q/)
+    run.release()
+    await waitFor(() => !/A run is in progress/.test(view.lastFrame()))
+    view.stdin.write(keys.enter)
+    await waitForText(view.lastFrame, 'licence')
+    view.stdin.write('\u000b')
+    await waitForText(view.lastFrame, 'Go to')
+    expect(view.lastFrame()).not.toContain('A run is in progress')
   })
 
   it('makes q on home ask first, like Ctrl+C does', async () => {

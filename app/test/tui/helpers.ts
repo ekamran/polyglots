@@ -88,10 +88,19 @@ export class FakeStdout extends EventEmitter {
   rawLast = (): string | undefined => this.raw
   // Ink writes cursor and synchronized-output markers as separate chunks around each frame;
   // only chunks with visible text count as frames.
-  write = (chunk: string): boolean => {
+  // How long a write takes to be flushed, as a pipe to a slow reader can.
+  // The callback fires then, and `flushed` records which chunks had.
+  flushDelayMs = 0
+  readonly flushed: string[] = []
+  write = (chunk: string, encodingOrCallback?: unknown, callback?: unknown): boolean => {
     this.frames.push(chunk)
     this.raw = chunk
     if (stripAll(chunk).trim().length > 0) this.last = stripAll(chunk)
+    const done = typeof encodingOrCallback === 'function' ? encodingOrCallback : callback
+    setTimeout(() => {
+      this.flushed.push(chunk)
+      if (typeof done === 'function') (done as () => void)()
+    }, this.flushDelayMs)
     return true
   }
   lastFrame = (): string | undefined => this.last

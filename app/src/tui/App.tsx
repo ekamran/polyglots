@@ -193,6 +193,11 @@ function Shell({ cwd = process.cwd(), onExit }: AppProps) {
   const [overlay, setOverlay] = useState<Overlay | undefined>(undefined)
 
   const [paletteBlocked, setPaletteBlocked] = useState(false)
+  // The warning is about the run, so it goes when the run does, whether or
+  // not the palette was closed in between.
+  useEffect(() => {
+    if (!busy) setPaletteBlocked(false)
+  }, [busy])
 
   const go = (next: ScreenId) => {
     setSetupEpoch((e) => e + 1)

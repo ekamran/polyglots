@@ -31,6 +31,10 @@ export function createServices(): Services {
   let stats: StatsServerHandle | undefined
   let starting: Promise<StatsServerHandle> | undefined
   let closed = false
+  // The close of a server that finished starting after shutdown. Shutdown
+  // waits on it like any other close, so a hang there still reaches the
+  // caller's timeout instead of being reported as closed.
+  let lateClose: Promise<void> | undefined
   let statsError: string | undefined
   const listeners = new Set<() => void>()
   const notify = () => {
@@ -49,7 +53,7 @@ export function createServices(): Services {
             // Finished after the app shut down, and possibly after the
             // shutdown stopped waiting for it. Nobody will close it later.
             starting = undefined
-            void handle.close().catch(() => {})
+            lateClose = handle.close().catch(() => {})
             throw new Error('The app is closing.')
           }
           stats = handle
@@ -74,6 +78,7 @@ export function createServices(): Services {
     async shutdown() {
       closed = true
       if (starting) await starting.catch(() => undefined)
+      await lateClose
       await this.stopStats()
     },
     lastOutput: undefined,

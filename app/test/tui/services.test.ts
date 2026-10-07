@@ -33,6 +33,20 @@ describe('closeServices', () => {
     expect(services.stats).toBeUndefined()
   })
 
+  // Shutdown waits for a start in flight; if that start lands and its close
+  // then hangs, the wait must still end in a timeout the caller acts on.
+  it('reports a timeout when a late-arriving server hangs on close', async () => {
+    const services = createServices()
+    let finish!: (h: ReturnType<typeof handle>) => void
+    const starting = services.startStats(() => new Promise((resolve) => (finish = resolve)))
+    starting.catch(() => {})
+    const closing = closeServices(services, 50)
+    const late = handle(vi.fn(() => new Promise<void>(() => {})))
+    finish(late)
+    await expect(closing).resolves.toBe('timeout')
+    expect(late.close).toHaveBeenCalledTimes(1)
+  })
+
   it('holds server errors for the footer, and clears them on stop', async () => {
     const services = createServices()
     await services.startStats(async () => handle())
