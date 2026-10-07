@@ -54,7 +54,7 @@ describe('renderRoot', () => {
 
   it('makes every donut segment and legend row keyboard reachable with a tooltip', () => {
     const html = render(demo.all)
-    expect(html).toMatch(/<circle class="seg[^>]*tabindex="0"[^>]*data-tip-title="[^"]+"/)
+    expect(html).toMatch(/<circle class="slice[^>]*tabindex="0"[^>]*data-tip-title="[^"]+"/)
     expect(html).toMatch(/<li tabindex="0" data-tip-title="[^"]+" data-tip-body="[^"]+" data-tip-meta="[^"]+"/)
   })
 

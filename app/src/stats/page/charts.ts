@@ -109,7 +109,7 @@ export function flagDonut(rows: FlagRow[], s: Say): string {
       const text = ruleText(row.key, s.lang)
       const meta = `${s.n(row.count)} · ${s.tn('flagShare', s.pct(row.count / total))}`
       const seg =
-        `<circle class="seg k${i % 8}" cx="21" cy="21" r="${r}" fill="none" stroke-width="5.5" ` +
+        `<circle class="slice k${i % 8}" cx="21" cy="21" r="${r}" fill="none" stroke-width="5.5" ` +
         `stroke-dasharray="${share.toFixed(3)} ${(100 - share).toFixed(3)}" stroke-dashoffset="${(-offset).toFixed(3)}" ` +
         `tabindex="0" role="img" aria-label="${esc(text.name)}: ${s.n(row.count)}, ${s.pct(row.count / total)}" ` +
         `${tipAttrs(text.name, text.description, meta)}><title>${esc(text.name)}</title></circle>`
