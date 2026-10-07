@@ -19,6 +19,11 @@ export interface Services {
   // keeping Node alive with no UI. Nothing starts after it.
   shutdown(): Promise<void>
   lastOutput: string | undefined
+  // The server's latest complaint after it started. Held here rather than
+  // in its screen, which may be long gone when a request fails, so the
+  // footer can say it.
+  readonly statsError: string | undefined
+  reportStatsError(message: string): void
   subscribe(listener: () => void): () => void
 }
 
@@ -26,6 +31,7 @@ export function createServices(): Services {
   let stats: StatsServerHandle | undefined
   let starting: Promise<StatsServerHandle> | undefined
   let closed = false
+  let statsError: string | undefined
   const listeners = new Set<() => void>()
   const notify = () => {
     for (const l of listeners) l()
@@ -39,6 +45,13 @@ export function createServices(): Services {
       if (stats) return Promise.resolve(stats)
       starting ??= start().then(
         (handle) => {
+          if (closed) {
+            // Finished after the app shut down, and possibly after the
+            // shutdown stopped waiting for it. Nobody will close it later.
+            starting = undefined
+            void handle.close().catch(() => {})
+            throw new Error('The app is closing.')
+          }
           stats = handle
           starting = undefined
           notify()
@@ -54,6 +67,7 @@ export function createServices(): Services {
     async stopStats() {
       const handle = stats
       stats = undefined
+      statsError = undefined
       notify()
       await handle?.close()
     },
@@ -63,6 +77,13 @@ export function createServices(): Services {
       await this.stopStats()
     },
     lastOutput: undefined,
+    get statsError() {
+      return statsError
+    },
+    reportStatsError(message) {
+      statsError = message
+      notify()
+    },
     subscribe(listener) {
       listeners.add(listener)
       return () => listeners.delete(listener)
@@ -89,20 +110,38 @@ export function useStatsUrl(): string | undefined {
   return url
 }
 
+/** The stats server's latest error while it is up, re-rendering as it changes. */
+export function useStatsError(): string | undefined {
+  const services = useServices()
+  const [error, setError] = useState(services.statsError)
+  useEffect(() => {
+    setError(services.statsError)
+    return services.subscribe(() => setError(services.statsError))
+  }, [services])
+  return error
+}
+
 /**
- * Closes the stats server, giving up after `ms`. A browser holding a
- * connection open must not be able to hold the terminal hostage on quit; the
- * contract says close() drops such connections, and this is the belt to that
- * pair of braces.
+ * Closes the stats server, giving up after `ms`, and says which happened.
+ *
+ * A browser holding a connection open must not hold the terminal hostage on
+ * quit; the contract says close() drops such connections, and the timeout is
+ * the belt to that pair of braces. Giving up is not enough on its own: the
+ * socket would still keep Node alive after the terminal is restored, and the
+ * CLI only sets an exit code, so runTui exits outright on a timeout.
  */
-export async function closeServices(services: Services, ms = 2000): Promise<void> {
+export async function closeServices(services: Services, ms = 2000): Promise<'closed' | 'timeout'> {
   let timer: NodeJS.Timeout | undefined
-  await Promise.race([
-    services.shutdown().catch(() => {}),
-    new Promise<void>((resolve) => {
-      timer = setTimeout(resolve, ms)
+  const result = await Promise.race([
+    services.shutdown().then(
+      () => 'closed' as const,
+      () => 'closed' as const,
+    ),
+    new Promise<'timeout'>((resolve) => {
+      timer = setTimeout(() => resolve('timeout'), ms)
       timer.unref()
     }),
   ])
   clearTimeout(timer)
+  return result
 }

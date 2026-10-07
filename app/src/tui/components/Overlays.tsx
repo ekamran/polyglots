@@ -119,7 +119,7 @@ export function rankPalette(query: string, entries: PaletteEntry[]): PaletteEntr
 
 const PALETTE_ROWS = 8
 
-export function Palette({ onPick, onClose }: { onPick: (id: ScreenId) => void; onClose: () => void }) {
+export function Palette({ onPick, onClose, blocked = false }: { onPick: (id: ScreenId) => void; onClose: () => void; blocked?: boolean }) {
   const glyphs = useGlyphs()
   const [query, setQuery] = useState('')
   const [at, setAt] = useState(0)
@@ -152,6 +152,7 @@ export function Palette({ onPick, onClose }: { onPick: (id: ScreenId) => void; o
         </Text>
       ))}
       {matches.length === 0 && <Text {...TOKENS.muted.ink}>Nothing matches.</Text>}
+      {blocked && <Text {...TOKENS.warn.ink}>A run is in progress on this screen. Stop it with q, or let it finish, before going elsewhere.</Text>}
       <Text {...TOKENS.muted.ink}>type to filter · ↑↓ choose · enter go · esc close</Text>
     </Box>
   )

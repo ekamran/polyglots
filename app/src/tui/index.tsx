@@ -1,7 +1,7 @@
 import { render, type RenderOptions } from 'ink'
 import { App } from './App.js'
 import { defaultCommands, type TuiCommands } from './commands.js'
-import { createActivity } from './hooks/activity.js'
+import { createActivity, type Activity } from './hooks/activity.js'
 import { closeServices, createServices } from './services.js'
 
 export const EXIT_INTERRUPTED = 130
@@ -16,6 +16,10 @@ export interface RunTuiOptions {
   interactive?: boolean
   commands?: TuiCommands
   cwd?: string
+  // For tests: a run already in flight, and a shorter wait on the stats
+  // server's close than the two seconds a person gets.
+  activity?: Activity
+  closeTimeoutMs?: number
 }
 
 export async function runTui(opts: RunTuiOptions = {}): Promise<void> {
@@ -35,16 +39,28 @@ export async function runTui(opts: RunTuiOptions = {}): Promise<void> {
   if (opts.patchConsole !== undefined) renderOptions.patchConsole = opts.patchConsole
   if (opts.interactive !== undefined) renderOptions.interactive = opts.interactive
 
-  const activity = createActivity()
+  const activity = opts.activity ?? createActivity()
   const services = createServices()
+  const stderr = opts.stderr ?? process.stderr
   const instance = render(<App commands={commands} cwd={cwd} activity={activity} services={services} />, renderOptions)
+  let closed: 'closed' | 'timeout' = 'closed'
   try {
     await instance.waitUntilExit()
+  } catch (err) {
+    // A render crash with a run still going would leave that run writing
+    // files from a process with no UI, so this is the same hard exit as an
+    // abandoned quit, with the trace written where it can be read.
+    if (activity.busy) {
+      stderr.write(`\n${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`)
+      stderr.write('\nInterrupted; abandoning the run in progress.\n')
+      exit(EXIT_INTERRUPTED)
+    }
+    throw err
   } finally {
     // Before anything else, and on the error path too: a listening server
     // would keep Node alive after the UI is gone, with nothing on screen to
     // say why the shell has not come back.
-    await closeServices(services)
+    closed = await closeServices(services, opts.closeTimeoutMs)
   }
 
   // Printed after the alternate screen is gone, onto the screen the person
@@ -57,10 +73,13 @@ export async function runTui(opts: RunTuiOptions = {}): Promise<void> {
   // A translate/import/sync still in flight would keep the process alive and
   // keep writing files with no UI. The quit prompt already asked; exit hard.
   if (activity.busy) {
-    const stderr = opts.stderr ?? process.stderr
     stderr.write('\nInterrupted; abandoning the run in progress.\n')
     exit(EXIT_INTERRUPTED)
+    return
   }
+  // The server did not close in time, so its socket would hold the process
+  // open past the restored terminal. Nothing else is left to finish.
+  if (closed === 'timeout') exit(0)
 }
 
 function exitSummaryWanted(commands: TuiCommands): boolean {

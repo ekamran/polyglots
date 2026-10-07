@@ -1,4 +1,4 @@
-import { Component, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Box, Text, useApp } from 'ink'
 import { CommandsProvider, defaultCommands, errorMessage, useCommands, type TuiCommands } from './commands.js'
 import type { AgentStatus } from '../agent/discover.js'
@@ -13,7 +13,7 @@ import { InputGate, TypingProvider, useGlobalInput, useTyping } from './input.js
 import { footerKeys } from './keys.js'
 import { CONFIGURATION, HOME, parentOf, TOOLS, type ScreenId } from './menu.js'
 import { providerLabel } from './local.js'
-import { createServices, ServicesProvider, useStatsUrl, type Services } from './services.js'
+import { createServices, ServicesProvider, useStatsError, useStatsUrl, type Services } from './services.js'
 import { setupStatus, type SetupStatus } from './setup.js'
 import { frameLayout, MIN_SIZE, SizeProvider, useSize } from './size.js'
 import { SETUP_STEPS, type SetupStep, type TuiState } from './state.js'
@@ -83,26 +83,10 @@ function recordOutputs(commands: TuiCommands, services: Services): TuiCommands {
   }
 }
 
-// A render error would otherwise unwind Ink with the alternate screen still
-// up, and Ink treats what is written during that teardown as disposable: the
-// stack trace would be drawn on a screen that is about to be thrown away. This
-// catches it, has Ink exit with it, and runTui rethrows once the normal screen
-// is back, where the trace can be read.
-class Crash extends Component<{ onCrash: (error: Error) => void; children: ReactNode }, { failed: boolean }> {
-  override state = { failed: false }
-  static getDerivedStateFromError() {
-    return { failed: true }
-  }
-  override componentDidCatch(error: Error) {
-    this.props.onCrash(error)
-  }
-  override render() {
-    return this.state.failed ? null : this.props.children
-  }
-}
-
+// No error boundary of our own: Ink 7 wraps the tree in one that exits with
+// the error, which unmounts and leaves the alternate screen, and runTui
+// rethrows once the normal screen is back, where the trace can be read.
 export function App(props: AppProps) {
-  const { exit } = useApp()
   const [ownActivity] = useState(createActivity)
   const [ownServices] = useState(createServices)
   const activity = props.activity ?? ownActivity
@@ -110,19 +94,17 @@ export function App(props: AppProps) {
   const base = props.commands ?? defaultCommands
   const commands = useMemo(() => recordOutputs(base, services), [base, services])
   return (
-    <Crash onCrash={(error) => exit(error)}>
-      <SizeProvider>
-        <TypingProvider>
-          <ActivityProvider value={activity}>
-            <ServicesProvider value={services}>
-              <CommandsProvider value={commands}>
-                <Shell {...props} />
-              </CommandsProvider>
-            </ServicesProvider>
-          </ActivityProvider>
-        </TypingProvider>
-      </SizeProvider>
-    </Crash>
+    <SizeProvider>
+      <TypingProvider>
+        <ActivityProvider value={activity}>
+          <ServicesProvider value={services}>
+            <CommandsProvider value={commands}>
+              <Shell {...props} />
+            </CommandsProvider>
+          </ServicesProvider>
+        </ActivityProvider>
+      </TypingProvider>
+    </SizeProvider>
   )
 }
 
@@ -136,6 +118,7 @@ function Shell({ cwd = process.cwd(), onExit }: AppProps) {
   const typing = useTyping()
   const busy = useBusy()
   const statsUrl = useStatsUrl()
+  const statsError = useStatsError()
 
   const [tuiState, setTuiState] = useState<TuiState>(() => commands.loadTuiState())
   // Re-read whenever a screen is left, since most of what setup counts is
@@ -177,6 +160,13 @@ function Shell({ cwd = process.cwd(), onExit }: AppProps) {
   }
   useEffect(() => check(false), [])
 
+  // Counted at launch and after the screens that can change it, not on
+  // every navigation like the cheaper facts below: it opens polyglots.db.
+  const countGlossary = () =>
+    tryOr(() => commands.glossaryCount(tryOr(() => commands.loadConfig(), DEFAULT_CONFIG).defaultLocale), undefined)
+  const [glossary, setGlossary] = useState<number | undefined>(countGlossary)
+  const refreshGlossary = () => setGlossary(countGlossary())
+
   const status: SetupStatus = useMemo(() => {
     const config: PolyglotsConfig = tryOr(() => commands.loadConfig(), DEFAULT_CONFIG)
     return setupStatus({
@@ -185,13 +175,10 @@ function Shell({ cwd = process.cwd(), onExit }: AppProps) {
       state: tuiState,
       ...(agents === undefined ? {} : { agents }),
       localeConfigured: tryOr(() => commands.localeConfigured(), false),
-      ...tryOr(() => {
-        const n = commands.glossaryCount(config.defaultLocale)
-        return n === undefined ? {} : { glossaryCount: n }
-      }, {}),
+      ...(glossary === undefined ? {} : { glossaryCount: glossary }),
       hasLocaleRules: tryOr(() => commands.hasLocaleRules(config.defaultLocale), false),
     })
-  }, [commands, tuiState, agents, setupEpoch, provider])
+  }, [commands, tuiState, agents, setupEpoch, provider, glossary])
 
   // The wizard opens at launch while setup has a step that is plainly
   // missing and it has not been walked to the end. "Unknown" does not count:
@@ -205,8 +192,11 @@ function Shell({ cwd = process.cwd(), onExit }: AppProps) {
   const [statusFocus, setStatusFocus] = useState<SetupStep | undefined>(undefined)
   const [overlay, setOverlay] = useState<Overlay | undefined>(undefined)
 
+  const [paletteBlocked, setPaletteBlocked] = useState(false)
+
   const go = (next: ScreenId) => {
     setSetupEpoch((e) => e + 1)
+    if (screen === 'sync-glossary' || screen === 'setup') refreshGlossary()
     setStatusFocus(undefined)
     if (next === 'setup') {
       setWizardReturn(screen === 'setup' ? wizardReturn : screen)
@@ -219,8 +209,15 @@ function Shell({ cwd = process.cwd(), onExit }: AppProps) {
     onExit?.()
     exit()
   }
+  // A run would keep going after the UI unmounted and keep writing files
+  // with nobody watching, so quitting while one is in flight asks first,
+  // whether by q on home or by Ctrl+C.
+  const requestQuit = () => (busy ? setOverlay('quit') : quit())
   const record = (patch: (state: TuiState) => TuiState) => {
-    const next = patch(tuiState)
+    // Patched onto the file as it is now, not onto the copy read at launch:
+    // Interface settings writes the same file, and a stale copy here would
+    // put back a setting it had just turned off.
+    const next = patch(tryOr(() => commands.loadTuiState(), tuiState))
     try {
       commands.saveTuiState(next)
     } catch {
@@ -231,16 +228,17 @@ function Shell({ cwd = process.cwd(), onExit }: AppProps) {
     setTuiState(next)
   }
 
-  // A run would keep going after the UI unmounted and keep writing files
-  // with nobody watching, so quitting while one is in flight asks first. A
-  // second Ctrl+C answers yes: someone pressing it twice means it.
+  // A second Ctrl+C at the quit prompt answers yes: someone pressing it
+  // twice means it.
   useGlobalInput((input, key) => {
     if (key.ctrl && input === 'c') {
-      if (overlay === 'quit' || !busy) quit()
-      else setOverlay('quit')
+      if (overlay === 'quit') quit()
+      else requestQuit()
       return
     }
-    if (overlay !== undefined) return
+    // Nothing to draw an overlay on, and one set now would pop up
+    // unbidden when the terminal is enlarged.
+    if (overlay !== undefined || !layout.fits) return
     if (key.ctrl && input === 'k') return setOverlay('palette')
     if (key.ctrl || key.meta) return
     // Printable, so they belong to a text field when one has focus.
@@ -274,7 +272,7 @@ function Shell({ cwd = process.cwd(), onExit }: AppProps) {
           <Home
             {...menu}
             items={HOME}
-            onLeave={quit}
+            onLeave={requestQuit}
             provider={provider}
             onProvider={switchProvider}
             {...(providerError === undefined ? {} : { providerError })}
@@ -344,6 +342,10 @@ function Shell({ cwd = process.cwd(), onExit }: AppProps) {
             status={status}
             {...(agents === undefined ? {} : { agents })}
             onRecord={record}
+            onAdvance={() => {
+              setSetupEpoch((e) => e + 1)
+              refreshGlossary()
+            }}
             onDone={back}
           />
         )
@@ -387,16 +389,31 @@ function Shell({ cwd = process.cwd(), onExit }: AppProps) {
         {layout.fits && overlay === 'help' && <HelpOverlay screen={screen} rows={bodyRows} onClose={() => setOverlay(undefined)} />}
         {layout.fits && overlay === 'palette' && (
           <Palette
+            blocked={paletteBlocked}
             onPick={(id) => {
+              // Leaving a screen with a run in it would unmount the run's
+              // controls and progress while the run carried on, and leave a
+              // second run on the same file one keypress away.
+              if (busy && id !== screen) return setPaletteBlocked(true)
               setOverlay(undefined)
               go(id)
             }}
-            onClose={() => setOverlay(undefined)}
+            onClose={() => {
+              setPaletteBlocked(false)
+              setOverlay(undefined)
+            }}
           />
         )}
         {overlay === 'quit' && <QuitPrompt onQuit={quit} onCancel={() => setOverlay(undefined)} />}
       </Box>
-      {layout.fits ? <Footer keys={footerKeys(screen)} busy={busy} {...(statsUrl === undefined ? {} : { statsUrl })} /> : null}
+      {layout.fits ? (
+        <Footer
+          keys={footerKeys(screen)}
+          busy={busy}
+          {...(statsUrl === undefined ? {} : { statsUrl })}
+          {...(statsError === undefined ? {} : { statsError })}
+        />
+      ) : null}
     </Box>
   )
 }

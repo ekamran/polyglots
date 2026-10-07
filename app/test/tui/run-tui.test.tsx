@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { TranslateOptions } from '../../src/commands/translate.js'
-import { runTui } from '../../src/tui/index.js'
+import { runTui, type RunTuiOptions } from '../../src/tui/index.js'
+import { createActivity } from '../../src/tui/hooks/activity.js'
 import { DEFAULT_TUI_STATE } from '../../src/tui/state.js'
 import { FakeStdin, FakeStdout, fakeCommands, keys, makeHome, memoryTuiState, tick, waitForText, type Home } from './helpers.js'
 
@@ -22,7 +23,7 @@ afterEach(async () => {
 
 const CTRL_C = ''
 
-function start(commands = fakeCommands()) {
+function start(commands = fakeCommands(), extra: Partial<RunTuiOptions> = {}) {
   const stdin = new FakeStdin()
   const stdout = new FakeStdout()
   const exit = vi.fn()
@@ -38,6 +39,7 @@ function start(commands = fakeCommands()) {
     exit,
     commands,
     cwd,
+    ...extra,
   })
   return { stdin, stdout, exit, done, lastFrame: () => stdout.lastFrame() }
 }
@@ -83,6 +85,8 @@ describe('runTui', () => {
 
   // Ink treats output written while it tears the alternate screen down as
   // disposable, so a crash has to come back out of runTui to be seen at all.
+  // Ink's own error boundary does the exiting; this holds runTui to passing
+  // the error on with the terminal already given back.
   it('restores the terminal and rethrows when rendering fails', async () => {
     const commands = fakeCommands({
       loadTuiState: () => {
@@ -92,6 +96,37 @@ describe('runTui', () => {
     const { stdout, done } = start(commands)
     await expect(done).rejects.toThrow('render blew up')
     expect(stdout.frames.join('')).toContain('\u001b[?1049l')
+  })
+
+  it('exits hard after a render crash while a run is in flight, with the trace', async () => {
+    const activity = createActivity()
+    activity.begin()
+    const commands = fakeCommands({
+      loadTuiState: () => {
+        throw new Error('render blew up')
+      },
+    })
+    const { stdout, exit, done } = start(commands, { activity })
+    await expect(done).rejects.toThrow('render blew up')
+    expect(exit).toHaveBeenCalledWith(130)
+    expect(stdout.frames.join('')).toMatch(/render blew up[\s\S]*abandoning the run/)
+  })
+
+  // A hung close would leave the listening socket holding Node open after the
+  // terminal is back, and the CLI only sets an exit code.
+  it('exits when closing the stats server hangs', async () => {
+    const commands = fakeCommands({
+      startStatsServer: vi.fn(async () => ({ url: 'http://127.0.0.1:9/x/', port: 9, close: () => new Promise<void>(() => {}) })),
+    })
+    const { stdin, exit, done, lastFrame } = start(commands, { closeTimeoutMs: 20 })
+    await waitForText(lastFrame, 'Translate a .po file')
+    stdin.write('s')
+    await waitForText(lastFrame, 'Serving at')
+    stdin.write('q')
+    await waitForText(lastFrame, 'Translate a .po file')
+    stdin.write('q')
+    await done
+    expect(exit).toHaveBeenCalledWith(0)
   })
 
   it('closes the stats server when the app quits', async () => {

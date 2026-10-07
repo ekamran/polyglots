@@ -35,6 +35,9 @@ export interface WizardProps {
   agents?: AgentStatus[]
   // Records a step as chosen or skipped in tui.json. The app owns the file.
   onRecord: (patch: (state: TuiState) => TuiState) => void
+  // After each step, so the header's count catches up with a glossary
+  // synced or a key saved inside the wizard.
+  onAdvance?: () => void
   onDone: () => void
 }
 
@@ -181,7 +184,7 @@ function PickStep<T extends { id: string; label: string; cost: string }>({
   )
 }
 
-export function Wizard({ start, status, agents, onRecord, onDone }: WizardProps) {
+export function Wizard({ start, status, agents, onRecord, onAdvance, onDone }: WizardProps) {
   const commands = useCommands()
   const [step, setStep] = useState<SetupStep>(start)
   // Inside the keys step: once an engine is picked, its own screen follows.
@@ -191,6 +194,7 @@ export function Wizard({ start, status, agents, onRecord, onDone }: WizardProps)
   const index = SETUP_STEPS.indexOf(step)
 
   const advance = () => {
+    onAdvance?.()
     setEngine(undefined)
     setError(undefined)
     const next = SETUP_STEPS[index + 1]

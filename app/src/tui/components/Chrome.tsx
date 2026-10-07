@@ -100,9 +100,10 @@ export interface FooterProps {
   keys: KeyHelp[]
   busy: boolean
   statsUrl?: string
+  statsError?: string
 }
 
-export function Footer({ keys, busy, statsUrl }: FooterProps) {
+export function Footer({ keys, busy, statsUrl, statsError }: FooterProps) {
   const glyphs = useGlyphs()
   return (
     <Box width="100%" justifyContent="space-between" flexShrink={0}>
@@ -119,6 +120,12 @@ export function Footer({ keys, busy, statsUrl }: FooterProps) {
           <Text>
             {' '}
             <Text {...TOKENS.success.ink}>{glyphs.bullet}</Text> <Text {...TOKENS.muted.ink}>stats {statsUrl.replace(/^https?:\/\//, '').replace(/\/.*$/, '')}</Text>
+          </Text>
+        ) : null}
+        {statsError ? (
+          <Text>
+            {' '}
+            <Text {...TOKENS.warn.ink}>{glyphs.warn}</Text> <Text {...TOKENS.muted.ink}>stats: {statsError}</Text>
           </Text>
         ) : null}
         {busy ? (

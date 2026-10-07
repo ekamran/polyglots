@@ -8,7 +8,7 @@ import { FilePicker } from '../components/FilePicker.js'
 import { DONE_HINT, Hint } from '../components/Hint.js'
 import { useBackKeys } from '../hooks/useBackKeys.js'
 import { useTask } from '../hooks/useTask.js'
-import { useServices, useStatsUrl } from '../services.js'
+import { useServices, useStatsError, useStatsUrl } from '../services.js'
 import { openInDefaultApp } from '../open-file.js'
 import { TextInput, useInput } from '../input.js'
 
@@ -156,13 +156,16 @@ export function Stats({ cwd, onBack }: StatsProps) {
   const [serving, setServing] = useState<Serving>(url ? { state: 'up' } : { state: 'starting' })
   const [exporting, setExporting] = useState(false)
   const [opened, setOpened] = useState<boolean | undefined>(undefined)
-  const [serverError, setServerError] = useState<string>()
+  const serverError = useStatsError()
 
   const start = () => {
     setServing({ state: 'starting' })
     let wanted = true
     services
-      .startStats(() => commands.startStatsServer({ onError: (err) => setServerError(err.message) }))
+      // Errors go to the services, not this screen's state: the server
+      // outlives the screen, and a request that fails after it is left
+      // would otherwise be reported into an unmounted component.
+      .startStats(() => commands.startStatsServer({ onError: (err) => services.reportStatsError(err.message) }))
       .then(
         () => wanted && setServing({ state: 'up' }),
         (err: unknown) => wanted && setServing({ state: 'failed', message: errorMessage(err) }),

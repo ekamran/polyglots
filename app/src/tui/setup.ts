@@ -87,10 +87,13 @@ export function localeConfigured(): boolean {
  *
  * Not openDb(): that sets WAL and runs migrations, which is a write to the
  * one file polyglots cannot regenerate, and this runs at every launch, maybe
- * beside a review that is writing to it. A read-only handle can still leave
- * empty -wal and -shm files beside a database that had none, which SQLite
- * removes on the next writer's close. Undefined when there is no database or
- * it cannot be read, which the status shows as not synced.
+ * beside a review that is writing to it. A read-only handle on a WAL
+ * database still creates the side files when they are missing: a 0-byte
+ * -wal and a 32 KB -shm, which the next writer's close removes. immutable=1
+ * would avoid them, but promises SQLite the file cannot change, which is
+ * false while a review is writing and can serve a torn read. Undefined when
+ * there is no database or it cannot be read, which the status shows as not
+ * synced.
  */
 export function glossaryCount(locale: Locale, path: string = dbFile()): number | undefined {
   let db: Database.Database | undefined
