@@ -96,6 +96,15 @@ describe('startStatsServer', () => {
     expect(res.status).toBe(403)
   })
 
+  // Someone clicks the URL in a chat or a mail client: a cross-site
+  // navigation. That is the person opening their own page, and the token
+  // came with the link; refusing it would break the ordinary way in.
+  it('lets a cross-site navigation open the page, which is someone following the link', async () => {
+    server = await startStatsServer({ jobsDb: db })
+    const res = await get(server.url, { headers: { 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'document' } })
+    expect(res.status).toBe(200)
+  })
+
   it('answers only reads', async () => {
     server = await startStatsServer({ jobsDb: db })
     expect((await get(server.url, { method: 'POST' })).status).toBe(405)
@@ -210,18 +219,33 @@ describe('startStatsServer', () => {
 describe('openInBrowser', () => {
   function fakeSpawn(event: 'spawn' | 'error') {
     const calls: Array<[string, string[]]> = []
-    const spawn = (command: string, args: string[]) => {
+    const options: unknown[] = []
+    let unrefs = 0
+    const spawn = (command: string, args: string[], opts: unknown) => {
       calls.push([command, args])
+      options.push(opts)
       return {
         once(e: 'spawn' | 'error', listener: () => void) {
           if (e === event) queueMicrotask(listener)
           return this
         },
-        unref() {},
+        unref() {
+          unrefs += 1
+        },
       }
     }
-    return { calls, spawn }
+    return { calls, options, spawn, unrefs: () => unrefs }
   }
+
+  // The TUI calls this while Ink owns the terminal. An opener that inherited
+  // the terminal would paint over the frame, and one left referenced would
+  // hold the process open after the app quit.
+  it('detaches the opener from the terminal and from the process', async () => {
+    const s = fakeSpawn('spawn')
+    await openInBrowser('u', { platform: 'darwin', env: {}, spawn: s.spawn })
+    expect(s.options).toEqual([expect.objectContaining({ detached: true, stdio: 'ignore' })])
+    expect(s.unrefs()).toBe(1)
+  })
 
   it('uses the platform opener', async () => {
     const mac = fakeSpawn('spawn')

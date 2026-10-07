@@ -1,4 +1,4 @@
-import { spawn as spawnProcess } from 'node:child_process'
+import { spawn as spawnProcess, type SpawnOptions } from 'node:child_process'
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import type Database from 'better-sqlite3'
@@ -19,7 +19,8 @@ import { buildPayload } from './payload.js'
 //     it, and the page's own relative fetches carry it with no cookie.
 //   - The Host header must name this server. A rebinding page's requests carry
 //     its own hostname, so this refuses them before the token is even read.
-//   - Sec-Fetch-Site: cross-site is refused, for browsers that send it.
+//   - A cross-site request that is not a top-level navigation is refused,
+//     for browsers that send Sec-Fetch headers.
 //
 // The server never writes to the job store and never writes to the terminal:
 // the TUI owns the screen while it runs, and the CLI prints for itself.
@@ -93,7 +94,11 @@ export async function startStatsServer(opts: StatsServerOptions = {}): Promise<S
       send(res, head, 405, 'text/plain; charset=utf-8', 'Method not allowed\n', { allow: 'GET, HEAD' })
       return
     }
-    if (req.headers['sec-fetch-site'] === 'cross-site') {
+    // A cross-site navigation is someone following the link from a chat or a
+    // mail client, and is let through (framing is refused by the policy). A
+    // cross-site fetch is another page reading this one, and is not.
+    const navigating = req.headers['sec-fetch-mode'] === 'navigate' && req.headers['sec-fetch-dest'] === 'document'
+    if (req.headers['sec-fetch-site'] === 'cross-site' && !navigating) {
       send(res, head, 403, 'text/plain; charset=utf-8', 'Forbidden\n')
       return
     }
@@ -185,7 +190,13 @@ export async function startStatsServer(opts: StatsServerOptions = {}): Promise<S
   }
 }
 
-type Spawn = (command: string, args: string[]) => { once(event: 'spawn' | 'error', listener: () => void): unknown; unref(): void }
+type Spawn = (
+  command: string,
+  args: string[],
+  options: SpawnOptions,
+) => { once(event: 'spawn' | 'error', listener: () => void): unknown; unref(): void }
+
+const OPENER_OPTIONS: SpawnOptions = { detached: true, stdio: 'ignore', windowsHide: true }
 
 export interface OpenOptions {
   platform?: NodeJS.Platform
@@ -210,11 +221,13 @@ export function openInBrowser(url: string, opts: OpenOptions = {}): Promise<bool
     platform === 'darwin' ? ['open', [url]]
     : platform === 'win32' ? ['cmd', ['/c', 'start', '""', url]]
     : ['xdg-open', [url]]
-  const spawn: Spawn =
-    opts.spawn ?? ((cmd, a) => spawnProcess(cmd, a, { detached: true, stdio: 'ignore', windowsHide: true }))
+  const spawn: Spawn = opts.spawn ?? spawnProcess
   return new Promise((resolve) => {
     try {
-      const child = spawn(command, args)
+      // Detached, with no stdio and unref'd once started: the TUI calls this
+      // while Ink owns the terminal, and an opener that inherited it would
+      // paint over the frame, or hold the process open after the app quits.
+      const child = spawn(command, args, OPENER_OPTIONS)
       child.once('spawn', () => {
         child.unref()
         resolve(true)
