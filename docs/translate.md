@@ -11,8 +11,10 @@ Several files, or a glob, can be given at once.
 
 `--dry-run` leaves the file untouched, and that is all it skips. Every batch
 is still drafted by DeepL or OpenAI and reviewed by the agent, so it costs
-exactly what a real run costs. There is no free preview of a translation. The
-drafts are cached, so a real run straight afterwards does not pay for them
+exactly what a real run costs. There is no free preview of a translation. A
+dry run does cache both the drafts and the review verdicts, so a real run
+right after it, with the same draft engine, review model and settings, does
+not pay for them again. Changing any of those, or passing `--fresh`, pays
 again.
 
 ## How an entry gets its translation

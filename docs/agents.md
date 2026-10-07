@@ -46,7 +46,10 @@ For a translation there is no free first pass. Check the install and the
 reviewer, then ask before running `polyglots translate <file>`.
 `--dry-run` is not a preview: it skips only writing the file, and still sends
 every batch to DeepL or OpenAI and to the agent, at the full cost of a real
-run. Ask before a dry run exactly as before a real one.
+run. Ask before a dry run exactly as before a real one. A dry run caches both
+the drafts and the review verdicts, so a real run right after it, with the
+same draft engine, review model and settings, does not pay for them again;
+changing any of those, or passing `--fresh`, pays again.
 
 ## Ask the person before
 
