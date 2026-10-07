@@ -22,6 +22,8 @@ import type { PolyglotsConfig } from '../types.js'
 import { parseProjectLines, type FetchStatus } from '../wporg/projects.js'
 import { UsageError, parseDraftEngine, parseLocaleArg, parsePositiveInt, secretForEngine } from './args.js'
 import { watchKeys, type KeyStream } from './keys.js'
+import type { Painter } from '../ui/paint.js'
+import { warnLine } from '../ui/messages.js'
 
 export interface FetchFlags {
   get?: string
@@ -42,6 +44,7 @@ export interface FetchCli {
   fetchProjects: typeof fetchProjects
   reviewFile: typeof reviewFile
   translate: typeof translateFile
+  ui: { out: Painter; err: Painter }
   out(line: string): void
   err(line: string): void
 }
@@ -119,9 +122,9 @@ export async function runFetch(cli: FetchCli, names: string[], flags: FetchFlags
     }
   } else {
     const advice = batchAdvice(config.reviewProvider, batchSize)
-    if (advice) cli.err(advice)
+    if (advice) cli.err(warnLine(cli.ui.err, advice))
   }
-  if (config.reviewProvider === 'local' && !(review && flags.ai === false)) cli.err(LOCAL_REVIEW_NOTICE)
+  if (config.reviewProvider === 'local' && !(review && flags.ai === false)) cli.err(warnLine(cli.ui.err, LOCAL_REVIEW_NOTICE))
 
   cli.err(`Checking ${refs.length} ${refs.length === 1 ? 'project' : 'projects'} on translate.wordpress.org...`)
   const onWait = (ms: number) => cli.err(waitNotice(ms))

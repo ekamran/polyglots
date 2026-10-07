@@ -104,7 +104,7 @@ async function run(argv: string[], deps: Omit<CliDeps, 'streams'> & { stdin?: Re
   const stdout = sink()
   const stderr = sink()
   const { stdin, ...rest } = deps
-  const code = await main(argv, { ...rest, streams: { stdin: stdin ?? stdinWith(undefined, false), stdout, stderr } })
+  const code = await main(argv, { env: {}, ...rest, streams: { stdin: stdin ?? stdinWith(undefined, false), stdout, stderr } })
   return { code, stdout: stdout.text, stderr: stderr.text }
 }
 

@@ -52,6 +52,8 @@ import {
   type ModelServer,
 } from './draft/discover.js'
 import { localModelId, resolveLocalTarget, type LocalTarget } from './draft/local-chat.js'
+import { createPainter, type Painter } from './ui/paint.js'
+import { errorLine, warnLine } from './ui/messages.js'
 import { LOCAL_REVIEW_NOTICE, localBatchAdvice, localReviewBatchSize } from './review/local.js'
 import { engineId } from './jobs/hash.js'
 import type { RunTuiOptions } from './tui/index.js'
@@ -66,8 +68,8 @@ const EXIT_STOPPED = 3
 
 export interface CliStreams {
   stdin: NodeJS.ReadableStream & { isTTY?: boolean }
-  stdout: { write(chunk: string): boolean }
-  stderr: { isTTY?: boolean; write(chunk: string): boolean }
+  stdout: { isTTY?: boolean; columns?: number; write(chunk: string): boolean }
+  stderr: { isTTY?: boolean; columns?: number; write(chunk: string): boolean }
 }
 
 export type RunTui = (opts?: RunTuiOptions) => Promise<void>
@@ -89,6 +91,9 @@ export interface CliDeps {
   discoverAgents?: typeof discoverAgents
   discoverModels?: typeof discoverModels
   checkLocalModel?: typeof checkLocalModel
+  // Injected so tests decide colour and glyphs themselves, instead of
+  // inheriting whatever LANG, TERM or NO_COLOR the machine running them has.
+  env?: NodeJS.ProcessEnv
 }
 
 interface Cli {
@@ -109,6 +114,9 @@ interface Cli {
   discoverModels: typeof discoverModels
   checkLocalModel: typeof checkLocalModel
   config: () => PolyglotsConfig
+  // One painter per stream, because the two can disagree: stdout piped into
+  // a file while stderr is still on a terminal.
+  ui: { out: Painter; err: Painter }
   out(line: string): void
   err(line: string): void
 }
@@ -126,8 +134,10 @@ function createCli(deps: CliDeps): Cli {
     stderr: deps.streams?.stderr ?? process.stderr,
   }
   let cached: PolyglotsConfig | undefined
+  const env = deps.env ?? process.env
   return {
     streams,
+    ui: { out: createPainter(streams.stdout, env), err: createPainter(streams.stderr, env) },
     translate: deps.translate ?? translateFile,
     importTmx: deps.importTmx ?? importTmx,
     syncGlossary: deps.syncGlossary ?? syncGlossary,
@@ -290,7 +300,7 @@ async function runTranslate(cli: Cli, patterns: string[], flags: TranslateFlags)
       })
     } catch (error) {
       report.finish()
-      cli.err(`Error: ${file}: ${errorMessage(error)}`)
+      cli.err(errorLine(cli.ui.err, `${file}: ${errorMessage(error)}`))
       failed += 1
       continue
     }
@@ -310,7 +320,8 @@ async function runTranslate(cli: Cli, patterns: string[], flags: TranslateFlags)
 // absent finding is not a passed language check.
 function warnUniversalOnly(cli: Cli, locale: Locale): void {
   const notice = supportNotice(locale)
-  if (notice) cli.err(notice)
+  // The glyph says what "Note: " said, and the TUI keeps the prefix.
+  if (notice) cli.err(warnLine(cli.ui.err, notice.replace(/^Note: /, '')))
 }
 
 /**
@@ -328,12 +339,12 @@ function resolveBatchSize(config: PolyglotsConfig, flag: string | undefined): nu
 async function warnAboutLocalModel(cli: Cli, target: LocalTarget): Promise<ModelCheck | undefined> {
   try {
     const check = await cli.checkLocalModel(target)
-    if (check.state !== 'installed') cli.err(`Warning: ${check.message ?? `${check.model} is ${check.state}`}`)
+    if (check.state !== 'installed') cli.err(warnLine(cli.ui.err, check.message ?? `${check.model} is ${check.state}`))
     return check
   } catch (error) {
     // A throw here is a bug rather than a probe failure, since a probe never
     // rejects. It still must not be the reason a translate fails.
-    cli.err(`Warning: could not check the local model: ${errorMessage(error)}`)
+    cli.err(warnLine(cli.ui.err, `could not check the local model: ${errorMessage(error)}`))
     return undefined
   }
 }
@@ -350,7 +361,7 @@ async function warnAboutLocalReview(
   locale: Locale,
   check: 'check' | 'skip-check' = 'check',
 ): Promise<void> {
-  cli.err(LOCAL_REVIEW_NOTICE)
+  cli.err(warnLine(cli.ui.err, LOCAL_REVIEW_NOTICE))
   const result = check === 'check' ? await warnAboutLocalModel(cli, target) : undefined
   const contextLength = target.contextLength ?? result?.contextLength
   const advice = localBatchAdvice({
@@ -360,7 +371,7 @@ async function warnAboutLocalReview(
     kind: target.kind,
     ...(contextLength === undefined ? {} : { contextLength }),
   })
-  if (advice) cli.err(advice)
+  if (advice) cli.err(warnLine(cli.ui.err, advice))
 }
 
 const CONFIG_KEYS = Object.keys(DEFAULT_CONFIG) as Array<keyof PolyglotsConfig>
@@ -554,7 +565,7 @@ async function configSet(cli: Cli, key: string, raw: string): Promise<void> {
   const saved = saveConfig({ [key]: coerceConfigValue(key, raw) })
   cli.out(`${key} = ${formatConfigValue(key, saved[key])}`)
   // The one door to the experimental reviewer, so the warning is said here.
-  if (key === 'reviewProvider' && saved.reviewProvider === 'local') cli.err(LOCAL_REVIEW_NOTICE)
+  if (key === 'reviewProvider' && saved.reviewProvider === 'local') cli.err(warnLine(cli.ui.err, LOCAL_REVIEW_NOTICE))
 }
 
 async function configSetKey(cli: Cli, rawName: string, value: string | undefined): Promise<number> {
@@ -577,6 +588,7 @@ const ENVIRONMENT_HELP = [
   '  POLYGLOTS_AGENT_BIN   agent executable for the review pass, whichever provider is set (default: claude or agy on PATH)',
   '  POLYGLOTS_CLAUDE_BIN  the older name, applied to claude only',
   '  POLYGLOTS_HOME        root for config/ and data/ instead of the XDG directories',
+  '  POLYGLOTS_ASCII=1     plain ASCII glyphs instead of Unicode (also NO_COLOR, FORCE_COLOR)',
 ].join('\n')
 
 const LIVE_WARNING = 'Sends one prompt to each usable agent; this spends a request on metered plans.'
@@ -601,7 +613,7 @@ function liveText(live: AgentStatus['live']): string | undefined {
 async function runDoctor(cli: Cli, flags: { json?: boolean; live?: boolean }): Promise<number> {
   const configured = cli.config().reviewProvider
   const live = flags.live === true
-  if (live) cli.err(LIVE_WARNING)
+  if (live) cli.err(warnLine(cli.ui.err, LIVE_WARNING))
   const agents = await cli.discoverAgents({ refresh: true, ...(live ? { live: true } : {}) })
   // The experimental local reviewer is no agent, so its health is its model
   // check: the same question `models` answers, asked of the one target a
@@ -829,6 +841,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
             translate: cli.translate,
             out: cli.out,
             err: cli.err,
+            ui: cli.ui,
           },
           names,
           flags,
@@ -855,7 +868,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
       warnUniversalOnly(cli, locale)
       const batchSize = resolveBatchSize(config, flags.batchSize)
       const advice = batchAdvice(config.reviewProvider, batchSize)
-      if (advice) cli.err(advice)
+      if (advice) cli.err(warnLine(cli.ui.err, advice))
       if (config.reviewProvider === 'local' && flags.ai !== false) {
         await warnAboutLocalReview(cli, resolveLocalTarget(config), batchSize, locale)
       }
@@ -1086,10 +1099,10 @@ function exitCodeFor(cli: Cli, error: unknown): number {
     return error.exitCode === 0 ? EXIT_OK : EXIT_USAGE
   }
   if (error instanceof UsageError) {
-    cli.err(`Error: ${error.message}`)
+    cli.err(errorLine(cli.ui.err, error.message))
     return EXIT_USAGE
   }
-  cli.err(`Error: ${errorMessage(error)}`)
+  cli.err(errorLine(cli.ui.err, errorMessage(error)))
   return EXIT_ERROR
 }
 

@@ -84,7 +84,7 @@ function harness(): Harness {
     run(argv, deps = {}) {
       const { stdin, tty, ...rest } = deps
       stderr.isTTY = tty === true
-      return main(argv, { ...rest, streams: { stdin: stdin ?? stdinWith(undefined, false), stdout, stderr } })
+      return main(argv, { env: {}, ...rest, streams: { stdin: stdin ?? stdinWith(undefined, false), stdout, stderr } })
     },
   }
 }
@@ -107,6 +107,20 @@ afterEach(async () => {
   for (const key of Object.keys(process.env)) if (!(key in savedEnv)) delete process.env[key]
   Object.assign(process.env, savedEnv)
   await rm(home, { recursive: true, force: true })
+})
+
+// stdout and stderr decide colour separately: in `translate x.po | tee log`
+// the summary goes down a pipe while progress is still on a terminal.
+describe('per-stream colour', () => {
+  it('paints stderr and stdout separately, so a piped summary carries no escape codes', async () => {
+    const h = harness()
+    const translate = fakeTranslate()
+    const code = await h.run(['translate', file, '--draft-engine', 'deepl'], {
+      translate: translate.fn, tty: true, env: { FORCE_COLOR: undefined } as NodeJS.ProcessEnv,
+    })
+    expect(code).toBe(0)
+    expect(h.stdout.text).not.toMatch(/\x1b\[/)
+  })
 })
 
 describe('translate summary output', () => {
@@ -179,7 +193,7 @@ describe('translate summary output', () => {
     const code = await h.run(['translate', file, second], { translate: translate.fn })
     expect(code).toBe(1)
     expect(translate.calls.map((c) => c.file)).toEqual([file, second])
-    expect(h.stderr.text).toContain(`Error: ${file}: bad po syntax`)
+    expect(h.stderr.text).toContain(`✗ ${file}: bad po syntax`)
     const lines = h.stdout.text.trim().split('\n')
     expect(lines).toHaveLength(1)
     expect(lines[0]).toContain(`Open ${second} in PoEdit`)
@@ -301,7 +315,7 @@ describe('glossary sync', () => {
     const sync = fakeSync(new Error('No glossary entries found for locale "tr"; existing cache left untouched'))
     const code = await h.run(['glossary', 'sync'], { syncGlossary: sync.fn })
     expect(code).toBe(1)
-    expect(h.stderr.text).toContain('Error: No glossary entries found for locale "tr"')
+    expect(h.stderr.text).toContain('✗ No glossary entries found for locale "tr"')
     expect(h.stdout.text).toBe('')
   })
 })
@@ -832,7 +846,7 @@ describe('translate error output on a TTY', () => {
     const translate = fakeTranslate(() => new Error('boom'))
     const code = await h.run(['translate', file], { translate: translate.fn, tty: true })
     expect(code).toBe(1)
-    expect(h.stderr.text).toMatch(new RegExp(`\\r\\x1b\\[2KError: ${file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}: boom\\n$`))
+    expect(h.stderr.text).toMatch(new RegExp(`\\r\\x1b\\[2K\\x1b\\[31m✗\\x1b\\[39m ${file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}: boom\\n$`))
     expect(h.stderr.text).not.toMatch(/0\/7Error/)
   })
 })
@@ -1155,7 +1169,7 @@ describe('local models', () => {
       const code = await h.run(['translate', file], { translate: translate.fn, checkLocalModel: check.fn })
       expect(code).toBe(0)
       expect(check.calls).toEqual([{ kind: 'ollama', baseUrl: 'http://localhost:11434', model: 'qwen3.8:27b-mlx' }])
-      expect(h.stderr.text).toContain('Warning: qwen3.8:27b-mlx is not installed in Ollama at http://localhost:11434. Pull it with: ollama pull qwen3.8:27b-mlx')
+      expect(h.stderr.text).toContain('! qwen3.8:27b-mlx is not installed in Ollama at http://localhost:11434. Pull it with: ollama pull qwen3.8:27b-mlx')
       expect(translate.calls).toHaveLength(1)
     })
 
@@ -1177,7 +1191,7 @@ describe('local models', () => {
       const translate = fakeTranslate()
       const code = await h.run(['translate', file], { translate: translate.fn, checkLocalModel: fakeCheck(new Error('boom')).fn })
       expect(code).toBe(0)
-      expect(h.stderr.text).toContain('Warning: could not check the local model: boom')
+      expect(h.stderr.text).toContain('! could not check the local model: boom')
       expect(translate.calls).toHaveLength(1)
     })
 
@@ -1201,7 +1215,7 @@ describe('local models', () => {
       expect(code).toBe(0)
       expect((await configJson()).ollama).toEqual({ baseUrl: 'http://localhost:11434', model: 'llama3.2:1b' })
       expect(h.stdout.text).toBe('ollama.model = llama3.2:1b\n')
-      expect(h.stderr.text).toContain('Warning: llama3.2:1b is not installed')
+      expect(h.stderr.text).toContain('! llama3.2:1b is not installed')
       expect(check.calls).toEqual([{ kind: 'ollama', baseUrl: 'http://localhost:11434', model: 'llama3.2:1b' }])
     })
 
@@ -1266,7 +1280,7 @@ describe('local models', () => {
 // nobody could tell an absent finding from a passed check. Told once, before
 // the run, and never a refusal.
 describe('universal-only notice', () => {
-  const NOTICE = 'Note: no locale rules for de; only the universal checks run. Add some with: polyglots rules edit de'
+  const NOTICE = '! no locale rules for de; only the universal checks run. Add some with: polyglots rules edit de'
 
   it('is printed to stderr before a review of a locale with no rules of its own', async () => {
     const h = harness()
@@ -1295,7 +1309,7 @@ describe('universal-only notice', () => {
     for (const locale of ['tr', 'sv']) {
       const h = harness()
       await h.run(['translate', file, '--locale', locale], { translate: fakeTranslate().fn })
-      expect(h.stderr.text).not.toContain('Note: no locale rules')
+      expect(h.stderr.text).not.toContain('no locale rules')
     }
   })
 })
