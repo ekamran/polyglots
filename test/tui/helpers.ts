@@ -15,6 +15,7 @@ import type { TranslateEvent, TranslateOptions, TranslateSummary } from '../../s
 import type { ReviewFileOptions, TuiCommands } from '../../src/tui/commands.js'
 import { MENU_ITEMS, type MenuAction } from '../../src/tui/screens/Menu.js'
 import type { AgentStatus } from '../../src/agent/discover.js'
+import type { ModelCheck, ModelServer } from '../../src/draft/discover.js'
 import type { ReviewProvider, ReviewSummary } from '../../src/types.js'
 import type { FetchStatus, ProjectRef } from '../../src/wporg/projects.js'
 
@@ -217,6 +218,20 @@ export function unusableAgent(provider: ReviewProvider, reason: string): AgentSt
   return status
 }
 
+// An Ollama server holding the default draft model unless the patch says
+// otherwise, so a test that does not care about local models sees the
+// configured one installed.
+export function modelServer(patch: Partial<ModelServer> = {}): ModelServer {
+  return {
+    target: { baseUrl: 'http://localhost:11434', kind: 'ollama', label: 'Ollama', source: 'default' },
+    state: 'up',
+    kind: 'ollama',
+    selectable: true,
+    models: [{ name: 'qwen3.8:27b-mlx', model: 'qwen3.8:27b-mlx', size: 17_200_000_000, parameterSize: '27B', quantization: 'Q4_K_M' }],
+    ...patch,
+  }
+}
+
 export function fakeCommands(overrides: Partial<TuiCommands> = {}): TuiCommands {
   return {
     writeStats: vi.fn(async (opts: StatsOptions = {}) => ({
@@ -270,6 +285,12 @@ export function fakeCommands(overrides: Partial<TuiCommands> = {}): TuiCommands 
     // Never the real discovery: a TUI test must not spawn whatever agent CLI
     // happens to be installed.
     discoverAgents: vi.fn(async () => [agentStatus('claude'), agentStatus('antigravity')]),
+    // Never the real probes either: a TUI test must not send a request to
+    // whatever happens to be listening on 11434.
+    discoverModels: vi.fn(async () => [modelServer()]),
+    checkOllamaModel: vi.fn(
+      async (ollama: { baseUrl: string; model: string }): Promise<ModelCheck> => ({ state: 'installed', ...ollama }),
+    ),
     loadConfig,
     saveConfig,
     loadSecrets,

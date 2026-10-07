@@ -15,10 +15,15 @@ Entries say what changed. For why and how, read the commit.
 - `polyglots doctor` reports which agent CLIs are installed, signed in and set up, with an opt-in
   `--live` prompt.
 - A "Check AI agents" menu screen.
+- `polyglots models` lists local model servers (Ollama, LM Studio, llama.cpp) and their models.
+- A "Local models" menu screen that sets the Ollama draft model.
+- `config set` and `config get` take `ollama.model`, `ollama.baseUrl` and `localModelServers`.
 
 ### Changed
 
 - `p` on the menu switches only between usable agents, and says why the others are missing.
+- Translate with the qwen engine warns before starting when Ollama is down or the model is not
+  pulled, on the CLI and the Translate screen.
 
 ### Fixed
 

@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 import { main, type CliDeps } from '../../src/cli.js'
 import type { TranslateOptions, TranslateSummary } from '../../src/commands/translate.js'
 import type { AgentStatus, DiscoverOptions } from '../../src/agent/discover.js'
+import type { DiscoverModelsOptions, ModelCheck, ModelServer } from '../../src/draft/discover.js'
 
 const samplePo = fileURLToPath(new URL('../fixtures/po/sample.po', import.meta.url))
 const pkg = createRequire(import.meta.url)('../../package.json') as { version: string }
@@ -1024,5 +1025,237 @@ describe('which agent binary a run is given', () => {
 
   it('hands POLYGLOTS_AGENT_BIN to an antigravity review', async () => {
     expect(await binSeen({ POLYGLOTS_AGENT_BIN: '/x/agent' })).toBe('/x/agent')
+  })
+})
+
+describe('local models', () => {
+  const ollama: ModelServer = {
+    target: { baseUrl: 'http://localhost:11434', kind: 'ollama', label: 'Ollama', source: 'default' },
+    state: 'up',
+    kind: 'ollama',
+    selectable: true,
+    models: [
+      { name: 'qwen3.8:27b-mlx', model: 'qwen3.8:27b-mlx', size: 17_200_000_000, parameterSize: '27B', quantization: 'Q4_K_M' },
+      { name: 'llama3.2:latest', model: 'llama3.2:latest', size: 2_019_393_189, parameterSize: '3.2B', quantization: 'Q4_K_M' },
+    ],
+  }
+  const lmStudio: ModelServer = {
+    target: { baseUrl: 'http://localhost:1234', kind: 'openai-compatible', label: 'LM Studio', source: 'default' },
+    state: 'up',
+    kind: 'openai-compatible',
+    selectable: false,
+    models: [{ name: 'qwen2.5-7b-instruct' }],
+  }
+  const llamaCpp: ModelServer = {
+    target: { baseUrl: 'http://localhost:8080', kind: 'openai-compatible', label: 'llama.cpp server', source: 'default' },
+    state: 'down',
+    error: 'not running',
+    selectable: false,
+    models: [],
+  }
+  const down = (s: ModelServer): ModelServer => ({ target: s.target, state: 'down', error: 'not running', selectable: false, models: [] })
+  const installed: ModelCheck = { state: 'installed', model: 'qwen3.8:27b-mlx', baseUrl: 'http://localhost:11434' }
+  const missing = (model: string): ModelCheck => ({
+    state: 'missing',
+    model,
+    baseUrl: 'http://localhost:11434',
+    message: `${model} is not installed in Ollama at http://localhost:11434. Pull it with: ollama pull ${model}`,
+  })
+
+  // Never the real discovery: what happens to be listening on the machine
+  // running the suite must not decide whether it passes, and no test may
+  // send a request to a real local server.
+  function fakeModels(servers: ModelServer[]) {
+    const calls: DiscoverModelsOptions[] = []
+    const fn = async (opts: DiscoverModelsOptions = {}) => {
+      calls.push(opts)
+      return servers
+    }
+    return { fn, calls }
+  }
+
+  function fakeCheck(result: ModelCheck | Error) {
+    const calls: Array<{ baseUrl: string; model: string }> = []
+    const fn = async (o: { baseUrl: string; model: string }) => {
+      calls.push(o)
+      if (result instanceof Error) throw result
+      return result
+    }
+    return { fn, calls }
+  }
+
+  async function useQwen(): Promise<void> {
+    await mkdir(join(home, 'config'), { recursive: true })
+    await writeFile(join(home, 'config', 'config.json'), JSON.stringify({ defaultDraftEngine: 'qwen' }))
+  }
+
+  describe('models', () => {
+    it('prints each server, its models and the draft model line', async () => {
+      const h = harness()
+      const discover = fakeModels([ollama, lmStudio, llamaCpp])
+      const code = await h.run(['models'], { discoverModels: discover.fn, checkOllamaModel: fakeCheck(installed).fn })
+      expect(code).toBe(0)
+      const out = h.stdout.text
+      expect(out).toMatch(/Ollama\s+http:\/\/localhost:11434\s+2 models/)
+      expect(out).toMatch(/qwen3\.8:27b-mlx\s+17\.2 GB\s+27B\s+Q4_K_M\s+\(configured\)/)
+      expect(out).toMatch(/llama3\.2:latest\s+2\.0 GB\s+3\.2B\s+Q4_K_M/)
+      expect(out).toMatch(/LM Studio\s+http:\/\/localhost:1234\s+1 model, listing only: not usable as a draft engine yet/)
+      expect(out).toContain('qwen2.5-7b-instruct')
+      expect(out).toContain('Not running: llama.cpp server (http://localhost:8080)')
+      expect(out).toContain('Draft model: qwen3.8:27b-mlx (installed)')
+      expect(discover.calls[0]).toMatchObject({ refresh: true })
+    })
+
+    it('names the pull command when the draft model is not installed', async () => {
+      const h = harness()
+      await h.run(['models'], { discoverModels: fakeModels([ollama]).fn, checkOllamaModel: fakeCheck(missing('qwen3.8:9b')).fn })
+      expect(h.stdout.text).toContain('Draft model: qwen3.8:9b (not installed)')
+      expect(h.stdout.text).toContain('Pull it with: ollama pull qwen3.8:9b')
+    })
+
+    it('exits 1 when no server is up', async () => {
+      const h = harness()
+      const code = await h.run(['models'], {
+        discoverModels: fakeModels([down(ollama), down(lmStudio), llamaCpp]).fn,
+        checkOllamaModel: fakeCheck({ ...installed, state: 'unreachable', message: 'Ollama is not reachable' }).fn,
+      })
+      expect(code).toBe(1)
+      expect(h.stdout.text).toContain('Not running: Ollama (http://localhost:11434)')
+    })
+
+    it('prints parseable JSON with --json', async () => {
+      const h = harness()
+      const code = await h.run(['models', '--json'], {
+        discoverModels: fakeModels([ollama, llamaCpp]).fn,
+        checkOllamaModel: fakeCheck(installed).fn,
+      })
+      expect(code).toBe(0)
+      const parsed = JSON.parse(h.stdout.text) as { servers: ModelServer[]; configured: ModelCheck }
+      expect(parsed.servers.map((s) => s.target.label)).toEqual(['Ollama', 'llama.cpp server'])
+      expect(parsed.configured).toEqual(installed)
+    })
+
+    it('strips control characters from what a listener reports', async () => {
+      const h = harness()
+      const hostile: ModelServer = { ...lmStudio, models: [{ name: '\x1b[2Jevil\x07' }] }
+      await h.run(['models'], { discoverModels: fakeModels([hostile]).fn, checkOllamaModel: fakeCheck(installed).fn })
+      expect(h.stdout.text).toContain('evil')
+      expect(h.stdout.text).not.toMatch(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/)
+    })
+  })
+
+  describe('translate pre-flight', () => {
+    it('warns on stderr when the model is missing, and still translates', async () => {
+      await useQwen()
+      const h = harness()
+      const translate = fakeTranslate()
+      const check = fakeCheck(missing('qwen3.8:27b-mlx'))
+      const code = await h.run(['translate', file], { translate: translate.fn, checkOllamaModel: check.fn })
+      expect(code).toBe(0)
+      expect(check.calls).toEqual([{ baseUrl: 'http://localhost:11434', model: 'qwen3.8:27b-mlx' }])
+      expect(h.stderr.text).toContain('Warning: qwen3.8:27b-mlx is not installed in Ollama at http://localhost:11434. Pull it with: ollama pull qwen3.8:27b-mlx')
+      expect(translate.calls).toHaveLength(1)
+    })
+
+    it('checks once for a multi-file run, before the first file', async () => {
+      const second = join(home, 'second.po')
+      await copyFile(samplePo, second)
+      const h = harness()
+      const translate = fakeTranslate()
+      const check = fakeCheck(installed)
+      await h.run(['translate', file, second, '--draft-engine', 'qwen'], { translate: translate.fn, checkOllamaModel: check.fn })
+      expect(check.calls).toHaveLength(1)
+      expect(translate.calls).toHaveLength(2)
+      expect(h.stderr.text).not.toContain('Warning')
+    })
+
+    it('still translates when the check itself throws', async () => {
+      await useQwen()
+      const h = harness()
+      const translate = fakeTranslate()
+      const code = await h.run(['translate', file], { translate: translate.fn, checkOllamaModel: fakeCheck(new Error('boom')).fn })
+      expect(code).toBe(0)
+      expect(h.stderr.text).toContain('Warning: could not check the local model: boom')
+      expect(translate.calls).toHaveLength(1)
+    })
+
+    it('never checks for a metered engine', async () => {
+      const h = harness()
+      const check = fakeCheck(installed)
+      await h.run(['translate', file, '--draft-engine', 'deepl'], { translate: fakeTranslate().fn, checkOllamaModel: check.fn })
+      expect(check.calls).toEqual([])
+    })
+  })
+
+  describe('config', () => {
+    async function configJson() {
+      return JSON.parse(await readFile(join(home, 'config', 'config.json'), 'utf8'))
+    }
+
+    it('sets ollama.model, and warns without failing when it is not installed', async () => {
+      const h = harness()
+      const check = fakeCheck(missing('llama3.2:1b'))
+      const code = await h.run(['config', 'set', 'ollama.model', ' llama3.2:1b '], { checkOllamaModel: check.fn })
+      expect(code).toBe(0)
+      expect((await configJson()).ollama).toEqual({ baseUrl: 'http://localhost:11434', model: 'llama3.2:1b' })
+      expect(h.stdout.text).toBe('ollama.model = llama3.2:1b\n')
+      expect(h.stderr.text).toContain('Warning: llama3.2:1b is not installed')
+      expect(check.calls).toEqual([{ baseUrl: 'http://localhost:11434', model: 'llama3.2:1b' }])
+    })
+
+    it('says nothing more when the model is installed', async () => {
+      const h = harness()
+      await h.run(['config', 'set', 'ollama.model', 'qwen3.8:27b-mlx'], { checkOllamaModel: fakeCheck(installed).fn })
+      expect(h.stderr.text).toBe('')
+    })
+
+    it('refuses a model name with whitespace inside', async () => {
+      const h = harness()
+      expect(await h.run(['config', 'set', 'ollama.model', 'llama 3'], { checkOllamaModel: fakeCheck(installed).fn })).toBe(2)
+    })
+
+    it('sets ollama.baseUrl, keeping the model', async () => {
+      const h = harness()
+      expect(await h.run(['config', 'set', 'ollama.baseUrl', 'http://box:11434/'])).toBe(0)
+      expect((await configJson()).ollama).toEqual({ baseUrl: 'http://box:11434/', model: 'qwen3.8:27b-mlx' })
+    })
+
+    it('refuses an ollama.baseUrl that is not an http URL', async () => {
+      const h = harness()
+      expect(await h.run(['config', 'set', 'ollama.baseUrl', 'not-a-url'])).toBe(2)
+      expect(h.stderr.text).toContain('ollama.baseUrl')
+    })
+
+    it('round-trips localModelServers through config get, and clears it with an empty string', async () => {
+      const h = harness()
+      expect(await h.run(['config', 'set', 'localModelServers', 'http://box:11434, https://models.lan'])).toBe(0)
+      const read = harness()
+      await read.run(['config', 'get', 'localModelServers'])
+      expect(read.stdout.text.trim()).toBe('http://box:11434,https://models.lan')
+
+      expect(await harness().run(['config', 'set', 'localModelServers', ''])).toBe(0)
+      expect((await configJson()).localModelServers).toEqual([])
+    })
+
+    it('refuses a localModelServers entry that is not an http URL', async () => {
+      const h = harness()
+      expect(await h.run(['config', 'set', 'localModelServers', 'http://box:11434,box:1234'])).toBe(2)
+      expect(h.stderr.text).toContain('box:1234')
+    })
+
+    it('prints the bare model name for config get ollama.model', async () => {
+      const h = harness()
+      await h.run(['config', 'get', 'ollama.model'])
+      expect(h.stdout.text).toBe('qwen3.8:27b-mlx\n')
+      const url = harness()
+      await url.run(['config', 'get', 'ollama.baseUrl'])
+      expect(url.stdout.text).toBe('http://localhost:11434\n')
+    })
+
+    it('points a bare ollama at the dotted keys', async () => {
+      const h = harness()
+      expect(await h.run(['config', 'set', 'ollama', 'x'])).toBe(2)
+      expect(h.stderr.text).toContain('ollama.model')
+    })
   })
 })

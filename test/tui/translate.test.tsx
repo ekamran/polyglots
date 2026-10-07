@@ -266,3 +266,60 @@ describe('Translate batch size', () => {
     expect((commands.translateFile as ReturnType<typeof vi.fn>).mock.calls[0]![0]).toMatchObject({ batchSize: 50 })
   })
 })
+
+describe('Translate with the local engine', () => {
+  async function toQwen(stdin: { write(data: string): void }, lastFrame: () => string | undefined) {
+    stdin.write(keys.down)
+    await tick()
+    stdin.write(keys.right)
+    await waitForText(lastFrame, /Draft engine:\s+openai/)
+    stdin.write(keys.right)
+    await waitForText(lastFrame, /Draft engine:\s+qwen/)
+  }
+
+  it('checks the model and names it under the engine', async () => {
+    const commands = fakeCommands()
+    const { lastFrame, stdin } = mount(commands)
+    await pickFile(stdin, lastFrame)
+    await toQwen(stdin, lastFrame)
+    await waitForText(() => flat(lastFrame()), 'Model: qwen3.8:27b-mlx at http://localhost:11434')
+    expect(commands.checkOllamaModel).toHaveBeenCalledWith({ baseUrl: 'http://localhost:11434', model: 'qwen3.8:27b-mlx' })
+  })
+
+  it('shows the warning when the model is missing, and still starts', async () => {
+    const message = 'qwen3.8:27b-mlx is not installed in Ollama at http://localhost:11434. Pull it with: ollama pull qwen3.8:27b-mlx'
+    const commands = fakeCommands({
+      checkOllamaModel: vi.fn(async (o: { baseUrl: string; model: string }) => ({ state: 'missing' as const, ...o, message })),
+    })
+    const { lastFrame, stdin } = mount(commands)
+    await pickFile(stdin, lastFrame)
+    await toQwen(stdin, lastFrame)
+    await waitForText(() => flat(lastFrame()), 'Pull it with: ollama pull qwen3.8:27b-mlx')
+    for (let i = 0; i < 3; i++) {
+      stdin.write(keys.down)
+      await tick()
+    }
+    stdin.write(keys.enter)
+    await waitFor(() => (commands.translateFile as ReturnType<typeof vi.fn>).mock.calls.length > 0)
+    expect((commands.translateFile as ReturnType<typeof vi.fn>).mock.calls[0]![0]).toMatchObject({ draftEngine: 'qwen' })
+  })
+
+  it('shows nothing extra when the check rejects', async () => {
+    const commands = fakeCommands({ checkOllamaModel: vi.fn(async () => Promise.reject(new Error('boom'))) })
+    const { lastFrame, stdin } = mount(commands)
+    await pickFile(stdin, lastFrame)
+    await toQwen(stdin, lastFrame)
+    await waitForText(() => flat(lastFrame()), 'Model: qwen3.8:27b-mlx')
+    await tick(10)
+    expect(lastFrame()).not.toContain('boom')
+  })
+
+  it('never checks for a metered engine', async () => {
+    const commands = fakeCommands()
+    const { lastFrame, stdin } = mount(commands)
+    await pickFile(stdin, lastFrame)
+    await tick(10)
+    expect(lastFrame()).not.toContain('Model:')
+    expect(commands.checkOllamaModel).not.toHaveBeenCalled()
+  })
+})

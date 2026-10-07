@@ -15,6 +15,23 @@ export const DEFAULT_CONFIG: PolyglotsConfig = {
   batchSize: 25,
   consistencyTtlDays: 30,
   properNouns: {},
+  localModelServers: [],
+}
+
+/**
+ * Whether `value` is an http or https URL.
+ *
+ * Narrower than a URL parse on purpose: `box:11434` parses, as a URL whose
+ * scheme is `box:`, and would then be probed as nothing at all. A server list
+ * typed by hand is where that mistake gets made.
+ */
+export function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return (url.protocol === 'http:' || url.protocol === 'https:') && url.host !== ''
+  } catch {
+    return false
+  }
 }
 
 const configSchema = z.object({
@@ -44,6 +61,11 @@ const configSchema = z.object({
   batchSize: z.number().int().positive(),
   consistencyTtlDays: z.number().int().nonnegative(),
   properNouns: z.record(z.string(), z.array(z.string())),
+  // Defaulted rather than required, so a config written before discovery
+  // existed still parses.
+  localModelServers: z
+    .array(z.string().refine(isHttpUrl, { message: 'must be an http or https URL' }))
+    .default([]),
 })
 
 const SECRET_KEYS: ReadonlyArray<keyof Secrets> = ['DEEPL_API_KEY', 'OPENAI_API_KEY']

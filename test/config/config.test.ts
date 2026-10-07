@@ -56,6 +56,10 @@ describe('loadConfig', () => {
       batchSize: 25,
       consistencyTtlDays: 30,
       properNouns: {},
+      // Added deliberately with local model discovery: extra servers to list
+      // models from. Empty, so nothing beyond the loopback defaults is ever
+      // probed until the person names a server.
+      localModelServers: [],
     })
   })
 
@@ -326,5 +330,22 @@ describe('loadConfig and the local engine', () => {
   it('accepts qwen as the default engine', async () => {
     await writeConfigRaw(JSON.stringify({ defaultDraftEngine: 'qwen' }))
     expect(loadConfig().defaultDraftEngine).toBe('qwen')
+  })
+
+  it('parses a config without localModelServers to an empty list', async () => {
+    await writeConfigRaw(JSON.stringify({ defaultLocale: 'tr', batchSize: 25 }))
+    expect(loadConfig().localModelServers).toEqual([])
+  })
+
+  it('keeps the http and https servers the user listed', async () => {
+    await writeConfigRaw(JSON.stringify({ localModelServers: ['http://box:11434', 'https://models.lan'] }))
+    expect(loadConfig().localModelServers).toEqual(['http://box:11434', 'https://models.lan'])
+  })
+
+  it('rejects a server that is not an http URL, naming the key', async () => {
+    for (const bad of ['ftp://box', 'box:11434', '']) {
+      await writeConfigRaw(JSON.stringify({ localModelServers: [bad] }))
+      expect(() => loadConfig()).toThrow(/localModelServers/)
+    }
   })
 })

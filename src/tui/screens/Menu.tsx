@@ -22,6 +22,7 @@ export type MenuAction =
   | 'sync-glossary'
   | 'locale-rules'
   | 'agents'
+  | 'local-models'
   | 'configure-keys'
 
 export const MENU_ITEMS: { label: string; value: MenuAction }[] = [
@@ -35,6 +36,7 @@ export const MENU_ITEMS: { label: string; value: MenuAction }[] = [
   { label: 'Sync WordPress.org glossary', value: 'sync-glossary' },
   { label: 'Locale rules', value: 'locale-rules' },
   { label: 'Check AI agents', value: 'agents' },
+  { label: 'Local models', value: 'local-models' },
   { label: 'Configure API keys', value: 'configure-keys' },
 ]
 

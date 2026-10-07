@@ -52,6 +52,7 @@ const EXPECTED_LABELS = [
   /Sync .*glossary/,
   'Locale rules',
   'Check AI agents',
+  'Local models',
   'Configure API keys',
 ]
 

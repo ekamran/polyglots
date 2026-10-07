@@ -19,8 +19,7 @@ import { createRunControl, type RunState } from './run-control.js'
 import { importTmx } from './commands/tm-import.js'
 import { translateFile, type TranslateSummary } from './commands/translate.js'
 import { DEFAULT_STATS_FILE, writeStats } from './commands/stats.js'
-import { configFile } from './paths.js'
-import { DEFAULT_CONFIG, loadConfig, loadSecrets, maskSecret, saveConfig, saveSecret } from './config.js'
+import { DEFAULT_CONFIG, isHttpUrl, loadConfig, loadSecrets, maskSecret, saveConfig, saveSecret } from './config.js'
 import {
   UsageError,
   expandFileArgs,
@@ -38,6 +37,19 @@ import { loadPo } from './po/po-file.js'
 import { buildReport } from './review/message.js'
 import { agentBinOverride, batchAdvice } from './agent/providers.js'
 import { discoverAgents, type AgentStatus } from './agent/discover.js'
+import {
+  checkOllamaModel,
+  discoverModels,
+  LISTING_ONLY,
+  matchesModel,
+  modelFacts,
+  normalizeBaseUrl,
+  sanitizeDisplay,
+  serverLabel,
+  unavailableLine,
+  type ModelCheck,
+  type ModelServer,
+} from './draft/discover.js'
 import type { RunTuiOptions } from './tui/index.js'
 import type { Locale, PolyglotsConfig } from './types.js'
 import { VERSION } from './version.js'
@@ -71,6 +83,8 @@ export interface CliDeps {
   openEditor?: OpenEditor
   runTui?: RunTui
   discoverAgents?: typeof discoverAgents
+  discoverModels?: typeof discoverModels
+  checkOllamaModel?: typeof checkOllamaModel
 }
 
 interface Cli {
@@ -88,6 +102,8 @@ interface Cli {
   openEditor: OpenEditor
   runTui: RunTui
   discoverAgents: typeof discoverAgents
+  discoverModels: typeof discoverModels
+  checkOllamaModel: typeof checkOllamaModel
   config: () => PolyglotsConfig
   out(line: string): void
   err(line: string): void
@@ -121,6 +137,8 @@ function createCli(deps: CliDeps): Cli {
     openEditor: deps.openEditor ?? openInEditor,
     runTui: deps.runTui ?? loadTui,
     discoverAgents: deps.discoverAgents ?? discoverAgents,
+    discoverModels: deps.discoverModels ?? discoverModels,
+    checkOllamaModel: deps.checkOllamaModel ?? checkOllamaModel,
     config: () => (cached ??= loadConfig()),
     out: (line) => streams.stdout.write(`${line}\n`),
     err: (line) => streams.stderr.write(`${line}\n`),
@@ -216,12 +234,15 @@ async function runTranslate(cli: Cli, patterns: string[], flags: TranslateFlags)
 
   const secrets = loadSecrets()
   const secretName = secretForEngine(draftEngine)
-  // A local engine has no key to check. Whether its runner is up is only
-  // knowable by asking it, so that failure surfaces on the first batch with a
-  // message naming the model.
   if (secretName && !secrets[secretName]?.trim()) {
     throw new Error(`Draft engine "${draftEngine}" needs ${secretName}. Set it with: polyglots config set-key ${secretName}`)
   }
+  // A local engine has no key to check, so its runner is asked instead, once
+  // per invocation and before the --all question, so the warning is read
+  // before saying yes. It warns and never refuses: a model mid-pull, a proxy
+  // in front of Ollama or a name the matcher does not know would all read as
+  // missing, and the first batch's own error stays the authoritative one.
+  if (draftEngine === 'qwen') await warnAboutLocalModel(cli, config.ollama)
 
   if (mustConfirm) {
     const n = await countTranslated(files)
@@ -267,7 +288,35 @@ async function runTranslate(cli: Cli, patterns: string[], flags: TranslateFlags)
   return failed > 0 ? EXIT_ERROR : EXIT_OK
 }
 
+async function warnAboutLocalModel(cli: Cli, ollama: PolyglotsConfig['ollama']): Promise<void> {
+  try {
+    const check = await cli.checkOllamaModel(ollama)
+    if (check.state !== 'installed') cli.err(`Warning: ${check.message ?? `${check.model} is ${check.state}`}`)
+  } catch (error) {
+    // A throw here is a bug rather than a probe failure, since a probe never
+    // rejects. It still must not be the reason a translate fails.
+    cli.err(`Warning: could not check the local model: ${errorMessage(error)}`)
+  }
+}
+
 const CONFIG_KEYS = Object.keys(DEFAULT_CONFIG) as Array<keyof PolyglotsConfig>
+// The two halves of `ollama`, settable on their own. Dotted rather than a
+// nested `config set ollama '{...}'`, because nobody should have to type JSON
+// to change a model name.
+const OLLAMA_KEYS = ['ollama.model', 'ollama.baseUrl'] as const
+type OllamaKey = (typeof OLLAMA_KEYS)[number]
+
+function isOllamaKey(key: string): key is OllamaKey {
+  return (OLLAMA_KEYS as readonly string[]).includes(key)
+}
+
+const SETTABLE_KEYS = [...CONFIG_KEYS, ...OLLAMA_KEYS].join(', ')
+
+function parseHttpUrl(key: string, raw: string): string {
+  const url = raw.trim()
+  if (!isHttpUrl(url)) throw new UsageError(`${key} must be an http or https URL, got "${raw}"`)
+  return url
+}
 
 function isConfigKey(key: string): key is keyof PolyglotsConfig {
   return (CONFIG_KEYS as string[]).includes(key)
@@ -298,17 +347,36 @@ function coerceConfigValue(key: keyof PolyglotsConfig, raw: string): PolyglotsCo
     }
     case 'properNouns':
       throw new UsageError('properNouns is a per-locale list; add entries with: polyglots config add-name <name>')
+    // Validated here as well as in the schema, so the person is told which
+    // entry is wrong rather than an index into an array they typed as a list.
+    case 'localModelServers':
+      return raw
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0)
+        .map((entry) => parseHttpUrl(key, entry))
     case 'ollama':
-      throw new UsageError(
-        `ollama has a baseUrl and a model; edit them in ${configFile()}`,
-      )
+      throw new UsageError('ollama has a model and a baseUrl; set them with: polyglots config set ollama.model <name> (or ollama.baseUrl <url>)')
   }
+}
+
+function coerceOllamaValue(key: OllamaKey, raw: string): string {
+  if (key === 'ollama.baseUrl') return parseHttpUrl(key, raw)
+  // Ollama names never hold whitespace, so a space inside is a typo or two
+  // arguments run together, and would only surface as a 404 on batch one.
+  const model = raw.trim()
+  if (model === '' || /\s/.test(model)) throw new UsageError(`${key} must be a model name without spaces, got "${raw}"`)
+  return model
 }
 
 function formatConfigValue(key: keyof PolyglotsConfig, value: PolyglotsConfig[keyof PolyglotsConfig]): string {
   if (key === 'ollama') {
     const { baseUrl, model } = value as PolyglotsConfig['ollama']
     return `${model} at ${baseUrl}`
+  }
+  if (key === 'localModelServers') {
+    const servers = value as string[]
+    return servers.length === 0 ? '(none)' : servers.join(', ')
   }
   if (key !== 'properNouns') return String(value)
   const byLocale = value as Record<string, string[]>
@@ -347,6 +415,15 @@ function configGet(cli: Cli, key: string | undefined): void {
     cli.out(`OPENAI_API_KEY = ${maskSecret(secrets.OPENAI_API_KEY)}`)
     return
   }
+  if (isOllamaKey(key)) {
+    cli.out(key === 'ollama.model' ? config.ollama.model : config.ollama.baseUrl)
+    return
+  }
+  if (key === 'localModelServers') {
+    // Comma-joined with no space, the form config set reads back.
+    cli.out(config.localModelServers.join(','))
+    return
+  }
   if (isConfigKey(key)) {
     cli.out(String(config[key]))
     return
@@ -355,14 +432,26 @@ function configGet(cli: Cli, key: string | undefined): void {
     cli.out(maskSecret(secrets[key]))
     return
   }
-  throw new UsageError(`Unknown config key "${key}"; expected one of ${CONFIG_KEYS.join(', ')}, DEEPL_API_KEY, OPENAI_API_KEY`)
+  throw new UsageError(`Unknown config key "${key}"; expected one of ${SETTABLE_KEYS}, DEEPL_API_KEY, OPENAI_API_KEY`)
 }
 
-function configSet(cli: Cli, key: string, raw: string): void {
+async function configSet(cli: Cli, key: string, raw: string): Promise<void> {
   if (isSecretName(key)) throw new UsageError(`"${key}" is a secret; use: polyglots config set-key ${key}`)
-  if (!isConfigKey(key)) throw new UsageError(`Unknown config key "${key}"; expected one of ${CONFIG_KEYS.join(', ')}`)
+  if (isOllamaKey(key)) {
+    const value = coerceOllamaValue(key, raw)
+    const current = cli.config().ollama
+    const saved = saveConfig({
+      ollama: key === 'ollama.model' ? { ...current, model: value } : { ...current, baseUrl: value },
+    })
+    cli.out(`${key} = ${value}`)
+    // Saved first and checked after, with exit 0 either way: choosing a model
+    // before pulling it is ordinary, and the warning names the pull to run.
+    if (key === 'ollama.model') await warnAboutLocalModel(cli, saved.ollama)
+    return
+  }
+  if (!isConfigKey(key)) throw new UsageError(`Unknown config key "${key}"; expected one of ${SETTABLE_KEYS}`)
   const saved = saveConfig({ [key]: coerceConfigValue(key, raw) })
-  cli.out(`${key} = ${String(saved[key])}`)
+  cli.out(`${key} = ${formatConfigValue(key, saved[key])}`)
 }
 
 async function configSetKey(cli: Cli, rawName: string, value: string | undefined): Promise<number> {
@@ -432,6 +521,56 @@ async function runDoctor(cli: Cli, flags: { json?: boolean; live?: boolean }): P
   return ok ? EXIT_OK : EXIT_ERROR
 }
 
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? '' : 's'}`
+}
+
+function checkText(check: ModelCheck): string {
+  if (check.state === 'installed') return 'installed'
+  return check.state === 'missing' ? 'not installed' : 'Ollama unreachable'
+}
+
+/**
+ * The exit code answers whether any local runner is up at all, so a script
+ * can ask that one question. Whether the configured model is installed is
+ * printed but does not decide it: an LM Studio-only machine is up.
+ */
+async function runModels(cli: Cli, flags: { json?: boolean }): Promise<number> {
+  const config = cli.config()
+  const servers = await cli.discoverModels({ refresh: true, config })
+  const configured = await cli.checkOllamaModel(config.ollama)
+  const ok = servers.some((s) => s.state === 'up')
+  if (flags.json) {
+    cli.out(JSON.stringify({ servers, configured }, null, 2))
+    return ok ? EXIT_OK : EXIT_ERROR
+  }
+  const up = servers.filter((s) => s.state === 'up')
+  const labelWidth = Math.max(0, ...up.map((s) => serverLabel(s).length)) + 2
+  const urlWidth = Math.max(0, ...up.map((s) => s.target.baseUrl.length)) + 3
+  const configuredBase = normalizeBaseUrl(config.ollama.baseUrl)
+  for (const server of up) {
+    const listingOnly = server.selectable ? '' : `, ${LISTING_ONLY}`
+    cli.out(`${serverLabel(server).padEnd(labelWidth)}${server.target.baseUrl.padEnd(urlWidth)}${plural(server.models.length, 'model')}${listingOnly}`)
+    const names = server.models.map((m) => sanitizeDisplay(m.name))
+    const nameWidth = Math.max(0, ...names.map((n) => n.length)) + 2
+    const facts = server.models.map(modelFacts)
+    const widths = [0, 1, 2].map((i) => Math.max(0, ...facts.map((f) => f[i]!.length)))
+    server.models.forEach((model, i) => {
+      const isConfigured =
+        server.kind === 'ollama' && server.target.baseUrl === configuredBase && matchesModel(config.ollama.model, model)
+      const columns = server.kind === 'ollama' ? facts[i]!.map((f, c) => (c === 0 ? f.padStart(widths[c]!) : f.padEnd(widths[c]!))).join('  ') : ''
+      const line = `  ${names[i]!.padEnd(nameWidth)}${columns}${isConfigured ? '  (configured)' : ''}`
+      cli.out(line.trimEnd())
+    })
+  }
+  for (const server of servers.filter((s) => s.state !== 'up')) cli.out(unavailableLine(server))
+  // Shown whatever the default engine: it costs nothing and answers the
+  // question anyone reading a model list asks next.
+  cli.out(`Draft model: ${configured.model} (${checkText(configured)})`)
+  if (configured.state !== 'installed' && configured.message) cli.out(configured.message)
+  return ok ? EXIT_OK : EXIT_ERROR
+}
+
 function helpConfig(cli: Cli): PolyglotsConfig {
   try {
     return cli.config()
@@ -459,7 +598,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
     .option('--all', 'Re-translate every entry, including already-translated ones (asks for confirmation)')
     .option('--fresh', 'Ignore the cached drafts and reviews, and translate again')
     .option('--dry-run', 'Run the pipeline without writing to the .po files')
-    .option('--draft-engine <engine>', `Draft engine: deepl or openai (default: ${shown.defaultDraftEngine})`)
+    .option('--draft-engine <engine>', `Draft engine: deepl, openai or qwen (default: ${shown.defaultDraftEngine})`)
     .option('--locale <locale>', `Target locale (default: ${shown.defaultLocale})`)
     .option('--batch-size <n>', `Entries per draft/review batch (default: ${shown.batchSize})`)
     .option('--model <model>', 'Claude model for the review pass')
@@ -650,6 +789,25 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
     })
 
   program
+    .command('models')
+    .description('List local model servers (Ollama, LM Studio, llama.cpp) and the models they hold, without loading any')
+    .option('--json', 'Print the result as JSON')
+    .addHelpText(
+      'after',
+      [
+        '',
+        'Probes Ollama at ollama.baseUrl, LM Studio on localhost:1234 and llama.cpp on localhost:8080,',
+        'plus any URL in localModelServers. The defaults are all on this machine; a configured URL may',
+        'not be, and is asked because it was listed.',
+        '',
+        'Exits 1 when no server is up.',
+      ].join('\n'),
+    )
+    .action(async (flags: { json?: boolean }) => {
+      setExitCode(await runModels(cli, flags))
+    })
+
+  program
     .command('split <file>')
     .description('Cut a .po into numbered parts so each can be run and submitted on its own')
     .requiredOption('--size <n>', 'Entries per part, counted over the whole file')
@@ -748,8 +906,8 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
     .action((key?: string) => configGet(cli, key))
   cfg
     .command('set <key> <value>')
-    .description(`Change a setting (${CONFIG_KEYS.join(', ')})`)
-    .action((key: string, value: string) => configSet(cli, key, value))
+    .description(`Change a setting (${SETTABLE_KEYS})`)
+    .action(async (key: string, value: string) => configSet(cli, key, value))
   cfg
     .command('add-name <name>')
     .description('Add a proper noun the title-case check should never flag (places, people, institutions)')

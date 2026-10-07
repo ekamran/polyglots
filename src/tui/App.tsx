@@ -11,6 +11,7 @@ import { Fetch } from './screens/Fetch.js'
 import { ExportTm } from './screens/ExportTm.js'
 import { ImportTm } from './screens/ImportTm.js'
 import { LocaleRules } from './screens/LocaleRules.js'
+import { LocalModels } from './screens/LocalModels.js'
 import { Menu, type MenuAction } from './screens/Menu.js'
 import { Review } from './screens/Review.js'
 import { Split } from './screens/Split.js'
@@ -113,6 +114,10 @@ export function App({ commands = defaultCommands, cwd = process.cwd(), activity,
             onBack={back}
           />
         )}
+        {/* Not hoisted like agents: nothing else on the menu needs the
+            answer, and probing three ports at launch would bother people who
+            never draft locally. */}
+        {screen === 'local-models' && <LocalModels onBack={back} />}
         {screen === 'translate' && <Translate cwd={cwd} onBack={back} />}
         {screen === 'review' && <Review cwd={cwd} onBack={back} />}
         {screen === 'fetch' && <Fetch onBack={back} />}

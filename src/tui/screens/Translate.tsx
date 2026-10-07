@@ -1,11 +1,12 @@
 import { basename } from 'node:path'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Box, Text, useInput } from 'ink'
 import TextInput from 'ink-text-input'
 import type { TranslateEvent, TranslateSummary } from '../../commands/translate.js'
 import { normalizeLocale } from '../../tmx/parse.js'
 import { resolveLocale } from '../../wporg/locales.js'
 import type { DraftEngineChoice } from '../../types.js'
+import type { ModelCheck } from '../../draft/discover.js'
 import { useCommands, useConfig } from '../commands.js'
 import { poEntryCount } from '../../po/count.js'
 import { FilePicker } from '../components/FilePicker.js'
@@ -55,6 +56,25 @@ export function Translate({ cwd, onBack }: TranslateProps) {
   // the whole screen on every state change.
   const control = useRef<RunControl | undefined>(undefined)
   const task = useTask<TranslateSummary>()
+  const [modelCheck, setModelCheck] = useState<ModelCheck | undefined>(undefined)
+
+  // Asked while the options are being chosen rather than after Start, so a
+  // model that was never pulled is seen before a run is spent finding out.
+  // It warns and never blocks Start: a model mid-pull or a proxy in front of
+  // Ollama would read as missing, and the first batch's error stays the
+  // authoritative one. A rejected check shows nothing, for the same reason.
+  useEffect(() => {
+    setModelCheck(undefined)
+    if (engine !== 'qwen') return
+    let wanted = true
+    commands.checkOllamaModel(config.ollama).then(
+      (result) => wanted && setModelCheck(result),
+      () => {},
+    )
+    return () => {
+      wanted = false
+    }
+  }, [engine])
 
   const finished = phase === 'running' && task.state.status !== 'running'
   const stage = finished ? 'done' : phase
@@ -184,6 +204,14 @@ export function Translate({ cwd, onBack }: TranslateProps) {
           <Text>
             {marker(FIELD_ENGINE)}Draft engine:  {engine}
           </Text>
+          {engine === 'qwen' && (
+            <Text dimColor>
+              {'   '}Model: {config.ollama.model} at {config.ollama.baseUrl}
+            </Text>
+          )}
+          {engine === 'qwen' && modelCheck && modelCheck.state !== 'installed' && modelCheck.message && (
+            <Text color="yellow">   {modelCheck.message}</Text>
+          )}
           <Box>
             <Text>{marker(FIELD_LOCALE)}Locale:        </Text>
             {typing ? <TextInput value={locale} onChange={setLocale} onSubmit={() => setFocus(FIELD_BATCH)} /> : <Text>{locale}</Text>}

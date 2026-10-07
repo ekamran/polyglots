@@ -191,6 +191,9 @@ export interface PolyglotsConfig {
   // Per-locale names the built-in lists cannot cover (places, people,
   // institutions, historical events). Entries may be multi-word.
   properNouns: Record<string, string[]>
+  // Extra local model servers to list models from, beyond the loopback ports
+  // that are always tried. Read only by discovery, never by a run or a hash.
+  localModelServers: string[]
 }
 
 export interface Secrets {
