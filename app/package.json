@@ -18,7 +18,9 @@
     "prebuild": "node scripts/no-live-run.mjs && node scripts/update-locales.mjs && node scripts/stats-i18n.mjs",
     "update-locales": "node scripts/update-locales.mjs",
     "stats-pot": "tsx scripts/stats-pot.ts",
-    "stats-i18n": "node scripts/stats-i18n.mjs"
+    "stats-i18n": "node scripts/stats-i18n.mjs",
+    "release": "node scripts/release.mjs",
+    "prepack": "node scripts/prepack.mjs"
   },
   "license": "MIT",
   "dependencies": {

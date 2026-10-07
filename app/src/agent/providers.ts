@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { docsUrl } from '../docs-links.js'
 import type { ReviewChoice, ReviewProvider } from '../types.js'
 
 // The only tools a review is allowed to reach for. Both providers restrict to
@@ -285,7 +286,7 @@ const antigravity: ProviderSpec = {
   /**
    * Checked because its failure is the silent one: without these rules every
    * tool call is denied, the CLI exits zero, and the run is worse than
-   * useless (docs/antigravity.md). A readable file without them is missing; a
+   * useless (notes/antigravity.md). A readable file without them is missing; a
    * file that cannot be read or has an unexpected shape is unknown, and fails
    * open the way configuredModel does.
    */
@@ -309,7 +310,7 @@ const antigravity: ProviderSpec = {
     if (!Array.isArray(allow)) return { state: 'unknown', detail: 'permissions.allow is not a list' }
     const missing = ANTIGRAVITY_RULES.filter((rule) => !allow.includes(rule))
     if (missing.length === 0) return { state: 'ok' }
-    return { state: 'missing', detail: `missing permission rules: ${missing.join(', ')} (see docs/antigravity.md)` }
+    return { state: 'missing', detail: `missing permission rules: ${missing.join(', ')} (see ${docsUrl('antigravity')})` }
   },
   liveProbe: {
     args: (timeoutMs) => ['--output-format', 'json', '--print-timeout', printTimeout(timeoutMs)],
@@ -329,7 +330,7 @@ const antigravity: ProviderSpec = {
    * No MCP flags either. antigravity has no per-invocation equivalent of
    * --mcp-config, so the server is registered with it once and the tools are
    * permitted by allow-rules in its settings. That is the setup documented in
-   * docs/antigravity.md, and without it every tool call is silently denied and
+   * notes/antigravity.md, and without it every tool call is silently denied and
    * the run returns no structured output.
    */
   buildArgs(schema, opts) {

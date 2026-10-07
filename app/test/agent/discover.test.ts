@@ -257,7 +257,7 @@ describe('antigravity sign-in and setup', () => {
     expect(agy.usable).toBe(false)
     expect(agy.reason).toContain(RULES[1])
     expect(agy.reason).not.toContain(RULES[0])
-    expect(agy.reason).toContain('docs/antigravity.md')
+    expect(agy.reason).toContain('https://ada.tools/polyglots/docs/antigravity/')
   })
 
   it('reads an unreadable settings file as setup unknown, and stays usable', async () => {

@@ -1,0 +1,82 @@
+#!/usr/bin/env node
+// npm run release -- <patch|minor>
+//
+// Verify, bump, cut the changelog, build and commit, in that order. Each step
+// can stop the release, and the order is the point: a version bumped onto a
+// red tree has to be withdrawn, and a build under a running review can hand a
+// half-written dist/ to the MCP server its next batch spawns.
+//
+// Two decisions stay with people. The size is passed in, because whether a
+// change is minor is a judgement about what it does to someone already using
+// the tool. The changelog lines are written under Unreleased when the work is
+// merged; this only moves them. Nothing is pushed.
+
+import { execFileSync } from 'node:child_process'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { cutRelease } from './release-changelog.mjs'
+
+const app = join(dirname(fileURLToPath(import.meta.url)), '..')
+const repo = join(app, '..')
+const changelogPath = join(app, 'CHANGELOG.md')
+
+const run = (cmd, args, cwd = app) => execFileSync(cmd, args, { cwd, stdio: 'inherit' })
+const read = (cmd, args, cwd = app) => execFileSync(cmd, args, { cwd, encoding: 'utf8' }).trim()
+
+function fail(message) {
+  console.error(`✗ ${message}`)
+  process.exit(1)
+}
+
+const size = process.argv[2]
+if (size !== 'patch' && size !== 'minor') fail('Usage: npm run release -- <patch|minor>')
+
+// A release commit carries only the release. Anything else uncommitted would
+// either ride along unexplained or be left out of the build that is tagged.
+if (read('git', ['status', '--porcelain'], repo) !== '') fail('The working tree has uncommitted changes. Commit or stash them first.')
+
+console.log('==> Checking for a running review or translate')
+run('node', ['scripts/no-live-run.mjs'])
+
+console.log('==> Typecheck and tests')
+run('npm', ['run', 'typecheck'])
+run('npm', ['test'])
+
+// The website renders its terminal demos from src/cli/summaries.ts. Running
+// that step here makes a change to the summaries fail at release, not at the
+// next deploy.
+const site = join(repo, 'website')
+const sitePkg = join(site, 'package.json')
+if (existsSync(sitePkg) && JSON.parse(readFileSync(sitePkg, 'utf8')).scripts?.snapshot) {
+  console.log('==> Website demo snapshot')
+  run('npm', ['run', 'snapshot'], site)
+}
+
+// Checked before the bump so an empty Unreleased stops the release with
+// nothing to undo.
+const before = readFileSync(changelogPath, 'utf8')
+cutRelease(before, '0.0.0', '1970-01-01')
+
+const files = ['package.json', 'package-lock.json', 'CHANGELOG.md']
+try {
+  console.log(`==> Bumping (${size})`)
+  const version = read('npm', ['version', size, '--no-git-tag-version']).replace(/^v/, '')
+  const date = new Date().toISOString().slice(0, 10)
+  const { changelog, notes } = cutRelease(before, version, date)
+  writeFileSync(changelogPath, changelog)
+
+  console.log('==> Building')
+  run('npm', ['run', 'build'])
+
+  console.log('==> Committing')
+  run('git', ['add', ...files])
+  run('git', ['commit', '-q', '-m', `Release ${version}`, '-m', notes])
+  console.log(`✓ Released ${version}: ${read('git', ['log', '--oneline', '-1'])}`)
+  console.log('› Not pushed. Push when ready.')
+} catch (error) {
+  // Leaves the tree as it was, so a failed build cannot leave a bumped
+  // version or a cut changelog behind to be committed by accident later.
+  execFileSync('git', ['checkout', '--', ...files], { cwd: app })
+  fail(`Release stopped, version and changelog restored: ${error instanceof Error ? error.message : String(error)}`)
+}

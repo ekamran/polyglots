@@ -7,6 +7,7 @@ import { extractJson } from '../draft/qwen.js'
 import type { LocalServerKind, Locale, ReviewInput, ReviewResult } from '../types.js'
 import { mapResults, type ReviewOptions } from './draft-review.js'
 import { buildReviewPrompt } from './prompt.js'
+import { docsUrl } from '../docs-links.js'
 import { reviewBatchJsonSchema } from './schema.js'
 
 /**
@@ -27,7 +28,7 @@ import { reviewBatchJsonSchema } from './schema.js'
  * validation, so review and translate need to know nothing else about it.
  */
 
-// Small because a local context is small; see docs/local-models.md for the
+// Small because a local context is small; see notes/local-models.md for the
 // arithmetic. By the estimate below, twelve entries and their replies come to
 // about 3,600 tokens on the Turkish prompt, the largest one shipped: inside a
 // 4,096-token context, the smallest a local server is commonly left at, with
@@ -37,7 +38,7 @@ import { reviewBatchJsonSchema } from './schema.js'
 export const DEFAULT_LOCAL_REVIEW_BATCH = 12
 
 export const LOCAL_REVIEW_NOTICE =
-  'Local review is experimental: the 2026-09-18 benchmark found a local model added nothing over the rules. See docs/local-models.md.'
+  `Local review is experimental: the 2026-09-18 benchmark found a local model added nothing over the rules. See ${docsUrl('local-models')}`
 
 /** The batch size a local review uses when the person named none. */
 export function localReviewBatchSize(configured: number): number {
@@ -178,5 +179,5 @@ export function localBatchAdvice(input: LocalBatchAdviceInput): string | undefin
     return `A local review batch of ${input.batchSize} is about ${format(tokens)} tokens, and Ollama's context for ${input.model} is not set; its default can be 4,096 tokens or less and cuts longer prompts without a word. Set it with: polyglots config set ollama.contextLength <tokens>`
   }
   if (input.batchSize <= DEFAULT_LOCAL_REVIEW_BATCH) return undefined
-  return `A local review batch of ${input.batchSize} is about ${format(tokens)} tokens. The context of ${input.model} is not known; if it is smaller, the prompt is cut short without a word. See docs/local-models.md.`
+  return `A local review batch of ${input.batchSize} is about ${format(tokens)} tokens. The context of ${input.model} is not known; if it is smaller, the prompt is cut short without a word. See ${docsUrl('local-models')}`
 }

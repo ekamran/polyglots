@@ -3,9 +3,22 @@
 A CLI and TUI that translates and reviews WordPress `.po` files. This file records
 the things that are expensive to rediscover, not the things the code already says.
 
+## Layout
+
+- `app/`: the CLI and TUI, the package published to npm. Its own `package.json`,
+  lockfile, `node_modules` and `dist/`. Every `npm` command below runs here.
+- `website/`: the Astro site served at ada.tools/polyglots, with its own
+  `package.json`. `deploy.sh` at the root builds and syncs it.
+- `docs/`: public user documentation; the website builds its pages from it.
+- `notes/`: internal working notes. Not published, not on the site.
+
+Paths below are relative to `app/` unless they say otherwise. There is no
+`package.json` at the root, and no npm workspaces: the app stays a
+self-contained package.
+
 ## Before you build
 
-`npm run build` runs `scripts/no-live-run.mjs` first, which refuses while a review
+`npm run build` (in `app/`) runs `scripts/no-live-run.mjs` first, which refuses while a review
 or translate is in flight and names the pid. A running job spawns an MCP server
 from `dist/` for every batch, so rewriting `dist/` underneath it can hand a
 half-written file to the next spawn. This has happened, two minutes into a
@@ -38,8 +51,8 @@ homes; follow that.
 
 ## Scripts
 
-`build`, `typecheck`, `test`, `dev`, `prepare`, `prebuild`. There is no
-`npm run lint`. Typecheck covers tests too (`tsconfig.test.json`).
+`build`, `typecheck`, `test`, `dev`, `prepare`, `prebuild`, `release`, `prepack`.
+There is no `npm run lint`. Typecheck covers tests too (`tsconfig.test.json`).
 
 ## Language and style
 
@@ -117,12 +130,23 @@ Commit messages are an imperative sentence describing the behaviour change, with
 a body explaining why it was worth changing. No conventional-commits prefixes, no
 bullet summaries of the diff. Look at recent history before writing one.
 
-Version bumps use
-`npm version patch --no-git-tag-version`. `CHANGELOG.md` follows Keep a
+`app/CHANGELOG.md` follows Keep a
 Changelog and is deliberately terse: one line per entry, three at the very most,
 saying what changed and nothing about why. The prose voice belongs in the commit
 message, which is where anyone wanting the reasoning is sent.
 
-Verifying, bumping, writing the changelog, building and committing is one
-routine, and `/release` is it. The order and the traps are in
-`.claude/commands/release.md`; read it rather than reconstructing the steps.
+Changelog lines are written under `## [Unreleased]` when work is merged, not at
+release time. A release only moves them under a dated heading.
+
+`npm run release -- <patch|minor>` is the whole release: it refuses on a dirty
+tree or a running job, typechecks, tests, runs the website's demo snapshot,
+bumps, cuts the changelog, builds and commits. It never pushes. The size is the
+caller's call: minor when the next run behaves differently for someone already
+using the tool (a new command, key, provider or rule, different output or
+requester wording, or anything that moves `configHash` or an engine id and so
+prunes the verdict cache, which also gets its own changelog line), patch for
+the rest. When it is a coin toss, take minor.
+
+`polyglots --version` reads `package.json` at run time, so after a refused build
+it reports the new version while running the old code. It is never evidence
+that `dist/` is current.

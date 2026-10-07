@@ -212,8 +212,8 @@ export interface PolyglotsConfig {
   defaultLocale: Locale
   defaultDraftEngine: DraftEngineChoice
   // Which agent CLI judges translations. `antigravity` needs the polyglots MCP
-  // server registered with it first; docs/antigravity.md has the setup.
-  // `local` is the experimental local-model reviewer (docs/local-models.md).
+  // server registered with it first; notes/antigravity.md has the setup.
+  // `local` is the experimental local-model reviewer (notes/local-models.md).
   reviewProvider: ReviewChoice
   // The reviewer's own login on translate.wordpress.org. Only used to build the
   // link in the requester message, which points at their translations in the

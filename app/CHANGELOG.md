@@ -10,6 +10,10 @@ Entries say what changed. For why and how, read the commit.
 
 ## [Unreleased]
 
+### Changed
+
+- Messages that pointed at `docs/` in the repo link to the documentation at ada.tools/polyglots.
+
 ## [0.25.0] - 2026-10-07
 
 ### Added

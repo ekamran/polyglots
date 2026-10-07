@@ -250,7 +250,7 @@ describe('switching only between usable agents', () => {
   // would change which engine a run records, behind the person's back.
   it('shows why the configured provider is unusable, and p goes to the usable one and back', async () => {
     const config = recorder('antigravity')
-    const reason = 'antigravity is missing permission rules: mcp(polyglots/tm_lookup) (see docs/antigravity.md)'
+    const reason = 'antigravity is missing permission rules: mcp(polyglots/tm_lookup) (see https://ada.tools/polyglots/docs/antigravity/)'
     const commands = fakeCommands({
       ...config,
       discoverAgents: async () => [agentStatus('claude'), agentStatus('antigravity', { usable: false, reason })],

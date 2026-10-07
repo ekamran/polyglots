@@ -384,7 +384,7 @@ const ampersand: Rule = (entry, ctx) => {
  * How Turkish writes a number beside a symbol. Today that is the percent sign,
  * which goes before the number and closed up: %25, never % 25. Named for the
  * family rather than the check, since the rest of TDK's rules on numerals are
- * described in docs/ideas.md and would join this one rather than crowd the rule
+ * described in notes/ideas.md and would join this one rather than crowd the rule
  * list. 3 of 69,229 approved strings put a space there.
  */
 const numberFormat: Rule = (entry, ctx) => {

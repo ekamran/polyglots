@@ -6,3 +6,10 @@ dist
 # Editor scratch files. One of these was committed by accident in 55811a9.
 .*.sw[a-p]
 *~
+
+# Copied in by app/scripts/prepack.mjs at publish time; the originals live at the root.
+app/README.md
+app/LICENSE
+
+# Agent worktrees.
+.claude/worktrees/

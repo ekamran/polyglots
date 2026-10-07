@@ -190,7 +190,7 @@ describe('batch size and context', () => {
   })
 
   it('points at the docs when an OpenAI-compatible context is unknown and the batch is above the default', () => {
-    expect(localBatchAdvice({ batchSize: 100, locale: 'tr', model: 'm', kind: 'openai-compatible' })).toMatch(/docs\/local-models\.md/)
+    expect(localBatchAdvice({ batchSize: 100, locale: 'tr', model: 'm', kind: 'openai-compatible' })).toContain('https://ada.tools/polyglots/docs/local-models/')
     expect(localBatchAdvice({ batchSize: DEFAULT_LOCAL_REVIEW_BATCH, locale: 'tr', model: 'm', kind: 'openai-compatible' })).toBeUndefined()
   })
 })
