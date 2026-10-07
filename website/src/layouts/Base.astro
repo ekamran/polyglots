@@ -1,0 +1,81 @@
+---
+import '../styles/global.css';
+import '../styles/prose.css';
+import Icons from '../components/Icons.astro';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+
+interface Props {
+  title: string;
+  description: string;
+  /** Path under the base, without a leading slash, for the canonical URL. */
+  path?: string;
+}
+
+const { title, description, path = '' } = Astro.props;
+const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
+const canonical = new URL(`${base}${path}`, Astro.site);
+const ogImage = new URL(`${base}og.png`, Astro.site);
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" type="image/svg+xml" href={`${base}favicon.svg`} />
+    <link rel="apple-touch-icon" href={`${base}apple-touch-icon.png`} />
+    <link rel="preload" href={`${base}fonts/jetbrains-mono-regular.woff2`} as="font" type="font/woff2" crossorigin />
+    <link rel="alternate" type="text/plain" title="Agent runbook" href={`${base}ai.txt`} />
+    <meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#131416" media="(prefers-color-scheme: dark)" />
+    <!-- Blocking, so a stored theme is in place for first paint. Light is the
+         default and the no-JavaScript reading; this only ever moves away from
+         it. The browser chrome colour follows the choice too: both metas take
+         the chosen colour, so whichever one the system scheme matches says
+         the same thing, and "auto" puts them back. ThemeSwitch calls the same
+         function on a change. -->
+    <script is:inline>
+      (function () {
+        var mode = 'light';
+        try {
+          var stored = localStorage.getItem('pg-theme');
+          if (stored === 'dark' || stored === 'auto') mode = stored;
+        } catch (e) {}
+        document.documentElement.dataset.theme = mode;
+        window.pgThemeColor = function (m) {
+          var colours = { light: '#fbfaf7', dark: '#131416' };
+          var metas = document.querySelectorAll('meta[name="theme-color"]');
+          for (var i = 0; i < metas.length; i++) {
+            var own = /dark/.test(metas[i].getAttribute('media') || '') ? 'dark' : 'light';
+            metas[i].setAttribute('content', colours[m === 'auto' ? own : m]);
+          }
+        };
+        window.pgThemeColor(mode);
+      })();
+    </script>
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="polyglots" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="generator" content={Astro.generator} />
+    <slot name="head" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <Icons />
+    <Header />
+    <main id="main">
+      <slot />
+    </main>
+    <Footer />
+  </body>
+</html>

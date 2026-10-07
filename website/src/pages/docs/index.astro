@@ -1,0 +1,33 @@
+---
+import Doc from '../../layouts/Doc.astro';
+import { allDocs } from '../../lib/docs';
+
+const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
+const docs = await allDocs();
+---
+<Doc title="Documentation" description="How to install, configure and run polyglots: reviewing submissions, translating, locale rules, agents and local models." path="docs/" current="">
+  <p class="lede">Everything polyglots does, one page per task. The same pages are in the repository's <code>docs/</code> folder.</p>
+  <ul class="cards">
+    {docs.map((d) => (
+      <li>
+        <a href={`${base}docs/${d.slug}/`}><strong>{d.title}</strong></a>
+        <span class="muted">{d.description}</span>
+      </li>
+    ))}
+    <li>
+      <a href={`${base}docs/commands/`}><strong>Command reference</strong></a>
+      <span class="muted">Every command and option, as <code>polyglots --help</code> prints them.</span>
+    </li>
+    <li>
+      <a href={`${base}ai/`}><strong>For AI agents</strong></a>
+      <span class="muted">The runbook an agent should follow, also as plain text.</span>
+    </li>
+  </ul>
+</Doc>
+
+<style>
+  .cards { list-style: none; padding: 0; margin: 2rem 0 0; display: grid; gap: 1.25rem; }
+  .cards li { display: grid; gap: 0.2rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--rule); }
+  .cards a { text-decoration: none; font-size: 1.1rem; }
+  .cards span { font-size: 0.95rem; }
+</style>

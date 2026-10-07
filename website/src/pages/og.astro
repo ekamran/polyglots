@@ -1,0 +1,48 @@
+---
+// The 1200x630 card scripts/images.mjs photographs into public/og.png. Kept as
+// a page so the card uses the site's own fonts and terminal output; deploy.sh
+// leaves it off the server.
+import '../styles/global.css';
+import { demos } from '../lib/snapshot';
+// The summary box: the part of a review that reads at thumbnail size.
+const final = demos.review.final;
+const top = final.findIndex((l) => l.includes('╭'));
+const bottom = final.findIndex((l) => l.includes('╰'));
+const lines = final.slice(top, bottom + 1);
+---
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="robots" content="noindex" />
+    <title>og</title>
+  </head>
+  <body>
+    <div class="card">
+      <div class="copy">
+        <p class="name"><span>›</span>polyglots</p>
+        <p class="line">Review and translate WordPress .po files. Rules where rules work, an AI agent for the rest.</p>
+        <p class="url">ada.tools/polyglots</p>
+      </div>
+      <pre class="term" set:html={lines.join('\n')} />
+    </div>
+  </body>
+</html>
+<style>
+  body { margin: 0; }
+  .card {
+    width: 1200px; height: 630px; box-sizing: border-box; padding: 72px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: center;
+    background: var(--bg); color: var(--fg);
+  }
+  .name { font-family: var(--font-mono); font-weight: 700; font-size: 64px; margin: 0 0 24px; letter-spacing: -0.02em; }
+  .name span { color: var(--accent); margin-right: 18px; }
+  .line { font-size: 30px; line-height: 1.35; color: var(--fg-2); margin: 0 0 32px; }
+  .url { font-family: var(--font-mono); font-size: 22px; color: var(--accent); margin: 0; }
+  .term { font-size: 17px; line-height: 1.45; padding: 28px; border-radius: 16px; overflow: hidden; white-space: pre; }
+  .term :global(.t-success) { color: var(--t-success); }
+  .term :global(.t-warn) { color: var(--t-warn); }
+  .term :global(.t-muted) { color: var(--t-muted); }
+  .term :global(.t-accent) { color: var(--t-accent); }
+  .term :global(.t-bold) { font-weight: 700; }
+</style>

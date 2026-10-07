@@ -1,0 +1,94 @@
+---
+import Icon from './Icon.astro';
+import { demos, type Demo } from '../lib/snapshot';
+
+// A terminal panel showing a real run, rendered at build time (see
+// scripts/snapshot.ts). The HTML holds the finished run, so a reader without
+// JavaScript, a screen reader, a crawler and an agent fetching the page all get
+// the whole output. scripts/terminal.ts replays it on top when motion is
+// welcome; the static copy stays in the accessibility tree throughout.
+interface Props {
+  demo: keyof typeof demos;
+  title?: string;
+  animate?: boolean;
+  /** Playback speed; 1 is the pace the scenario was written at. */
+  speed?: number;
+}
+const { demo: name, title, animate = false, speed = 1 } = Astro.props;
+const demo: Demo = demos[name];
+const payload = animate ? JSON.stringify({ command: demo.command, frames: demo.frames.map((f) => [f.hold, f.html.join('\n')]), speed }) : undefined;
+---
+<figure class="term" data-terminal={payload}>
+  <div class="chrome">
+    <span class="dots" aria-hidden="true"><span></span><span></span><span></span></span>
+    <figcaption>{title ?? demo.command.split(' ').slice(0, 2).join(' ')}</figcaption>
+    {animate && (
+      <span class="controls" hidden data-controls>
+        <button type="button" data-action="pause" aria-label="Pause the demo"><Icon name="pause" /></button>
+        <button type="button" data-action="replay" aria-label="Replay the demo"><Icon name="replay" /></button>
+      </span>
+    )}
+  </div>
+  <div class="body">
+    <pre class="screen" data-static><span class="prompt">$ </span><span class="cmd">{demo.command}</span>{'\n'}<Fragment set:html={demo.final.join('\n')} /></pre>
+  </div>
+</figure>
+
+<style>
+  .term {
+    margin: 0;
+    background: var(--term-bg);
+    color: var(--term-fg);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    min-width: 0;
+  }
+  .chrome {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.55rem 0.9rem; background: var(--term-chrome);
+    font-family: var(--font-mono); font-size: 0.78rem; color: var(--term-dim);
+  }
+  .dots { display: inline-flex; gap: 0.4rem; }
+  .dots span { width: 0.65rem; height: 0.65rem; border-radius: 50%; background: rgb(255 255 255 / 0.14); }
+  figcaption { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .controls { display: inline-flex; gap: 0.15rem; }
+  .controls[hidden] { display: none; }
+  .controls button {
+    display: grid; place-items: center; width: 1.9rem; height: 1.9rem;
+    border: 0; border-radius: 6px; background: transparent; color: var(--term-dim); cursor: pointer;
+  }
+  .controls button:hover { color: var(--term-fg); background: rgb(255 255 255 / 0.08); }
+  .controls :global(.icon) { width: 0.95rem; height: 0.95rem; }
+  .body { position: relative; overflow-x: auto; }
+  .body :global(pre) {
+    margin: 0; border-radius: 0; background: none; color: inherit;
+    padding: 1rem 1.15rem 1.15rem;
+    font-size: clamp(0.7rem, 1.55vw, 0.84rem); line-height: 1.45;
+    white-space: pre; tab-size: 2;
+  }
+  /* While the replay runs, the static copy keeps its place (and so the panel's
+     height) and stays readable to assistive tech; only its pixels hide. */
+  .body[data-playing] :global([data-static]) { opacity: 0; }
+  .body :global([data-anim]) { position: absolute; inset: 0; }
+  .body :global(.prompt) { color: var(--term-dim); }
+  .body :global(.cmd) { color: var(--term-fg); font-weight: 700; }
+  .body :global(.cursor) {
+    display: inline-block; width: 0.55em; height: 1.1em; vertical-align: -0.2em;
+    background: var(--term-fg); animation: blink 1s steps(2) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+  .term :global(.t-success) { color: var(--t-success); }
+  .term :global(.t-warn) { color: var(--t-warn); }
+  .term :global(.t-error) { color: var(--t-error); }
+  .term :global(.t-muted) { color: var(--t-muted); }
+  .term :global(.t-accent) { color: var(--t-accent); }
+  .term :global(.t-path) { color: var(--t-path); }
+  .term :global(.t-bold) { font-weight: 700; }
+  .term :global(.t-underline) { text-decoration: underline; text-underline-offset: 0.2em; }
+</style>
+
+<script>
+  import { enhance } from '../scripts/terminal';
+  for (const figure of document.querySelectorAll<HTMLElement>('[data-terminal]')) enhance(figure);
+</script>

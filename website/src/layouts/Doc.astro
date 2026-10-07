@@ -1,0 +1,55 @@
+---
+import Base from './Base.astro';
+import { allDocs } from '../lib/docs';
+
+interface Props {
+  title: string;
+  description: string;
+  path: string;
+  /** Slug of the current page, for the navigation. */
+  current: string;
+  /** Where the page's source lives in the repo, for the edit link. */
+  source?: string;
+}
+const { title, description, path, current, source } = Astro.props;
+const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
+const docs = await allDocs();
+---
+<Base title={`${title} · polyglots`} description={description} path={path}>
+  <div class="wrap doc">
+    <nav class="side" aria-label="Documentation">
+      <p class="side-title"><a href={`${base}docs/`}>Docs</a></p>
+      <ul>
+        {docs.map((d) => (
+          <li><a href={`${base}docs/${d.slug}/`} aria-current={d.slug === current ? 'page' : undefined}>{d.title}</a></li>
+        ))}
+        <li><a href={`${base}docs/commands/`} aria-current={current === 'commands' ? 'page' : undefined}>Command reference</a></li>
+        <li><a href={`${base}ai/`}>For AI agents</a></li>
+      </ul>
+    </nav>
+    <article class="prose">
+      <h1>{title}</h1>
+      <slot />
+      {source && (
+        <p class="edit muted">
+          This page is <a href={`https://github.com/emreerkan/polyglots/blob/main/${source}`}>{source}</a> in the repository.
+        </p>
+      )}
+    </article>
+  </div>
+</Base>
+
+<style>
+  .doc { display: grid; gap: 2rem; padding-top: 2.5rem; }
+  @media (min-width: 900px) { .doc { grid-template-columns: 14rem minmax(0, 1fr); gap: 3.5rem; } }
+  .side { font-size: 0.95rem; }
+  @media (min-width: 900px) { .side { position: sticky; top: 1.5rem; align-self: start; } }
+  .side-title { font-family: var(--font-mono); font-size: 0.8rem; margin-bottom: 0.5rem; }
+  .side-title a { color: var(--muted); text-decoration: none; }
+  .side ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; }
+  @media (min-width: 900px) { .side ul { display: grid; gap: 0.15rem; } }
+  .side a { color: var(--fg-2); text-decoration: none; display: block; padding: 0.2rem 0; }
+  .side a:hover { color: var(--fg); }
+  .side a[aria-current='page'] { color: var(--accent); font-weight: 600; }
+  .edit { font-size: 0.875rem; margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--rule); }
+</style>

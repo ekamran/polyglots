@@ -1,0 +1,233 @@
+---
+import Base from '../layouts/Base.astro';
+import Install from '../components/Install.astro';
+import Terminal from '../components/Terminal.astro';
+import Wordmark from '../components/Wordmark.astro';
+import Icon from '../components/Icon.astro';
+import { allDocs } from '../lib/docs';
+import { snapshot } from '../lib/snapshot';
+
+const TAGLINE = 'Review a locale’s submissions in minutes, not evenings.';
+const DESCRIPTION =
+  'polyglots reviews and translates WordPress .po files for translate.wordpress.org locale teams: deterministic checks, an AI agent for judgement, and repairs written into the file. Nothing is uploaded to translate.wordpress.org.';
+
+const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
+const docs = await allDocs();
+const doc = (slug: string) => `${base}docs/${slug}/`;
+---
+<Base title={`polyglots · ${TAGLINE}`} description={DESCRIPTION}>
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <Wordmark />
+        <h1>{TAGLINE}</h1>
+        <p class="lede">
+          A command-line tool for WordPress locale teams. It checks every string a contributor submits, repairs what it can,
+          and hands you a file of only the entries that still need you. Untranslated strings get a machine draft reviewed
+          by an AI agent. Everything ends as a <code>.po</code> file you read in Poedit; nothing is uploaded to translate.wordpress.org.
+        </p>
+        <Install id="hero" />
+        <p class="more"><a href={doc('getting-started')}>Get started <Icon name="arrow" /></a></p>
+      </div>
+      <Terminal demo="review" animate speed={1.6} title="review" />
+    </div>
+  </section>
+
+  <section class="wrap band" aria-labelledby="round-trip">
+    <p class="eyebrow">The round trip</p>
+    <h2 id="round-trip">Fetch, translate, review, and see how it went</h2>
+    <p class="lede">Four commands cover a locale manager’s week. Each output below is the CLI’s own, rendered from its source when this page was built.</p>
+
+    <ol class="phases">
+      <li class="phase">
+        <div class="phase-copy">
+          <p class="step">1 · Fetch</p>
+          <h3>Pull the work from translate.wordpress.org</h3>
+          <p>
+            Name the projects, as slugs or URLs. polyglots finds each one, downloads what is waiting for review or still
+            untranslated, and runs the next step on every file. A project with nothing waiting is skipped, not failed.
+          </p>
+          <p><code>polyglots fetch --get waiting …</code></p>
+        </div>
+        <Terminal demo="fetch" title="fetch" />
+      </li>
+      <li class="phase">
+        <div class="phase-copy">
+          <p class="step">2 · Translate</p>
+          <h3>Draft what nobody has translated</h3>
+          <p>
+            Your translation memory answers first. DeepL, OpenAI or a model on your machine drafts the rest, and an AI agent
+            reviews every draft against the glossary, marking fuzzy the ones a person should check.
+          </p>
+          <p><a href={doc('translate')}>Translating</a></p>
+        </div>
+        <Terminal demo="translate" animate title="translate" />
+      </li>
+      <li class="phase">
+        <div class="phase-copy">
+          <p class="step">3 · Review</p>
+          <h3>Judge a submission, and fix it</h3>
+          <p>
+            Rules decide the hard failures, the memory settles what it already knows, and the agent judges the rest and writes a
+            fix for what it rejects. Every fix is checked by the rules again before it is kept. You get the flagged entries,
+            repaired, and a message to send the contributor.
+          </p>
+          <p><a href={doc('review')}>Reviewing submissions</a></p>
+        </div>
+        <Terminal demo="review" title="review" />
+      </li>
+      <li class="phase">
+        <div class="phase-copy">
+          <p class="step">4 · Stats</p>
+          <h3>See what you reviewed</h3>
+          <p>
+            Every run is recorded on your machine. <code>polyglots stats</code> summarises it in the terminal and writes a
+            self-contained page you can keep or share: throughput by week, what gets flagged, which projects take the time.
+          </p>
+        </div>
+        <Terminal demo="stats" title="stats" />
+      </li>
+    </ol>
+  </section>
+
+  <section class="wrap band" aria-labelledby="checks">
+    <p class="eyebrow">What it checks</p>
+    <h2 id="checks">Rules where rules work, judgement where they don’t</h2>
+    <div class="cards">
+      <div class="card">
+        <h3>The things that break a site</h3>
+        <p>Dropped or invented placeholders, HTML that no longer matches, the wrong number of plural forms, escaped quotes, line breaks, settings the code reads such as <code>ltr</code>. Decided by rules, never by a guess.</p>
+      </div>
+      <div class="card">
+        <h3>Your glossary and your memory</h3>
+        <p>Every string is checked against your locale’s glossary from translate.wordpress.org and the translations your team already approved. A string the memory knows word for word is settled without asking a model.</p>
+      </div>
+      <div class="card">
+        <h3>Your language’s conventions</h3>
+        <p>Title case, apostrophes, ampersands and number formats only matter in some languages, so they run where a locale’s rules turn them on. Turkish ships a maintained pack; any team can write its own, with its common mistakes. <a href={doc('locale-rules')}>Locale rules</a></p>
+      </div>
+      <div class="card">
+        <h3>An agent for the rest</h3>
+        <p>Meaning, fluency and the soft findings go to an AI agent with the rule hints in hand and three lookups: the glossary, your memory and translate.wordpress.org’s consistency data. Claude gets those and nothing else, no shell and no files; Antigravity is held to them by <a href={doc('antigravity')}>its own settings</a>. It decides, and repairs what it rejects.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap band" aria-labelledby="engines">
+    <p class="eyebrow">Engines and providers</p>
+    <h2 id="engines">What runs, and what it costs</h2>
+    <p class="lede">polyglots calls no model API of its own for reviews. It drives an agent CLI you already use, under that agent’s account.</p>
+    <div class="table-wrap">
+      <table class="engines">
+        <thead>
+          <tr><th scope="col">Used for</th><th scope="col">Option</th><th scope="col">Cost</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Reviewing</td><td><strong>Claude Code</strong> (default)</td><td>Your Claude plan’s usage, or API billing if the CLI is signed in with a key.</td></tr>
+          <tr><td>Reviewing</td><td><strong>Antigravity CLI</strong> <a href={doc('antigravity')}>setup</a></td><td>Your Antigravity account’s usage.</td></tr>
+          <tr><td>Drafting</td><td><strong>DeepL</strong> (default)</td><td>Free within DeepL API Free’s monthly allowance; metered on a paid plan.</td></tr>
+          <tr><td>Drafting</td><td><strong>OpenAI</strong></td><td>Metered per token.</td></tr>
+          <tr><td>Drafting, experimental reviewing</td><td><strong>Local models</strong>: Ollama, LM Studio, llama.cpp, vLLM <a href={doc('local-models')}>setup</a></td><td>Free; runs on your machine.</td></tr>
+          <tr><td>Rules-only review</td><td><code>review --no-ai</code></td><td>Free; no model at all.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="wrap band local" aria-labelledby="local">
+    <div>
+      <p class="eyebrow">Your data</p>
+      <h2 id="local">Two files on your machine, and nothing uploaded to GlotPress</h2>
+      <p>
+        The translation memory and glossary live in <code>polyglots.db</code>; run history and caches in <code>jobs.db</code>.
+        Both sit under <code>~/.local/share/polyglots</code>. polyglots downloads from translate.wordpress.org and never
+        uploads to it: what goes back to GlotPress is your decision, made in GlotPress.
+      </p>
+      <p>What does leave the machine:</p>
+      <ul class="leaves">
+        <li><strong>Reviewing</strong> sends each batch of strings, with its glossary terms and memory matches, to the agent you review with and its model provider (Anthropic for Claude, Google for Antigravity).</li>
+        <li><strong>Drafting</strong> sends source strings to DeepL or OpenAI.</li>
+        <li><strong>Lookups</strong> query translate.wordpress.org for the glossary, exports and consistency data.</li>
+      </ul>
+      <p>
+        Only with a local model for both drafting and reviewing do the strings stay on your machine. Claude is held to polyglots’ three lookups on every run and cannot open files or run commands; Antigravity’s limits come from its own settings and any other tool servers registered with it.
+      </p>
+    </div>
+    <ul class="facts">
+      <li><strong>Resumable.</strong> Stop a run with <kbd>q</kbd>, run it again, and only unfinished entries are sent.</li>
+      <li><strong>Cached.</strong> Editing three strings and reviewing again sends three.</li>
+      <li><strong>Yours.</strong> The memory is built from your own imports; back it up, take it with you.</li>
+    </ul>
+  </section>
+
+  <section class="wrap band" aria-labelledby="translate-it">
+    <p class="eyebrow">Help translate polyglots</p>
+    <h2 id="translate-it">The stats page speaks your language too</h2>
+    <p class="lede">
+      The page <code>polyglots stats</code> writes ships in English and Turkish. Its strings are an ordinary gettext template: translate <a href="https://github.com/emreerkan/polyglots/blob/main/app/i18n/stats/stats.pot"><code>stats.pot</code></a> in Poedit and send the <code>.po</code> as a pull request, or attach it to an <a href="https://github.com/emreerkan/polyglots/issues">issue</a>. A locale rules pack for your language is just as welcome.
+    </p>
+  </section>
+
+  <section class="wrap band" aria-labelledby="docs">
+    <p class="eyebrow">Install and docs</p>
+    <h2 id="docs">Start with one file</h2>
+    <div class="start">
+      <div>
+        <Install id="footer" />
+        <p class="muted small">Version {snapshot.version}. Driving polyglots from an agent? Point it at <a href={`${base}ai/`}>ada.tools/polyglots/ai</a>.</p>
+      </div>
+      <ul class="doclist">
+        {docs.map((d) => <li><a href={doc(d.slug)}>{d.title}</a></li>)}
+        <li><a href={`${base}docs/commands/`}>Command reference</a></li>
+      </ul>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .hero { padding: clamp(2.5rem, 7vw, 5rem) 0 clamp(2rem, 5vw, 4rem); }
+  .hero-grid { display: grid; gap: 2.5rem; align-items: center; }
+  @media (min-width: 1000px) { .hero-grid { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 3.5rem; } }
+  .hero-copy { display: grid; gap: 1.1rem; justify-items: start; min-width: 0; }
+  .hero h1 { font-size: clamp(1.9rem, 4.4vw, 2.9rem); margin: 0.4rem 0 0; max-width: 18ch; }
+  .hero .lede { margin: 0; }
+  .more { margin: 0; }
+  .more a { display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 600; text-decoration: none; }
+
+  .band { padding-top: clamp(3.5rem, 8vw, 6rem); }
+  .band > h2 { max-width: 30ch; }
+
+  .phases { list-style: none; margin: 2.5rem 0 0; padding: 0; display: grid; gap: clamp(2.5rem, 6vw, 4rem); }
+  .phase { display: grid; gap: 1.25rem; align-items: start; }
+  @media (min-width: 1000px) { .phase { grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.25fr); gap: 3rem; } }
+  .phase-copy { min-width: 0; }
+  .step { font-family: var(--font-mono); font-size: 0.85rem; color: var(--accent); margin: 0 0 0.4rem; }
+  .phase h3 { font-size: 1.35rem; }
+
+  .cards { display: grid; gap: 1.25rem; margin-top: 2rem; }
+  @media (min-width: 720px) { .cards { grid-template-columns: 1fr 1fr; } }
+  .card { border: 1px solid var(--rule); border-radius: var(--radius); padding: 1.4rem 1.5rem 0.6rem; background: var(--bg-2); }
+  .card h3 { font-size: 1.1rem; }
+
+  .table-wrap { overflow-x: auto; margin-top: 1.5rem; }
+  .engines { width: 100%; border-collapse: collapse; font-size: 0.97rem; min-width: 36rem; }
+  .engines th, .engines td { text-align: left; vertical-align: top; padding: 0.75rem 1rem 0.75rem 0; border-bottom: 1px solid var(--rule); }
+  .engines th { font-size: 0.85rem; color: var(--muted); font-weight: 600; }
+  .engines td:first-child { color: var(--fg-2); white-space: nowrap; }
+  .engines a { font-size: 0.85rem; margin-left: 0.25rem; }
+
+  .local { display: grid; gap: 2rem; }
+  @media (min-width: 900px) { .local { grid-template-columns: 1.2fr 0.8fr; gap: 3.5rem; align-items: end; } }
+  .leaves { margin: 0 0 1em; padding-left: 1.2rem; color: var(--fg-2); }
+  .leaves li { margin: 0.35em 0; }
+  .facts { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.9rem; }
+  .facts li { padding-left: 1rem; border-left: 2px solid var(--accent); color: var(--fg-2); }
+  kbd { font-family: var(--font-mono); font-size: 0.85em; border: 1px solid var(--rule); border-bottom-width: 2px; border-radius: 4px; padding: 0 0.3em; background: var(--bg-2); }
+
+  .start { display: grid; gap: 2rem; margin-top: 1.5rem; }
+  @media (min-width: 900px) { .start { grid-template-columns: 1fr 1fr; gap: 3.5rem; } }
+  .small { font-size: 0.9rem; margin-top: 1rem; }
+  .doclist { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+  @media (min-width: 560px) { .doclist { grid-template-columns: 1fr 1fr; } }
+  .doclist a { text-decoration: none; }
+</style>

@@ -1,0 +1,32 @@
+---
+import { snapshot } from '../lib/snapshot';
+
+// The only identity the site has. The ASCII art comes from the TUI's own
+// wordmark (app/src/ui/wordmark.ts) through the snapshot, so the two cannot
+// differ; until that module exists the name is set in the terminal font.
+interface Props {
+  size?: 'small' | 'large';
+}
+const { size = 'large' } = Astro.props;
+const art = size === 'large' ? snapshot.wordmark : null;
+---
+{art ? (
+  <span class="mark art">
+    <pre aria-hidden="true">{art.join('\n')}</pre>
+    <span class="sr-only">polyglots</span>
+  </span>
+) : (
+  <span class:list={['mark', 'name', size]}><span class="caret" aria-hidden="true">›</span>polyglots</span>
+)}
+
+<style>
+  .mark { display: inline-block; font-family: var(--font-mono); color: inherit; }
+  .art pre {
+    margin: 0; padding: 0; background: none; color: var(--accent);
+    font-size: clamp(0.38rem, 1.6vw, 0.8rem); line-height: 1.1; overflow: visible;
+  }
+  .name { font-weight: 700; letter-spacing: -0.02em; }
+  .name.small { font-size: 1.1rem; }
+  .name.large { font-size: clamp(2.4rem, 8vw, 4rem); line-height: 1; }
+  .caret { color: var(--accent); margin-right: 0.35em; }
+</style>
