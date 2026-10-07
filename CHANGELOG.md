@@ -10,6 +10,8 @@ Entries say what changed. For why and how, read the commit.
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-10-07
+
 ### Added
 
 - `polyglots doctor` reports which agent CLIs are installed, signed in and set up, with an opt-in
@@ -30,6 +32,8 @@ Entries say what changed. For why and how, read the commit.
   catalogue's `Plural-Forms` header above two forms.
 - `review` and `translate` print a note before running a locale with only the universal checks.
 - The `rules edit` template's examples follow the locale.
+- Cached verdicts for de, and for catalogues with more than two plural forms, run again once on
+  the next run.
 
 ### Fixed
 
