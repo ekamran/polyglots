@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { Box, Text, useInput } from 'ink'
-import TextInput from 'ink-text-input'
+import { Box, Text } from 'ink'
 import { Hint } from './Hint.js'
+import { TextInput, useInput } from '../input.js'
 
 export interface FormField {
   key: string

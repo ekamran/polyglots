@@ -1,4 +1,5 @@
-import { Box, Text, useInput } from 'ink'
+import { Box, Text } from 'ink'
+import { useInput, useTypingWhile } from '../input.js'
 
 export interface MultilineInputProps {
   value: string
@@ -13,6 +14,7 @@ export interface MultilineInputProps {
  * for, and `rules edit` opens one.
  */
 export function MultilineInput({ value, onChange, onDone }: MultilineInputProps) {
+  useTypingWhile(true)
   useInput((ch, key) => {
     if (key.escape) onDone()
     else if (key.return) onChange(`${value}\n`)

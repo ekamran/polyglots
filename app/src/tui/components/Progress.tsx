@@ -1,9 +1,10 @@
-import { Box, Text, useInput } from 'ink'
+import { Box, Text } from 'ink'
 import { useState } from 'react'
 import { estimateRemainingMs, formatDuration, formatFinishTime, renderBar as bar, type BatchPhase } from '../../cli/progress.js'
 import { useElapsed } from '../hooks/useElapsed.js'
 import { openInDefaultApp } from '../open-file.js'
 import type { TranslateEvent, TranslateSummary } from '../../commands/translate.js'
+import { useInput } from '../input.js'
 
 export interface ProgressState {
   started: boolean

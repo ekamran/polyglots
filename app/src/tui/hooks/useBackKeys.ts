@@ -1,4 +1,4 @@
-import { useInput } from 'ink'
+import { useInput } from '../input.js'
 
 export interface BackKeysOptions {
   enabled?: boolean

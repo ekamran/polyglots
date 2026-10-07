@@ -1,12 +1,12 @@
 import { createRequire } from 'node:module'
 import { useState } from 'react'
-import { Box, Text, useInput } from 'ink'
-import SelectInput from 'ink-select-input'
+import { Box, Text } from 'ink'
 import { usableProviders, type AgentStatus } from '../../agent/discover.js'
 import { PROVIDERS } from '../../agent/providers.js'
 import type { ReviewChoice, ReviewProvider } from '../../types.js'
 import { providerLabel } from '../local.js'
 import { Hint } from '../components/Hint.js'
+import { SelectInput, useInput } from '../input.js'
 
 // Read the same way the CLI reads it, so the two can never disagree about
 // which build is running.

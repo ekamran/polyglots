@@ -1,7 +1,8 @@
-import { Box, Text, useInput } from 'ink'
+import { Box, Text } from 'ink'
 import type { AgentStatus } from '../../agent/discover.js'
 import { Hint } from '../components/Hint.js'
 import { useBackKeys } from '../hooks/useBackKeys.js'
+import { useInput } from '../input.js'
 
 export interface AgentsProps {
   agents?: AgentStatus[]

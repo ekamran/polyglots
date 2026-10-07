@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { Box, Text } from 'ink'
-import TextInput from 'ink-text-input'
 import type { SyncGlossaryResult } from '../../commands/glossary-sync.js'
 import { normalizeLocale } from '../../tmx/parse.js'
 import { resolveLocale } from '../../wporg/locales.js'
@@ -8,6 +7,7 @@ import { useCommands, useConfig } from '../commands.js'
 import { DONE_HINT, Hint } from '../components/Hint.js'
 import { useBackKeys } from '../hooks/useBackKeys.js'
 import { useTask } from '../hooks/useTask.js'
+import { TextInput } from '../input.js'
 
 export interface SyncGlossaryProps {
   onBack: () => void
