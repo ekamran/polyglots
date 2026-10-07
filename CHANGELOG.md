@@ -10,6 +10,22 @@ Entries say what changed. For why and how, read the commit.
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-10-07
+
+### Added
+
+- `stats` prints a terminal summary: totals, a 12-week sparkline and the top five projects.
+- `POLYGLOTS_ASCII=1` draws plain ASCII glyphs and boxes; `NO_COLOR` and `FORCE_COLOR` are honoured.
+
+### Changed
+
+- Node 24 or later is required.
+- CLI output is coloured on a terminal, per stream. Errors, warnings and confirmations lead
+  with `✗`, `!` and `✓` in place of `Error:` and `Warning:`.
+- translate, review and fetch print a header on stderr and end with a framed summary and a next
+  step; doctor and models print aligned tables ending in a status line.
+- A stopped review that wrote a problems file also says to re-run.
+
 ## [0.24.0] - 2026-10-07
 
 ### Fixed
