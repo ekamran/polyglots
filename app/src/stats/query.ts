@@ -12,6 +12,24 @@ export interface WeekRow {
   flagged: number
 }
 
+// A calendar day in the local time of the machine that ran the query, for the
+// activity heatmap. Local rather than UTC, unlike the weeks: the heatmap is
+// about a person's rhythm, and a review finished at 23:30 in Istanbul was done
+// that evening, not the next morning. Weeks stay UTC because a few hours of
+// drift at a week boundary does not change what a weekly bar says.
+export interface DayRow {
+  day: string
+  runs: number
+  entries: number
+}
+
+/**
+ * Upper bounds of the turnaround buckets, in milliseconds. The last is open.
+ * Chosen around how a reviewer experiences the wait: under a minute is "while I
+ * watched", up to fifteen is "a coffee", past four hours is "overnight".
+ */
+export const TURNAROUND_BUCKETS = [60_000, 300_000, 900_000, 3_600_000, 14_400_000, Number.POSITIVE_INFINITY] as const
+
 export interface ProjectRow {
   project: string
   runs: number
@@ -49,8 +67,14 @@ export interface ReviewStats {
   // are absent from every number above. Counted so the page can say they
   // happened rather than quietly shrinking the denominator.
   incomplete: number
+  // Started and not yet ended. Shown as "in progress, not yet counted" and
+  // never added to a total: a review that has not finished has no totals yet.
+  running: number
   byCategory: Record<string, number>
   byWeek: WeekRow[]
+  byDay: DayRow[]
+  // One count per TURNAROUND_BUCKETS entry, always the full length.
+  turnaroundBuckets: number[]
   byProject: ProjectRow[]
   byEngine: EngineRow[]
 }
@@ -76,7 +100,10 @@ export interface TranslateStats {
   skipped: number
   medianTurnaroundMs?: number
   incomplete: number
+  running: number
   byWeek: WeekRow[]
+  byDay: DayRow[]
+  turnaroundBuckets: number[]
   byProject: ProjectRow[]
   byEngine: EngineRow[]
 }
@@ -121,15 +148,36 @@ function byValueDescending(counts: Map<string, number>): Record<string, number> 
   return Object.fromEntries([...counts].sort(([, a], [, b]) => b - a))
 }
 
+// The command is bound like the date, not spliced into the SQL. It used to be
+// spliced, which was safe only because the argument is a two-member union; the
+// next person to widen that union would not have known the query depended on it.
 function finishedRuns(db: Database.Database, command: 'review' | 'translate', since: number): Row[] {
   return db
-    .prepare<[number], Row>(
+    .prepare<[string, number], Row>(
       `SELECT file, project, engine, started_at, finished_at, entries, flagged, repaired, approvable, by_category
        FROM run
        WHERE command = ? AND state = 'done' AND started_at >= ?
-       ORDER BY started_at`.replace('command = ?', `command = '${command}'`),
+       ORDER BY started_at`,
     )
-    .all(since)
+    .all(command, since)
+}
+
+// Not windowed: a run in progress started recently by definition, and the
+// question it answers is "is something happening now".
+function runningRuns(db: Database.Database, command: 'review' | 'translate'): number {
+  return db
+    .prepare<[string], { n: number }>(`SELECT COUNT(*) AS n FROM run WHERE command = ? AND state = 'running'`)
+    .get(command)!.n
+}
+
+function dayOf(at: number): string {
+  const d = new Date(at)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+function bucketOf(ms: number): number {
+  return TURNAROUND_BUCKETS.findIndex((edge) => ms < edge)
 }
 
 // Runs that really did not finish, which is narrower than "not done".
@@ -164,6 +212,8 @@ interface Grouped {
   turnarounds: number[]
   categories: Map<string, number>
   weeks: Map<string, WeekRow>
+  days: Map<string, DayRow>
+  buckets: number[]
   projects: Map<string, ProjectRow>
   engines: Map<string, { row: EngineRow; turnarounds: number[] }>
 }
@@ -179,6 +229,8 @@ function group(rows: Row[]): Grouped {
     turnarounds: [],
     categories: new Map(),
     weeks: new Map(),
+    days: new Map(),
+    buckets: TURNAROUND_BUCKETS.map(() => 0),
     projects: new Map(),
     engines: new Map(),
   }
@@ -192,7 +244,16 @@ function group(rows: Row[]): Grouped {
     g.approvable += row.approvable ?? 0
 
     const took = row.finished_at === null ? undefined : row.finished_at - row.started_at
-    if (took !== undefined) g.turnarounds.push(took)
+    if (took !== undefined) {
+      g.turnarounds.push(took)
+      g.buckets[bucketOf(took)]! += 1
+    }
+
+    const today = dayOf(row.started_at)
+    const d = g.days.get(today) ?? { day: today, runs: 0, entries: 0 }
+    d.runs += 1
+    d.entries += entries
+    g.days.set(today, d)
 
     for (const [name, n] of Object.entries(parseTally(row.by_category) ?? {})) {
       g.categories.set(name, (g.categories.get(name) ?? 0) + n)
@@ -232,6 +293,10 @@ function weeksOf(g: Grouped): WeekRow[] {
   return [...g.weeks.values()].sort((a, b) => a.week.localeCompare(b.week))
 }
 
+function daysOf(g: Grouped): DayRow[] {
+  return [...g.days.values()].sort((a, b) => a.day.localeCompare(b.day))
+}
+
 function projectsOf(g: Grouped): ProjectRow[] {
   return [...g.projects.values()].sort((a, b) => b.entries - a.entries)
 }
@@ -267,8 +332,11 @@ export function reviewStats(db: Database.Database, window: StatsWindow = {}): Re
     approvable: 0,
     problemRate: 0,
     incomplete: unfinishedRuns(db, 'review', since),
+    running: runningRuns(db, 'review'),
     byCategory: {},
     byWeek: [],
+    byDay: [],
+    turnaroundBuckets: TURNAROUND_BUCKETS.map(() => 0),
     byProject: [],
     byEngine: [],
   }
@@ -286,6 +354,8 @@ export function reviewStats(db: Database.Database, window: StatsWindow = {}): Re
   if (turnaround !== undefined) stats.medianTurnaroundMs = turnaround
   stats.byCategory = byValueDescending(g.categories)
   stats.byWeek = weeksOf(g)
+  stats.byDay = daysOf(g)
+  stats.turnaroundBuckets = g.buckets
   stats.byProject = projectsOf(g)
   stats.byEngine = enginesOf(g)
   return stats
@@ -309,7 +379,10 @@ export function translateStats(db: Database.Database, window: StatsWindow = {}):
     fuzzyRate: 0,
     skipped: 0,
     incomplete: unfinishedRuns(db, 'translate', since),
+    running: runningRuns(db, 'translate'),
     byWeek: [],
+    byDay: [],
+    turnaroundBuckets: TURNAROUND_BUCKETS.map(() => 0),
     byProject: [],
     byEngine: [],
   }
@@ -330,6 +403,8 @@ export function translateStats(db: Database.Database, window: StatsWindow = {}):
   const turnaround = median(g.turnarounds)
   if (turnaround !== undefined) stats.medianTurnaroundMs = turnaround
   stats.byWeek = weeksOf(g)
+  stats.byDay = daysOf(g)
+  stats.turnaroundBuckets = g.buckets
   stats.byProject = projectsOf(g)
   stats.byEngine = enginesOf(g)
   return stats

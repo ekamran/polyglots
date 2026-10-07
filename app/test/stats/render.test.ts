@@ -13,8 +13,11 @@ const empty: ReviewStats = {
   approvable: 0,
   problemRate: 0,
   incomplete: 0,
+  running: 0,
   byCategory: {},
   byWeek: [],
+  byDay: [],
+  turnaroundBuckets: [0, 0, 0, 0, 0, 0],
   byProject: [],
   byEngine: [],
 }
@@ -30,6 +33,9 @@ const full: ReviewStats = {
   problemRate: 1477 / 4102,
   medianTurnaroundMs: 2.1 * HOUR,
   incomplete: 2,
+  running: 0,
+  byDay: [],
+  turnaroundBuckets: [0, 0, 0, 0, 0, 0],
   byCategory: { 'title-case': 560, glossary: 354, placeholder: 133 },
   byWeek: [
     { week: '2026-09-07', runs: 12, entries: 1800, flagged: 600 },
@@ -292,6 +298,9 @@ const drafted: TranslateStats = {
   skipped: 50,
   medianTurnaroundMs: 5.5 * HOUR,
   incomplete: 1,
+  running: 0,
+  byDay: [],
+  turnaroundBuckets: [0, 0, 0, 0, 0, 0],
   byWeek: [{ week: '2026-09-14', runs: 12, entries: 7140, flagged: 1285 }],
   byProject: [{ project: 'Patterns', runs: 12, entries: 7140, flagged: 1285 }],
   byEngine: [
