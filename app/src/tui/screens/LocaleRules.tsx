@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { Box, Text } from 'ink'
 import { UNIVERSAL_RULES } from '../../audit/rules/profiles.js'
 import { openRulesDraft, saveRulesDraft, type RulesDraft, type RulesValue } from '../../rules/edit.js'
-import { BUILT_IN_RULES } from '../../rules/names.js'
+import { BUILT_IN_RULES, findingLabel } from '../../rules/names.js'
 import { GUIDANCE_LIMIT } from '../../rules/schema.js'
 import { resolveLocale, wpCodeOf } from '../../wporg/locales.js'
 import { useConfig } from '../commands.js'
@@ -334,6 +334,10 @@ export function LocaleRules({ onBack }: LocaleRulesProps) {
               <Text dimColor>{UNIVERSAL_RULES.includes(rule) ? 'universal' : 'opt-in'}</Text>
             </Text>
           ))}
+          {/* The ids are what rules.json holds, so the list keeps them; the
+              plain name and what the rule checks sit under it, for the one
+              row in focus, where a sixty-column frame has room to wrap them. */}
+          <RuleDetail rule={BUILT_IN_RULES[ruleCursor]} />
           <Hint>↑↓ move · space toggle · esc back to the overview</Hint>
         </>
       )}
@@ -511,6 +515,17 @@ export function LocaleRules({ onBack }: LocaleRulesProps) {
           <Hint>←→ change · r back to built-in · esc back to the overview</Hint>
         </>
       )}
+    </Box>
+  )
+}
+
+function RuleDetail({ rule }: { rule: string | undefined }) {
+  const label = rule === undefined ? undefined : findingLabel(rule)
+  if (!label) return null
+  return (
+    <Box flexDirection="column" marginTop={1}>
+      <Text bold>{label.name}</Text>
+      <Text dimColor>{label.description}</Text>
     </Box>
   )
 }

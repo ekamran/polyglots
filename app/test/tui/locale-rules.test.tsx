@@ -136,6 +136,17 @@ describe('LocaleRules: built-in rules', () => {
     await waitForText(view.lastFrame, /\[ \] title-case/)
   })
 
+  it('names the rule under the cursor and says what it checks', async () => {
+    const view = mount()
+    await openLocale(view)
+    await select(view, /Built-in rules/)
+    await waitForText(view.lastFrame, /title-case/)
+    expect(flat(view.lastFrame())).toContain('Placeholder missing or added')
+    view.stdin.write(keys.down)
+    await waitForText(view.lastFrame, /HTML tags differ/)
+    expect(flat(view.lastFrame())).not.toContain('Placeholder missing or added')
+  })
+
   it('saves the toggle so the rule stops running for the locale', async () => {
     const view = mount()
     await openLocale(view)

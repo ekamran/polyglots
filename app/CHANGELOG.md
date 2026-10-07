@@ -12,10 +12,18 @@ Entries say what changed. For why and how, read the commit.
 
 ### Added
 
+- Full-screen interactive mode: a home screen of cards, a header with setup status x/5, a keys footer, and a minimum size of 60×20.
+- Setup wizard for locale, review provider, draft engine and keys, glossary and locale rules; each step can be skipped and the wizard rerun from Configuration.
+- `?` help on every screen, a Ctrl+K / `:` command palette, and Help and About pages in the interactive mode.
+- Review statistics in the interactive mode serves the stats page locally; `w` still writes a standalone copy.
+- The interactive mode prints the last run's output path after quitting; switch it off under Configuration › Interface settings.
+- Locale Rules shows the plain name and description of the rule under the cursor.
 - `polyglots stats --no-open` serves the dashboard without opening a browser.
 
 ### Changed
 
+- Interactive menu keys: Tools is `o`, API keys is `k`. Ctrl+C asks before stopping a run in progress.
+- Quitting the interactive mode during a run records it as stopped, not abandoned, so stats no longer counts it as a failure.
 - `polyglots stats` serves a live dashboard on localhost and opens it; `--out`, or running off a terminal, writes a standalone HTML copy.
 - The stats page has Overview, Reviews, Translation, Projects and Method views, a year of activity, time ranges, a share image, and human names for every flag.
 - Messages that pointed at `docs/` in the repo link to the documentation at ada.tools/polyglots.
