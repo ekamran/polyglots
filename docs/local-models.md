@@ -1,8 +1,9 @@
 # Local models
 
 polyglots can draft translations with a model running on your own machine,
-and, experimentally, review with one. Nothing is metered, and nothing leaves
-the machine unless you point polyglots at a server somewhere else.
+and, experimentally, review with one. Nothing is metered. Strings stay on the
+machine only when both drafting and reviewing are local: drafting locally
+while an agent reviews still sends the drafts to the agent's provider.
 
 Two kinds of server work:
 

@@ -7,8 +7,13 @@ translation, or only a fuzzy one, and writes them back into the same file.
 polyglots translate wp-plugins-example-stable-de.po
 ```
 
-Several files, or a glob, can be given at once. `--dry-run` runs the whole
-pipeline without writing anything.
+Several files, or a glob, can be given at once.
+
+`--dry-run` leaves the file untouched, and that is all it skips. Every batch
+is still drafted by DeepL or OpenAI and reviewed by the agent, so it costs
+exactly what a real run costs. There is no free preview of a translation. The
+drafts are cached, so a real run straight afterwards does not pay for them
+again.
 
 ## How an entry gets its translation
 

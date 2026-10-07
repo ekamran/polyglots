@@ -11,7 +11,7 @@ import { snapshot } from '../lib/snapshot';
 // website workstream's report.
 const TAGLINE = 'Review a locale’s submissions in minutes, not evenings.';
 const DESCRIPTION =
-  'polyglots reviews and translates WordPress .po files for translate.wordpress.org locale teams: deterministic checks, an AI agent for judgement, and repairs written into the file. Nothing is uploaded.';
+  'polyglots reviews and translates WordPress .po files for translate.wordpress.org locale teams: deterministic checks, an AI agent for judgement, and repairs written into the file. Nothing is uploaded to translate.wordpress.org.';
 
 const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 const docs = await allDocs();
@@ -26,7 +26,7 @@ const doc = (slug: string) => `${base}docs/${slug}/`;
         <p class="lede">
           A command-line tool for WordPress locale teams. It checks every string a contributor submits, repairs what it can,
           and hands you a file of only the entries that still need you. Untranslated strings get a machine draft reviewed
-          by an AI agent. Everything ends as a <code>.po</code> file you read in Poedit; nothing is uploaded.
+          by an AI agent. Everything ends as a <code>.po</code> file you read in Poedit; nothing is uploaded to translate.wordpress.org.
         </p>
         <Install id="hero" />
         <p class="more"><a href={doc('getting-started')}>Get started <Icon name="arrow" /></a></p>
@@ -110,7 +110,7 @@ const doc = (slug: string) => `${base}docs/${slug}/`;
       </div>
       <div class="card">
         <h3>An agent for the rest</h3>
-        <p>Meaning, fluency and the soft findings go to an AI agent with the rule hints in hand and three lookups and nothing else: no shell, no files. It decides, and repairs what it rejects.</p>
+        <p>Meaning, fluency and the soft findings go to an AI agent with the rule hints in hand and three lookups: the glossary, your memory and translate.wordpress.org’s consistency data. Claude gets those and nothing else, no shell and no files; Antigravity is held to them by <a href={doc('antigravity')}>its own settings</a>. It decides, and repairs what it rejects.</p>
       </div>
     </div>
   </section>
@@ -138,17 +138,21 @@ const doc = (slug: string) => `${base}docs/${slug}/`;
 
   <section class="wrap band local" aria-labelledby="local">
     <div>
-      <p class="eyebrow">Your data stays local</p>
-      <h2 id="local">Two files on your machine, and nothing uploaded</h2>
+      <p class="eyebrow">Your data</p>
+      <h2 id="local">Two files on your machine, and nothing uploaded to GlotPress</h2>
       <p>
         The translation memory and glossary live in <code>polyglots.db</code>; run history and caches in <code>jobs.db</code>.
         Both sit under <code>~/.local/share/polyglots</code>. polyglots downloads from translate.wordpress.org and never
         uploads to it: what goes back to GlotPress is your decision, made in GlotPress.
       </p>
+      <p>What does leave the machine:</p>
+      <ul class="leaves">
+        <li><strong>Reviewing</strong> sends each batch of strings, with its glossary terms and memory matches, to the agent you review with and its model provider (Anthropic for Claude, Google for Antigravity).</li>
+        <li><strong>Drafting</strong> sends source strings to DeepL or OpenAI.</li>
+        <li><strong>Lookups</strong> query translate.wordpress.org for the glossary, exports and consistency data.</li>
+      </ul>
       <p>
-        What does leave is what you choose: each batch of strings goes to the agent you review with, and to its model provider,
-        with that batch’s glossary terms and memory matches. The agent is limited to three lookups and cannot open files or run
-        commands. With a local model, nothing leaves at all.
+        Only with a local model for both drafting and reviewing do the strings stay on your machine. Claude is held to polyglots’ three lookups on every run and cannot open files or run commands; Antigravity’s limits come from its own settings and any other tool servers registered with it.
       </p>
     </div>
     <ul class="facts">
@@ -216,6 +220,8 @@ const doc = (slug: string) => `${base}docs/${slug}/`;
 
   .local { display: grid; gap: 2rem; }
   @media (min-width: 900px) { .local { grid-template-columns: 1.2fr 0.8fr; gap: 3.5rem; align-items: end; } }
+  .leaves { margin: 0 0 1em; padding-left: 1.2rem; color: var(--fg-2); }
+  .leaves li { margin: 0.35em 0; }
   .facts { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.9rem; }
   .facts li { padding-left: 1rem; border-left: 2px solid var(--accent); color: var(--fg-2); }
   kbd { font-family: var(--font-mono); font-size: 0.85em; border: 1px solid var(--rule); border-bottom-width: 2px; border-radius: 4px; padding: 0 0.3em; background: var(--bg-2); }

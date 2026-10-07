@@ -4,7 +4,8 @@ polyglots reviews and translates WordPress `.po` files. It is written for the
 people who look after a locale on translate.wordpress.org: it checks the
 strings contributors submit, repairs what it can, and drafts the strings
 nobody has translated yet. Every result is a `.po` file you open in Poedit and
-read before anything goes back to GlotPress. polyglots never uploads anything.
+read before anything goes back to GlotPress. polyglots never uploads anything
+to translate.wordpress.org; see [what leaves your machine](#what-leaves-your-machine).
 
 ## Install
 
@@ -52,8 +53,10 @@ polyglots uses `tr` (Turkish) until you tell it otherwise. Set yours once:
 polyglots config set defaultLocale de
 ```
 
-Any WordPress locale works: `de`, `de_DE`, `pt-br`, `nl_NL_formal`. Every
-command also takes `--locale` for a single run.
+Any WordPress locale works: `de`, `de_DE`, `pt-br`, `nl_NL_formal`. `review`,
+`translate`, `fetch`, the `glossary` and `tm` commands and `config add-name`
+also take `--locale` for a single run; the `rules` commands take the locale as
+an argument.
 
 ## Download the glossary
 
@@ -124,10 +127,31 @@ sent again. `--fresh` ignores the cache.
 | Translation memory and glossary | `~/.local/share/polyglots/polyglots.db` |
 | Run history and caches | `~/.local/share/polyglots/jobs.db` |
 
-Set `POLYGLOTS_HOME` to keep all of it under one folder instead. Nothing here
-is uploaded. The translation memory is built from your own imports and is the
-one file worth backing up: `jobs.db` can be deleted, at the cost of
+Set `POLYGLOTS_HOME` to keep all of it under one folder instead. These files
+are never uploaded. The translation memory is built from your own imports and
+is the one file worth backing up: `jobs.db` can be deleted, at the cost of
 re-reviewing.
+
+## What leaves your machine
+
+polyglots uploads nothing to translate.wordpress.org. Text does leave the
+machine in three ways:
+
+- **Reviewing** sends each batch of strings, with its glossary terms and
+  memory matches, to the agent you review with, and so to its model provider
+  (Anthropic for Claude, Google for Antigravity).
+- **Drafting** sends source strings to DeepL or OpenAI.
+- **Lookups** query translate.wordpress.org for the glossary, the exports and
+  consistency data.
+
+With a [local model](local-models.md) for both drafting and reviewing, the
+strings stay on your machine; only the translate.wordpress.org lookups
+remain.
+
+Claude is limited to polyglots' three lookups on every run, and cannot open
+files or run commands. Antigravity's limits come from its own settings and
+from whatever other tool servers you registered with it; see
+[its setup](antigravity.md).
 
 ## Next
 

@@ -10,7 +10,10 @@ locale on translate.wordpress.org. `review` checks a contributor's submitted
 strings and writes out only the entries that need work, already repaired.
 `translate` fills in untranslated strings with a machine draft that an AI
 agent then reviews. Results are `.po` files for a person to read in Poedit.
-polyglots never uploads anything to translate.wordpress.org.
+polyglots never uploads anything to translate.wordpress.org. It does send
+text off the machine: a review sends each batch of strings to the agent's
+model provider, a translation sends source strings to DeepL or OpenAI, and
+lookups query translate.wordpress.org.
 
 ## Give this to your agent
 
@@ -20,7 +23,7 @@ polyglots never uploads anything to translate.wordpress.org.
 
 ## Start here
 
-Work in this order. Each step is cheap until step 5.
+Work in this order. Steps 1 to 5 spend nothing; step 6 is the first that does.
 
 1. **Check the install.** `polyglots --version`. It needs Node.js 24 or later.
    If it is missing, `npm install -g polyglots`.
@@ -39,14 +42,16 @@ Work in this order. Each step is cheap until step 5.
    person how many entries will be reviewed before you start (the rules pass
    printed it). Entries go 25 to a batch, about half a minute each.
 
-For a translation, the order is the same with `translate` in place of
-`review`: check the install and the reviewer, then
-`polyglots translate <file> --dry-run`, then ask before the real run.
+For a translation there is no free first pass. Check the install and the
+reviewer, then ask before running `polyglots translate <file>`.
+`--dry-run` is not a preview: it skips only writing the file, and still sends
+every batch to DeepL or OpenAI and to the agent, at the full cost of a real
+run. Ask before a dry run exactly as before a real one.
 
 ## Ask the person before
 
-- **Any run that uses a model**: `review` without `--no-ai`, `translate`,
-  `fetch`. They spend the person's agent quota, and `translate` also spends
+- **Any run that uses a model**: `review` without `--no-ai`, `translate`
+  (with or without `--dry-run`), `fetch`. They spend the person's agent quota, and `translate` also spends
   DeepL or OpenAI credit. A large file is hours of it.
 - **`translate` on a file with fuzzy entries.** Fuzzy entries are overwritten
   unconditionally. If a person marked one fuzzy on purpose, it is lost.
@@ -111,7 +116,8 @@ When you are done, tell the person:
 - the summary counts, and the path of every file written;
 - the requester message, if there was one;
 - anything that stopped the run early, with the exit code;
-- that nothing was uploaded, and that no setting, key, memory or rules file
+- that nothing was uploaded to translate.wordpress.org, and that no setting,
+  key, memory or rules file
   was changed (or exactly what was, if they asked for it).
 
 ## More
