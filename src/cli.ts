@@ -53,7 +53,8 @@ import {
 } from './draft/discover.js'
 import { localModelId, resolveLocalTarget, type LocalTarget } from './draft/local-chat.js'
 import { createPainter, type Painter } from './ui/paint.js'
-import { errorLine, header, hintLine, warnLine } from './ui/messages.js'
+import { errorLine, header, hintLine, okLine, warnLine } from './ui/messages.js'
+import { table } from './ui/layout.js'
 import { reviewSummary, translateSummary } from './cli/summaries.js'
 import { LOCAL_REVIEW_NOTICE, localBatchAdvice, localReviewBatchSize } from './review/local.js'
 import { engineId } from './jobs/hash.js'
@@ -653,28 +654,35 @@ async function runDoctor(cli: Cli, flags: { json?: boolean; live?: boolean }): P
     cli.out(JSON.stringify({ configured, agents, ...(local ? { local } : {}) }, null, 2))
     return ok ? EXIT_OK : EXIT_ERROR
   }
-  const nameWidth = Math.max(0, ...agents.map((a) => a.provider.length)) + 2
-  for (const a of agents) {
+  const p = cli.ui.out
+  const rows = agents.map((a) => {
     const facts = a.usable
       ? [a.path ?? a.bin, a.version, authText(a), a.model].filter((x): x is string => Boolean(x))
       : [a.reason ?? 'unavailable']
     const liveLine = liveText(a.live)
     if (liveLine) facts.push(liveLine)
-    cli.out(`${a.provider.padEnd(nameWidth)}${(a.usable ? 'ready' : 'unavailable').padEnd(13)}${facts.join('  ')}`)
-    for (const note of a.notes) cli.out(`${' '.repeat(nameWidth)}note: ${note}`)
-  }
+    return [a.provider, a.usable ? p.paint('success', 'ready') : p.paint('error', 'unavailable'), facts.join('  ')]
+  })
+  const lines = table(rows)
+  agents.forEach((a, i) => {
+    cli.out(lines[i]!)
+    for (const note of a.notes) cli.out(hintLine(p, `note: ${note}`))
+  })
+  // The closing line is the answer the exit code gives, so it carries the
+  // glyph; the table above is detail.
+  const status = (good: boolean, msg: string) => cli.out((good ? okLine : errorLine)(p, msg))
   if (local && 'unset' in local) {
-    cli.out('Review provider: local (experimental) (no model chosen)')
-    cli.out('Set one with: polyglots config set openaiCompatible.model <id>')
+    status(false, 'Review provider: local (experimental) (no model chosen)')
+    cli.out(hintLine(p, 'Set one with: polyglots config set openaiCompatible.model <id>'))
     return EXIT_ERROR
   }
   if (local) {
-    cli.out(`Review provider: local (experimental) ${local.id} (${checkText(local.check)})`)
-    if (local.check.state !== 'installed' && local.check.message) cli.out(local.check.message)
+    status(ok, `Review provider: local (experimental) ${local.id} (${checkText(local.check)})`)
+    if (local.check.state !== 'installed' && local.check.message) cli.out(hintLine(p, local.check.message))
     return ok ? EXIT_OK : EXIT_ERROR
   }
   const state = !mine ? 'unknown' : mine.usable ? 'ready' : `unavailable: ${mine.reason ?? 'no reason given'}`
-  cli.out(`Review provider: ${configured} (${state})`)
+  status(ok, `Review provider: ${configured} (${state})`)
   return ok ? EXIT_OK : EXIT_ERROR
 }
 
@@ -710,36 +718,38 @@ async function runModels(cli: Cli, flags: { json?: boolean }): Promise<number> {
     cli.out(JSON.stringify({ servers, configured: configured ?? null }, null, 2))
     return ok ? EXIT_OK : EXIT_ERROR
   }
+  const p = cli.ui.out
   const up = servers.filter((s) => s.state === 'up')
-  const labelWidth = Math.max(0, ...up.map((s) => serverLabel(s).length)) + 2
-  const urlWidth = Math.max(0, ...up.map((s) => s.target.baseUrl.length)) + 3
+  // One table for the server lines, so their URLs line up across servers even
+  // though each is followed by its own model rows.
+  const serverLines = table(up.map((s) => [p.paint('heading', serverLabel(s)), s.target.baseUrl, plural(s.models.length, 'model')]), { gap: 3 })
   // Compared without the API version, as discovery lists servers.
   const configuredBase = target ? serverBaseUrl(target.baseUrl) : undefined
-  for (const server of up) {
-    cli.out(`${serverLabel(server).padEnd(labelWidth)}${server.target.baseUrl.padEnd(urlWidth)}${plural(server.models.length, 'model')}`)
-    const names = server.models.map((m) => sanitizeDisplay(m.name))
-    const nameWidth = Math.max(0, ...names.map((n) => n.length)) + 2
+  up.forEach((server, at) => {
+    cli.out(serverLines[at]!)
     const facts = server.models.map(modelFacts)
-    const widths = [0, 1, 2].map((i) => Math.max(0, ...facts.map((f) => f[i]!.length)))
-    server.models.forEach((model, i) => {
+    const rows = server.models.map((model, i) => {
       const isConfigured =
         target !== undefined &&
         server.kind === target.kind &&
         server.target.baseUrl === configuredBase &&
         (target.kind === 'ollama' ? matchesModel(target.model, model) : model.name === target.model)
-      const columns = server.kind === 'ollama' ? facts[i]!.map((f, c) => (c === 0 ? f.padStart(widths[c]!) : f.padEnd(widths[c]!))).join('  ') : ''
-      const line = `  ${names[i]!.padEnd(nameWidth)}${columns}${isConfigured ? '  (configured)' : ''}`
-      cli.out(line.trimEnd())
+      const mark = isConfigured ? p.paint('accent', '(configured)') : ''
+      // Only Ollama reports size, parameters and quantisation; the others
+      // list a name and nothing else.
+      return [sanitizeDisplay(model.name), ...(server.kind === 'ollama' ? facts[i]! : []), mark]
     })
-  }
-  for (const server of servers.filter((s) => s.state !== 'up')) cli.out(unavailableLine(server))
+    for (const line of table(rows, { indent: 2, align: ['left', 'right', 'left', 'left', 'left'] })) cli.out(line)
+  })
+  for (const server of servers.filter((s) => s.state !== 'up')) cli.out(hintLine(p, unavailableLine(server)))
   // Shown whatever the default engine: it costs nothing and answers the
   // question anyone reading a model list asks next.
   if (configured && target) {
-    cli.out(`Local model: ${configured.model} (${kindLabel(target.kind)}, ${checkText(configured)})`)
-    if (configured.state !== 'installed' && configured.message) cli.out(configured.message)
+    const line = `Local model: ${configured.model} (${kindLabel(target.kind)}, ${checkText(configured)})`
+    cli.out(configured.state === 'installed' ? okLine(p, line) : warnLine(p, line))
+    if (configured.state !== 'installed' && configured.message) cli.out(hintLine(p, configured.message))
   } else {
-    cli.out('Local model: none chosen for the OpenAI-compatible server. Set one with: polyglots config set openaiCompatible.model <id>')
+    cli.out(warnLine(p, 'Local model: none chosen for the OpenAI-compatible server. Set one with: polyglots config set openaiCompatible.model <id>'))
   }
   return ok ? EXIT_OK : EXIT_ERROR
 }

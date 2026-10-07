@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
+import { stripVTControlCharacters } from 'node:util'
 import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
 import { fileURLToPath } from 'node:url'
@@ -993,6 +994,35 @@ describe('doctor', () => {
     expect(d.stdout.text).toContain('Review provider: antigravity (unavailable: agy not on PATH)')
   })
 
+  it('ends with a status line for the configured provider', async () => {
+    const h = harness()
+    await h.run(['doctor'], { discoverAgents: fakeDiscover([agent('claude'), agyMissing]).fn })
+    expect(h.stdout.text).toMatch(/^✓ Review provider: claude \(ready\)$/m)
+  })
+
+  it('marks an unavailable configured provider with a cross', async () => {
+    const h = harness()
+    const missingClaude = agent('claude', { usable: false, reason: 'not on PATH' })
+    await h.run(['doctor'], { discoverAgents: fakeDiscover([missingClaude]).fn })
+    expect(h.stdout.text).toMatch(/^✗ Review provider: claude \(unavailable: not on PATH\)$/m)
+  })
+
+  it('keeps --json raw even when colour is forced', async () => {
+    const h = harness()
+    await h.run(['doctor', '--json'], { discoverAgents: fakeDiscover([agent('claude')]).fn, env: { FORCE_COLOR: '1' } })
+    expect(() => JSON.parse(h.stdout.text)).not.toThrow()
+    expect(h.stdout.text).not.toMatch(/\x1b\[/)
+  })
+
+  it('colours the status column when colour is on, without moving the columns', async () => {
+    const plain = harness()
+    await plain.run(['doctor'], { discoverAgents: fakeDiscover([agent('claude'), agyMissing]).fn })
+    const painted = harness()
+    await painted.run(['doctor'], { discoverAgents: fakeDiscover([agent('claude'), agyMissing]).fn, env: { FORCE_COLOR: '1' } })
+    expect(painted.stdout.text).toMatch(/\x1b\[/)
+    expect(stripVTControlCharacters(painted.stdout.text)).toBe(plain.stdout.text)
+  })
+
   it('prints notes beneath their provider', async () => {
     const h = harness()
     const statuses = [agent('claude'), agent('antigravity', { auth: { state: 'unknown' }, notes: ['sign-in unknown: no token file'] })]
@@ -1145,6 +1175,31 @@ describe('local models', () => {
       expect(out).toContain('Not running: llama.cpp server (http://localhost:8080)')
       expect(out).toContain('Local model: qwen3.8:27b-mlx (Ollama, installed)')
       expect(discover.calls[0]).toMatchObject({ refresh: true })
+    })
+
+    it('marks the local model line by whether it is installed', async () => {
+      const ok = harness()
+      await ok.run(['models'], { discoverModels: fakeModels([ollama]).fn, checkLocalModel: fakeCheck(installed).fn })
+      expect(ok.stdout.text).toMatch(/^✓ Local model: qwen3\.8:27b-mlx \(Ollama, installed\)$/m)
+      const gone = harness()
+      await gone.run(['models'], { discoverModels: fakeModels([ollama]).fn, checkLocalModel: fakeCheck(missing('qwen3.8:9b')).fn })
+      expect(gone.stdout.text).toMatch(/^! Local model: qwen3\.8:9b \(Ollama, not installed\)$/m)
+    })
+
+    it('keeps --json raw even when colour is forced', async () => {
+      const h = harness()
+      await h.run(['models', '--json'], { discoverModels: fakeModels([ollama]).fn, checkLocalModel: fakeCheck(installed).fn, env: { FORCE_COLOR: '1' } })
+      expect(() => JSON.parse(h.stdout.text)).not.toThrow()
+      expect(h.stdout.text).not.toMatch(/\x1b\[/)
+    })
+
+    it('reads the same with colour on, once the codes are stripped', async () => {
+      const plain = harness()
+      await plain.run(['models'], { discoverModels: fakeModels([ollama, lmStudio, llamaCpp]).fn, checkLocalModel: fakeCheck(installed).fn })
+      const painted = harness()
+      await painted.run(['models'], { discoverModels: fakeModels([ollama, lmStudio, llamaCpp]).fn, checkLocalModel: fakeCheck(installed).fn, env: { FORCE_COLOR: '1' } })
+      expect(painted.stdout.text).toMatch(/\x1b\[/)
+      expect(stripVTControlCharacters(painted.stdout.text)).toBe(plain.stdout.text)
     })
 
     it('names the pull command when the draft model is not installed', async () => {
