@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { readFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { openDb, upsertTm } from '../../../src/storage/index.js'
 import { DraftQuotaError, DraftRateLimitError } from '../../../src/draft/index.js'
@@ -442,5 +442,69 @@ describe('translateFile: resources', () => {
     const review = fakeReview()
     await translateFile(base({ engine: fakeEngine(), review, model: 'claude-x', bin: '/bin/fake' }))
     expect(review.calls[0]!.opts).toMatchObject({ model: 'claude-x', bin: '/bin/fake' })
+  })
+})
+
+describe('translateFile: review engine id', () => {
+  // configuredModel reads antigravity's settings from under the home
+  // directory, so the test points HOME at its own workspace. Left alone it
+  // would read whatever model the person running the suite has configured.
+  async function withAntigravityModel<T>(model: string, run: () => Promise<T>): Promise<T> {
+    const dir = join(ws.home, '.gemini', 'antigravity-cli')
+    await mkdir(dir, { recursive: true })
+    await writeFile(join(dir, 'settings.json'), JSON.stringify({ model }))
+    const before = process.env.HOME
+    process.env.HOME = ws.home
+    try {
+      return await run()
+    } finally {
+      if (before === undefined) delete process.env.HOME
+      else process.env.HOME = before
+    }
+  }
+
+  async function runWith(model: string): Promise<ReturnType<typeof fakeReview>> {
+    // Every run starts from the untouched catalogue, so the entries are
+    // pending again and only the review cache decides whether they are asked.
+    await writeFile(ws.file, ws.original)
+    const review = fakeReview()
+    await withAntigravityModel(model, () => translateFile(base({ engine: fakeEngine(), review, provider: 'antigravity' })))
+    return review
+  }
+
+  it('serves cached verdicts when the configured antigravity model is unchanged', async () => {
+    expect((await runWith('Gemini 3.8 Flash (Low)')).calls.length).toBeGreaterThan(0)
+    expect((await runWith('Gemini 3.8 Flash (Low)')).calls).toEqual([])
+  })
+
+  it('re-reviews when antigravity is switched to another model without --model', async () => {
+    expect((await runWith('Gemini 3.8 Flash (Low)')).calls.length).toBeGreaterThan(0)
+    const second = await runWith('Gemini 3.8 Pro (High)')
+    expect(second.calls.flatMap((c) => c.inputs.map((i) => i.key)).sort()).toEqual([...PENDING_KEYS].sort())
+    // The model stays out of the spawn: antigravity picks its own from that
+    // same settings file, and only the cache key needed to learn it.
+    expect(second.calls[0]!.opts.model).toBeUndefined()
+  })
+})
+
+describe('translateFile: review provider from settings', () => {
+  // The CLI and both TUI screens leave provider unset and let the setting
+  // decide. The setting reached the cache key but not the spawn, which then
+  // fell back to claude: claude's verdicts filed under antigravity's name.
+  it('spawns the configured provider when the caller names none', async () => {
+    const { saveConfig } = await import('../../../src/config.js')
+    saveConfig({ reviewProvider: 'antigravity' })
+    const review = fakeReview()
+    await translateFile(base({ engine: fakeEngine(), review }))
+    expect(review.calls.length).toBeGreaterThan(0)
+    expect(review.calls[0]!.opts.provider).toBe('antigravity')
+  })
+
+  it('lets an explicit provider override the setting', async () => {
+    const { saveConfig } = await import('../../../src/config.js')
+    saveConfig({ reviewProvider: 'antigravity' })
+    const review = fakeReview()
+    await translateFile(base({ engine: fakeEngine(), review, provider: 'claude' }))
+    expect(review.calls[0]!.opts.provider).toBe('claude')
   })
 })

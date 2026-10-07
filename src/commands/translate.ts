@@ -6,6 +6,7 @@ import { intlTag } from '../wporg/locales.js'
 import { chunk } from '../batch.js'
 import type { RunControl } from '../run-control.js'
 import { loadConfig, loadSecrets } from '../config.js'
+import { configuredModel } from '../agent/providers.js'
 import {
   draftEngineId,
   DraftQuotaError,
@@ -324,7 +325,12 @@ async function reviewDrafts(
   units: TranslationUnit[],
   drafts: Drafts,
   review: typeof reviewBatch,
-  opts: TranslateOptions,
+  // The provider here is the resolved one, not TranslateOptions.provider. The
+  // CLI and both TUI screens leave that unset and let the setting decide, and
+  // reading it here sent every such run to the default, claude, while the
+  // cache key named the configured provider. Narrowing the type makes the
+  // caller hand over what it resolved rather than what it was given.
+  opts: Pick<TranslateOptions, 'bin' | 'model'> & { provider: ReviewChoice },
   locale: Locale,
   nplurals: number,
   pluralForms: string | undefined,
@@ -384,7 +390,7 @@ async function reviewDrafts(
           // Agent options only: a local reviewer has none, and `local` must
           // never reach an agent spawn as a provider name.
           ...(!local && opts.bin ? { bin: opts.bin } : {}),
-          ...(opts.provider && opts.provider !== 'local' ? { provider: opts.provider } : {}),
+          ...(opts.provider !== 'local' ? { provider: opts.provider } : {}),
           ...(!local && opts.model ? { model: opts.model } : {}),
         })
       : []
@@ -480,9 +486,14 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
     const localDraft = draftChoice === 'local' && !opts.engine ? resolveLocalTarget(settings, opts.localModel) : undefined
     const localReview = provider === 'local' ? resolveLocalTarget(settings, opts.model) : undefined
     const engineName = opts.engine?.name ?? (localDraft ? localModelId(localDraft) : draftEngineId(opts.draftEngine))
+    // Without --model, antigravity runs whatever its own settings file names,
+    // so the bare provider let a switch from Flash to Pro serve Flash's
+    // verdicts as Pro's on every entry already seen. The same fallback review
+    // uses, for the same reason. Only the key learns the model: the spawn
+    // below still passes opts.model alone, and antigravity keeps choosing.
     const reviewEngine = localReview
       ? engineId(localModelId(localReview), 'local')
-      : engineId(opts.model, provider)
+      : engineId(opts.model ?? (provider === 'local' ? undefined : configuredModel(provider)), provider)
     const { draftCache, reviewCache } = buildCaches(jobs, {
       nplurals: po.nplurals,
       ...(pluralForms === undefined ? {} : { pluralForms }),
@@ -585,7 +596,7 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
             const checks = new Map([...prepared].map(([k, p]) => [k, p.checks]))
             emit({ type: 'batch-phase', index, phase: 'reviewing', at: Date.now() })
             results = (
-              await reviewDrafts(batch, fixedDrafts, review, opts, locale, po.nplurals, pluralForms, mcpConfigPath, reviewCache, checks, localAsk)
+              await reviewDrafts(batch, fixedDrafts, review, { ...opts, provider }, locale, po.nplurals, pluralForms, mcpConfigPath, reviewCache, checks, localAsk)
             ).map((r) => {
               const unit = unitOf.get(r.key)
               return unit ? checker.finalize(unit, r) : r
