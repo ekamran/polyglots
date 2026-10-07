@@ -6,6 +6,11 @@ import { configFile, secretsFile } from './paths.js'
 import { DEFAULT_QWEN_BASE_URL, DEFAULT_QWEN_MODEL } from './draft/qwen.js'
 import type { PolyglotsConfig, Secrets } from './types.js'
 
+// LM Studio's port: the most common OpenAI-compatible server on a desktop, and
+// the one whose documentation people will have open. llama.cpp's 8080 is the
+// other default discovery probes.
+export const DEFAULT_OPENAI_COMPATIBLE_BASE_URL = 'http://localhost:1234'
+
 export const DEFAULT_CONFIG: PolyglotsConfig = {
   defaultLocale: 'tr',
   defaultDraftEngine: 'deepl',
@@ -16,6 +21,8 @@ export const DEFAULT_CONFIG: PolyglotsConfig = {
   consistencyTtlDays: 30,
   properNouns: {},
   localModelServers: [],
+  localServerKind: 'ollama',
+  openaiCompatible: { baseUrl: DEFAULT_OPENAI_COMPATIBLE_BASE_URL, model: '' },
 }
 
 /**
@@ -34,13 +41,25 @@ export function isHttpUrl(value: string): boolean {
   }
 }
 
+// Optional, so a config from before it existed parses unchanged. Positive and
+// whole, because Ollama is sent it as num_ctx and anything else is a typo.
+const contextLength = z.number().int().positive().optional()
+
 const configSchema = z.object({
   defaultLocale: z.string().min(1),
-  defaultDraftEngine: z.enum(['deepl', 'openai', 'qwen']),
+  // `qwen` is read as `local`, the name it has had since 0.23, so a saved
+  // config keeps drafting with the same engine. Normalised on read rather than
+  // kept as typed, so the next save writes the new name and nothing after this
+  // has to know the old one. The cost: a downgrade after that save rejects the
+  // file, which the changelog says.
+  defaultDraftEngine: z
+    .enum(['deepl', 'openai', 'local', 'qwen'])
+    .transform((engine) => (engine === 'qwen' ? 'local' : engine)),
   // Defaulted rather than required, so a config written before there was a
   // second provider still parses, and keeps the provider its verdicts were
-  // formed under.
-  reviewProvider: z.enum(['claude', 'antigravity']).default('claude'),
+  // formed under. `local` is the experimental local reviewer, which only an
+  // explicit `config set reviewProvider local` writes.
+  reviewProvider: z.enum(['claude', 'antigravity', 'local']).default('claude'),
   // Defaulted rather than required, so a config written before the requester
   // message had a link still parses. Trimmed, because a stray space would be
   // pasted straight into a URL.
@@ -56,7 +75,7 @@ const configSchema = z.object({
   // Defaulted rather than required, so a config written before the local
   // engine existed still parses.
   ollama: z
-    .object({ baseUrl: z.string().min(1), model: z.string().min(1) })
+    .object({ baseUrl: z.string().min(1), model: z.string().min(1), contextLength })
     .default({ baseUrl: DEFAULT_QWEN_BASE_URL, model: DEFAULT_QWEN_MODEL }),
   batchSize: z.number().int().positive(),
   consistencyTtlDays: z.number().int().nonnegative(),
@@ -66,6 +85,18 @@ const configSchema = z.object({
   localModelServers: z
     .array(z.string().refine(isHttpUrl, { message: 'must be an http or https URL' }))
     .default([]),
+  // Defaulted, so a config from before there was a second kind of local server
+  // keeps using Ollama, and every cached draft keeps its engine id.
+  localServerKind: z.enum(['ollama', 'openai-compatible']).default('ollama'),
+  // The model may be empty: there is no default an arbitrary server holds, and
+  // a run with this kind refuses an empty one before it starts.
+  openaiCompatible: z
+    .object({
+      baseUrl: z.string().refine(isHttpUrl, { message: 'must be an http or https URL' }),
+      model: z.string(),
+      contextLength,
+    })
+    .default({ baseUrl: DEFAULT_OPENAI_COMPATIBLE_BASE_URL, model: '' }),
 })
 
 const SECRET_KEYS: ReadonlyArray<keyof Secrets> = ['DEEPL_API_KEY', 'OPENAI_API_KEY']

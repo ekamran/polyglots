@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CONFIG } from '../../src/config.js'
 import {
+  checkLocalModel,
   checkOllamaModel,
   defaultTargets,
   discoverModels,
@@ -132,11 +133,13 @@ describe('discoverModels', () => {
     expect(ollama.models[1]).toEqual({ name: 'llama3.2:latest', model: 'llama3.2:latest', size: 2_019_393_189 })
   })
 
-  it('maps an OpenAI-compatible listing to names only, and does not offer it for selection', async () => {
+  // Selectable since #5: an OpenAI-compatible model is saved with its kind and
+  // server, so the run asks the server that listed it, in its own protocol.
+  it('maps an OpenAI-compatible listing to names, and offers it for selection', async () => {
     const fetch = fakeFetch({ 'http://localhost:1234/v1/models': { body: OPENAI_MODELS } })
     const servers = await discoverModels({ fetch, config, refresh: true })
     const lmStudio = server(servers, 'http://localhost:1234')
-    expect(lmStudio).toMatchObject({ state: 'up', kind: 'openai-compatible', selectable: false })
+    expect(lmStudio).toMatchObject({ state: 'up', kind: 'openai-compatible', selectable: true })
     expect(lmStudio.models).toEqual([{ name: 'qwen2.5-7b-instruct' }])
   })
 
@@ -185,7 +188,7 @@ describe('discoverModels', () => {
       'http://lan-box:9000/v1/models': { body: OPENAI_MODELS },
     })
     const servers = await discoverModels({ fetch, config: { ...config, localModelServers: ['http://lan-box:9000'] }, refresh: true })
-    expect(server(servers, 'http://lan-box:9000')).toMatchObject({ state: 'up', kind: 'openai-compatible', selectable: false })
+    expect(server(servers, 'http://lan-box:9000')).toMatchObject({ state: 'up', kind: 'openai-compatible', selectable: true })
   })
 
   it('sends one request per default target, since the port already says what it is', async () => {
@@ -340,5 +343,63 @@ describe('discoverModels with a config that will not load', () => {
       else process.env.POLYGLOTS_HOME = before
       await rm(home, { recursive: true, force: true })
     }
+  })
+})
+
+describe('the context a server reports', () => {
+  // vLLM says how long a context it was started with. Nothing else in the
+  // standard listing does, and nothing is inferred for the servers that stay
+  // silent.
+  it('reads max_model_len from an OpenAI-compatible listing', async () => {
+    const fetch = fakeFetch({
+      'http://localhost:8080/v1/models': { body: { data: [{ id: 'Qwen/Qwen3-8B', max_model_len: 32768 }, { id: 'other' }] } },
+    })
+    const s = server(await discoverModels({ fetch, config, refresh: true }), 'http://localhost:8080')
+    expect(s.models).toEqual([{ name: 'Qwen/Qwen3-8B', contextLength: 32768 }, { name: 'other' }])
+  })
+})
+
+describe('checkLocalModel', () => {
+  const lmStudio = { kind: 'openai-compatible' as const, baseUrl: 'http://localhost:1234', model: 'qwen2.5-7b-instruct' }
+
+  it('asks Ollama the way checkOllamaModel does, and says which kind it checked', async () => {
+    const fetch = fakeFetch({ 'http://localhost:11434/api/tags': { body: TAGS } })
+    const check = await checkLocalModel({ kind: 'ollama', ...DEFAULT_CONFIG.ollama }, { fetch })
+    expect(check).toEqual({ state: 'installed', kind: 'ollama', model: 'qwen3.8:27b-mlx', baseUrl: 'http://localhost:11434' })
+  })
+
+  it('treats a target without a kind as Ollama, which is what such a caller means', async () => {
+    const fetch = fakeFetch({ 'http://localhost:11434/api/tags': { body: TAGS } })
+    expect((await checkLocalModel(DEFAULT_CONFIG.ollama, { fetch })).kind).toBe('ollama')
+  })
+
+  it('says installed when an OpenAI-compatible server serves the exact id', async () => {
+    const fetch = fakeFetch({ 'http://localhost:1234/v1/models': { body: OPENAI_MODELS } })
+    expect(await checkLocalModel(lmStudio, { fetch })).toEqual({ state: 'installed', ...lmStudio })
+  })
+
+  it('carries the context the server reports', async () => {
+    const fetch = fakeFetch({ 'http://localhost:1234/v1/models': { body: { data: [{ id: lmStudio.model, max_model_len: 8192 }] } } })
+    expect((await checkLocalModel(lmStudio, { fetch })).contextLength).toBe(8192)
+  })
+
+  it('says missing and lists what is served', async () => {
+    const fetch = fakeFetch({ 'http://localhost:1234/v1/models': { body: OPENAI_MODELS } })
+    const check = await checkLocalModel({ ...lmStudio, model: 'llama-3.2-3b' }, { fetch })
+    expect(check.state).toBe('missing')
+    expect(check.message).toBe('llama-3.2-3b is not served at http://localhost:1234. Served: qwen2.5-7b-instruct.')
+  })
+
+  it('says unreachable and how to start each kind of server', async () => {
+    const check = await checkLocalModel(lmStudio, { fetch: fakeFetch({}) })
+    expect(check.state).toBe('unreachable')
+    expect(check.message).toMatch(/^No OpenAI-compatible server answers at http:\/\/localhost:1234 \(not running\)\./)
+    expect(check.message).toMatch(/llama-server/)
+    expect(check.message).toMatch(/vllm serve/)
+  })
+
+  it('accepts a base URL written with /v1', async () => {
+    const fetch = fakeFetch({ 'http://localhost:1234/v1/models': { body: OPENAI_MODELS } })
+    expect((await checkLocalModel({ ...lmStudio, baseUrl: 'http://localhost:1234/v1/' }, { fetch })).state).toBe('installed')
   })
 })

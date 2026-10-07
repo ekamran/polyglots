@@ -5,7 +5,8 @@ import TextInput from 'ink-text-input'
 import { normalizeLocale } from '../../tmx/parse.js'
 import { resolveLocale } from '../../wporg/locales.js'
 import type { ReviewEvent, ReviewSummary } from '../../types.js'
-import { agentBinOverride, batchAdvice } from '../../agent/providers.js'
+import { agentBinOverride } from '../../agent/providers.js'
+import { initialBatchSize, providerLabel, screenBatchAdvice } from '../local.js'
 import { useCommands, useConfig } from '../commands.js'
 import { poEntryCount } from '../../po/count.js'
 import { FilePicker } from '../components/FilePicker.js'
@@ -43,7 +44,7 @@ export function Review({ cwd, onBack }: ReviewProps) {
   const [locale, setLocale] = useState(config.defaultLocale)
   const [noAi, setNoAi] = useState(false)
   const [fresh, setFresh] = useState(false)
-  const [batchSize, setBatchSize] = useState(config.batchSize)
+  const [batchSize, setBatchSize] = useState(initialBatchSize(config))
   const [focus, setFocus] = useState(FIELD_LOCALE)
   const [events, setEvents] = useState<ReviewEvent[]>([])
   // Held in a ref so a keypress reaches the run in flight without re-rendering
@@ -118,7 +119,7 @@ export function Review({ cwd, onBack }: ReviewProps) {
       if (focus === FIELD_NO_AI) setNoAi((v) => !v)
       else if (focus === FIELD_FRESH) setFresh((v) => !v)
       else if (focus === FIELD_BATCH) {
-        setBatchSize((n) => step(batchSizeChoices(config.batchSize), n, key.leftArrow ? -1 : 1))
+        setBatchSize((n) => step(batchSizeChoices(initialBatchSize(config)), n, key.leftArrow ? -1 : 1))
       }
     } else if (key.return && focus !== FIELD_LOCALE) {
       if (focus === FIELD_START) {
@@ -141,7 +142,7 @@ export function Review({ cwd, onBack }: ReviewProps) {
           subscription is being spent is never a guess. Not switchable here:
           the choice belongs to the menu, and changing it mid-file would split
           one submission's verdicts across two agents. */}
-      {stage !== 'pick' && <Text dimColor>Provider: {config.reviewProvider}</Text>}
+      {stage !== 'pick' && <Text dimColor>Provider: {providerLabel(config.reviewProvider)}</Text>}
 
       {stage === 'pick' && (
         <>
@@ -175,8 +176,8 @@ export function Review({ cwd, onBack }: ReviewProps) {
           </Text>
           {/* Where the size is chosen, because shrinking the batch is the
               obvious response to a timeout and the wrong one on this agent. */}
-          {batchAdvice(config.reviewProvider, batchSize) && (
-            <Text color="yellow">{batchAdvice(config.reviewProvider, batchSize)}</Text>
+          {screenBatchAdvice(config, batchSize, locale) && (
+            <Text color="yellow">{screenBatchAdvice(config, batchSize, locale)}</Text>
           )}
           <Text>
             {marker(FIELD_NO_AI)}Skip AI checks:  {noAi ? 'yes (rules only, fast)' : 'no (rules, then AI review)'}

@@ -288,8 +288,11 @@ export function fakeCommands(overrides: Partial<TuiCommands> = {}): TuiCommands 
     // Never the real probes either: a TUI test must not send a request to
     // whatever happens to be listening on 11434.
     discoverModels: vi.fn(async () => [modelServer()]),
-    checkOllamaModel: vi.fn(
-      async (ollama: { baseUrl: string; model: string }): Promise<ModelCheck> => ({ state: 'installed', ...ollama }),
+    checkLocalModel: vi.fn(
+      async (target: { kind?: 'ollama' | 'openai-compatible'; baseUrl: string; model: string }): Promise<ModelCheck> => ({
+        state: 'installed',
+        ...target,
+      }),
     ),
     loadConfig,
     saveConfig,

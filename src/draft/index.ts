@@ -1,14 +1,40 @@
-import type { DraftEngine, DraftEngineChoice, Secrets } from '../types.js'
+import type { DraftEngine, DraftEngineChoice, LocalServerKind, Secrets } from '../types.js'
 import { createDeepLEngine, type DeepLClientLike } from './deepl.js'
 import { type DraftEngineName } from './errors.js'
 import { createOpenAIEngine, type OpenAIClientLike } from './openai.js'
-import { createQwenEngine, DEFAULT_QWEN_BASE_URL, DEFAULT_QWEN_MODEL, type QwenClientLike } from './qwen.js'
+import { createLocalTargetEngine, createQwenEngine, DEFAULT_QWEN_BASE_URL, DEFAULT_QWEN_MODEL, type QwenClientLike } from './qwen.js'
+import { localModelId, type LocalChat, type LocalTarget } from './local-chat.js'
 import type { WarningSink } from './placeholders.js'
 
 export { DraftQuotaError, DraftRateLimitError, type DraftEngineName } from './errors.js'
 export { missingPlaceholders, warnMissingPlaceholders, type WarningSink } from './placeholders.js'
 export { createDeepLEngine, createOpenAIEngine, createQwenEngine }
 export { DEFAULT_QWEN_BASE_URL, DEFAULT_QWEN_MODEL } from './qwen.js'
+export { localModelId, resolveLocalTarget, type LocalChat, type LocalTarget } from './local-chat.js'
+
+/**
+ * A draft engine name as a person may have typed or saved it: the choice, or
+ * `qwen`, which is what `local` was called until 0.23.
+ */
+export type DraftEngineInput = DraftEngineChoice | 'qwen'
+
+/** The choice a typed or saved name means, or undefined for an unknown one. */
+export function normalizeDraftEngine(raw: string): DraftEngineChoice | undefined {
+  if (raw === 'qwen' || raw === 'local') return 'local'
+  if (raw === 'deepl' || raw === 'openai') return raw
+  return undefined
+}
+
+/**
+ * Which local server and model, as far as the caller knows. `kind` defaults to
+ * Ollama, which is what every caller from before there was a second kind
+ * means when it passes `{ model }` alone.
+ */
+export interface LocalTargetInput {
+  kind?: LocalServerKind
+  baseUrl?: string
+  model?: string
+}
 
 export interface GetDraftEngineOptions {
   onWarning?: WarningSink
@@ -18,7 +44,11 @@ export interface GetDraftEngineOptions {
   qwenClient?: QwenClientLike
   // Where the local runner lives and what it should load. Both come from
   // config; the defaults match a stock Ollama install.
-  ollama?: { baseUrl?: string; model?: string }
+  ollama?: { baseUrl?: string; model?: string; contextLength?: number }
+  // The resolved local target, of either kind. Wins over `ollama` when given.
+  local?: LocalTarget
+  // Stands in for the local transport, for tests.
+  localChat?: LocalChat
 }
 
 // Only the metered engines need a key. The local one needs a runner to be up,
@@ -45,22 +75,41 @@ const ENV_VAR: Record<'deepl' | 'openai', keyof Secrets> = {
  * model's drafts as the other's, which is exactly what naming the model was
  * meant to prevent.
  */
-export function draftEngineId(name: DraftEngineChoice, ollama?: { model?: string }): DraftEngineName {
-  return name === 'qwen' ? `ollama:${ollama?.model ?? DEFAULT_QWEN_MODEL}` : name
+export function draftEngineId(name: DraftEngineInput, local?: LocalTargetInput): DraftEngineName {
+  if (normalizeDraftEngine(name) !== 'local') return name as 'deepl' | 'openai'
+  return localModelId({
+    kind: local?.kind ?? 'ollama',
+    baseUrl: local?.baseUrl ?? DEFAULT_QWEN_BASE_URL,
+    model: local?.model ?? DEFAULT_QWEN_MODEL,
+  })
 }
 
-export function getDraftEngine(name: DraftEngineChoice, secrets: Secrets, options: GetDraftEngineOptions = {}): DraftEngine {
-  if (name === 'qwen') {
-    return createQwenEngine({
-      model: options.ollama?.model ?? DEFAULT_QWEN_MODEL,
+export function getDraftEngine(name: DraftEngineInput, secrets: Secrets, options: GetDraftEngineOptions = {}): DraftEngine {
+  if (normalizeDraftEngine(name) === 'local') {
+    const target: LocalTarget = options.local ?? {
+      kind: 'ollama',
       baseUrl: options.ollama?.baseUrl ?? DEFAULT_QWEN_BASE_URL,
-      ...(options.qwenClient ? { client: options.qwenClient } : {}),
+      model: options.ollama?.model ?? DEFAULT_QWEN_MODEL,
+      ...(options.ollama?.contextLength === undefined ? {} : { contextLength: options.ollama.contextLength }),
+    }
+    // The Ollama-shaped fake that tests from before the second kind inject.
+    if (target.kind === 'ollama' && options.qwenClient && !options.localChat) {
+      return createQwenEngine({
+        model: target.model,
+        baseUrl: target.baseUrl,
+        ...(target.contextLength === undefined ? {} : { contextLength: target.contextLength }),
+        client: options.qwenClient,
+        ...(options.onWarning ? { onWarning: options.onWarning } : {}),
+      })
+    }
+    return createLocalTargetEngine(target, {
+      ...(options.localChat ? { chat: options.localChat } : {}),
       ...(options.onWarning ? { onWarning: options.onWarning } : {}),
     })
   }
 
-  const envVar = ENV_VAR[name]
-  if (!envVar) throw new Error(`Unknown draft engine "${String(name)}" (expected "deepl", "openai" or "qwen")`)
+  const envVar = ENV_VAR[name as 'deepl' | 'openai']
+  if (!envVar) throw new Error(`Unknown draft engine "${String(name)}" (expected "deepl", "openai" or "local")`)
   const apiKey = secrets[envVar]?.trim()
   if (!apiKey) {
     throw new Error(`Draft engine "${name}" needs ${envVar}. Set it in the secrets file or environment.`)

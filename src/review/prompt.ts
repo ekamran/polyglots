@@ -1,16 +1,35 @@
-import { pluralFormsLine, universalOnlyNote } from '../audit/prompt.js'
+import { pluralFormsLine, universalOnlyNote, type PromptOptions } from '../audit/prompt.js'
 import { isUniversalOnly, profileFor } from '../audit/rules/profiles.js'
 import { guidanceSection } from '../rules/guidance.js'
 import { packFor } from '../rules/packs/index.js'
 import { localeDisplayName, splitLocale } from '../wporg/locales.js'
 import type { Locale, ReviewInput } from '../types.js'
 
+const TOOL_RULES = (language: string) => `- Follow the official WordPress ${language} glossary. Call the glossary_lookup tool for any term that might be in it (WordPress UI vocabulary, post/page/plugin/theme/block/widget terminology, etc.) before deciding on wording.
+- Call consistency_lookup only when the glossary has no answer for the wording in question. It reports how WordPress core already translates that exact string, which is authoritative; do not call it just to confirm a term the glossary already settled.
+- Call tm_lookup to find near-matches in the translation memory and stay consistent with them.
+`
+
+const NO_TOOL_RULES = (language: string) => `- Follow the official WordPress ${language} glossary. An entry's "glossary" lists the approved translation of every glossary term its source contains; use it. A term that is not listed there is not in the glossary. There are no tools: this prompt is everything you have.
+`
+
 export function localeLabel(locale: Locale): string {
   const name = localeDisplayName(locale)
   return name !== splitLocale(locale).slug ? `${name} (${locale})` : `locale ${locale}`
 }
 
-export function buildReviewPrompt(inputs: ReviewInput[], locale: Locale, nplurals: number, pluralForms?: string): string {
+export function buildReviewPrompt(
+  inputs: ReviewInput[],
+  locale: Locale,
+  nplurals: number,
+  pluralForms?: string,
+  options: PromptOptions = {},
+): string {
+  // See PromptOptions: false for a local model, which has no MCP tools and so
+  // is handed each entry's glossary terms instead. The agents' prompt is
+  // unchanged byte for byte, glossary field included, because its
+  // configuration hash keys every cached draft review.
+  const tools = options.tools !== false
   const language = localeLabel(locale)
   const pack = packFor(locale)
   // A pack replaces the line rather than adding to it: WordPress in Swedish
@@ -32,6 +51,9 @@ export function buildReviewPrompt(inputs: ReviewInput[], locale: Locale, nplural
         drafts: input.drafts,
         ...(input.automatedChecks?.length ? { automatedChecks: input.automatedChecks } : {}),
         ...(input.control ? { control: true } : {}),
+        ...(!tools && input.glossary?.length
+          ? { glossary: Object.fromEntries(input.glossary.map((g) => [g.term, g.translations])) }
+          : {}),
       }
       return `${i + 1}. ${JSON.stringify(entry)}`
     })
@@ -42,10 +64,7 @@ Target locale: ${locale}
 nplurals: ${nplurals}
 ${pluralFormsLine(nplurals, pluralForms)}
 Rules:
-- Follow the official WordPress ${language} glossary. Call the glossary_lookup tool for any term that might be in it (WordPress UI vocabulary, post/page/plugin/theme/block/widget terminology, etc.) before deciding on wording.
-- Call consistency_lookup only when the glossary has no answer for the wording in question. It reports how WordPress core already translates that exact string, which is authoritative; do not call it just to confirm a term the glossary already settled.
-- Call tm_lookup to find near-matches in the translation memory and stay consistent with them.
-- Preserve placeholders exactly as in the source: %s, %d, %1$s, %2$d, {x}, {{x}}, and similar. Do not add, drop, reorder or reformat them.
+${tools ? TOOL_RULES(language) : NO_TOOL_RULES(language)}- Preserve placeholders exactly as in the source: %s, %d, %1$s, %2$d, {x}, {{x}}, and similar. Do not add, drop, reorder or reformat them.
 - Preserve HTML tags and their attributes exactly.
 - Preserve leading/trailing whitespace and newlines exactly as in the source.
 - The "text" array must have exactly ${nplurals} strings for entries with msgidPlural (one per plural form, in the locale's plural order), and exactly 1 string otherwise. Never return an empty string.

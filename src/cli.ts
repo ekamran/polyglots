@@ -39,18 +39,21 @@ import { buildReport } from './review/message.js'
 import { agentBinOverride, batchAdvice } from './agent/providers.js'
 import { discoverAgents, type AgentStatus } from './agent/discover.js'
 import {
-  checkOllamaModel,
+  checkLocalModel,
   discoverModels,
-  LISTING_ONLY,
+  kindLabel,
   matchesModel,
   modelFacts,
-  normalizeBaseUrl,
+  serverBaseUrl,
   sanitizeDisplay,
   serverLabel,
   unavailableLine,
   type ModelCheck,
   type ModelServer,
 } from './draft/discover.js'
+import { localModelId, resolveLocalTarget, type LocalTarget } from './draft/local-chat.js'
+import { LOCAL_REVIEW_NOTICE, localBatchAdvice, localReviewBatchSize } from './review/local.js'
+import { engineId } from './jobs/hash.js'
 import type { RunTuiOptions } from './tui/index.js'
 import type { Locale, PolyglotsConfig } from './types.js'
 import { VERSION } from './version.js'
@@ -85,7 +88,7 @@ export interface CliDeps {
   runTui?: RunTui
   discoverAgents?: typeof discoverAgents
   discoverModels?: typeof discoverModels
-  checkOllamaModel?: typeof checkOllamaModel
+  checkLocalModel?: typeof checkLocalModel
 }
 
 interface Cli {
@@ -104,7 +107,7 @@ interface Cli {
   runTui: RunTui
   discoverAgents: typeof discoverAgents
   discoverModels: typeof discoverModels
-  checkOllamaModel: typeof checkOllamaModel
+  checkLocalModel: typeof checkLocalModel
   config: () => PolyglotsConfig
   out(line: string): void
   err(line: string): void
@@ -139,7 +142,7 @@ function createCli(deps: CliDeps): Cli {
     runTui: deps.runTui ?? loadTui,
     discoverAgents: deps.discoverAgents ?? discoverAgents,
     discoverModels: deps.discoverModels ?? discoverModels,
-    checkOllamaModel: deps.checkOllamaModel ?? checkOllamaModel,
+    checkLocalModel: deps.checkLocalModel ?? checkLocalModel,
     config: () => (cached ??= loadConfig()),
     out: (line) => streams.stdout.write(`${line}\n`),
     err: (line) => streams.stderr.write(`${line}\n`),
@@ -206,6 +209,7 @@ interface TranslateFlags {
   locale?: string
   batchSize?: string
   model?: string
+  localModel?: string
   yes?: boolean
 }
 
@@ -224,7 +228,8 @@ async function runTranslate(cli: Cli, patterns: string[], flags: TranslateFlags)
   loadLocaleRules(locale)
   warnUniversalOnly(cli, locale)
   const draftEngine = parseDraftEngine(flags.draftEngine ?? config.defaultDraftEngine)
-  const batchSize = flags.batchSize === undefined ? config.batchSize : parsePositiveInt('--batch-size', flags.batchSize)
+  const localReview = config.reviewProvider === 'local'
+  const batchSize = resolveBatchSize(config, flags.batchSize)
   const dryRun = flags.dryRun === true
   const mustConfirm = flags.all === true && flags.yes !== true && !dryRun
   // The prompt is written to stderr, so a redirected stderr would leave the user staring at
@@ -243,8 +248,17 @@ async function runTranslate(cli: Cli, patterns: string[], flags: TranslateFlags)
   // per invocation and before the --all question, so the warning is read
   // before saying yes. It warns and never refuses: a model mid-pull, a proxy
   // in front of Ollama or a name the matcher does not know would all read as
-  // missing, and the first batch's own error stays the authoritative one.
-  if (draftEngine === 'qwen') await warnAboutLocalModel(cli, config.ollama)
+  // missing, and the first batch's own error stays the authoritative one. An
+  // OpenAI-compatible target with no model at all is refused, by
+  // resolveLocalTarget, because no run with it can succeed.
+  const draftTarget = draftEngine === 'local' ? resolveLocalTarget(config, flags.localModel) : undefined
+  if (draftTarget) await warnAboutLocalModel(cli, draftTarget)
+  if (localReview) {
+    const reviewTarget = resolveLocalTarget(config, flags.model)
+    // The same model drafting and reviewing is asked about once.
+    const same = draftTarget !== undefined && localModelId(draftTarget) === localModelId(reviewTarget)
+    await warnAboutLocalReview(cli, reviewTarget, batchSize, locale, same ? 'skip-check' : 'check')
+  }
 
   if (mustConfirm) {
     const n = await countTranslated(files)
@@ -269,6 +283,7 @@ async function runTranslate(cli: Cli, patterns: string[], flags: TranslateFlags)
         dryRun,
         batchSize,
         model: flags.model,
+        ...(flags.localModel ? { localModel: flags.localModel } : {}),
         secrets,
         bin: agentBinOverride(config.reviewProvider, process.env),
         onProgress: report,
@@ -298,29 +313,81 @@ function warnUniversalOnly(cli: Cli, locale: Locale): void {
   if (notice) cli.err(notice)
 }
 
-async function warnAboutLocalModel(cli: Cli, ollama: PolyglotsConfig['ollama']): Promise<void> {
+/**
+ * The batch size a run uses: the flag, or the configured one, or for the
+ * experimental local reviewer the smaller of that and its own default. A
+ * batch sized for an agent (the configured value is often 100) is three
+ * times what an 8k context holds, and a prompt over the edge is cut without
+ * a word on most local servers.
+ */
+function resolveBatchSize(config: PolyglotsConfig, flag: string | undefined): number {
+  if (flag !== undefined) return parsePositiveInt('--batch-size', flag)
+  return config.reviewProvider === 'local' ? localReviewBatchSize(config.batchSize) : config.batchSize
+}
+
+async function warnAboutLocalModel(cli: Cli, target: LocalTarget): Promise<ModelCheck | undefined> {
   try {
-    const check = await cli.checkOllamaModel(ollama)
+    const check = await cli.checkLocalModel(target)
     if (check.state !== 'installed') cli.err(`Warning: ${check.message ?? `${check.model} is ${check.state}`}`)
+    return check
   } catch (error) {
     // A throw here is a bug rather than a probe failure, since a probe never
     // rejects. It still must not be the reason a translate fails.
     cli.err(`Warning: could not check the local model: ${errorMessage(error)}`)
+    return undefined
   }
 }
 
-const CONFIG_KEYS = Object.keys(DEFAULT_CONFIG) as Array<keyof PolyglotsConfig>
-// The two halves of `ollama`, settable on their own. Dotted rather than a
-// nested `config set ollama '{...}'`, because nobody should have to type JSON
-// to change a model name.
-const OLLAMA_KEYS = ['ollama.model', 'ollama.baseUrl'] as const
-type OllamaKey = (typeof OLLAMA_KEYS)[number]
-
-function isOllamaKey(key: string): key is OllamaKey {
-  return (OLLAMA_KEYS as readonly string[]).includes(key)
+/**
+ * Before a run with the local reviewer: say it is experimental, check its
+ * model, and warn when the batch will not fit the context. The context is the
+ * configured one, or failing that what the server's listing reported.
+ */
+async function warnAboutLocalReview(
+  cli: Cli,
+  target: LocalTarget,
+  batchSize: number,
+  locale: Locale,
+  check: 'check' | 'skip-check' = 'check',
+): Promise<void> {
+  cli.err(LOCAL_REVIEW_NOTICE)
+  const result = check === 'check' ? await warnAboutLocalModel(cli, target) : undefined
+  const contextLength = target.contextLength ?? result?.contextLength
+  const advice = localBatchAdvice({
+    batchSize,
+    locale,
+    model: engineId(localModelId(target), 'local'),
+    kind: target.kind,
+    ...(contextLength === undefined ? {} : { contextLength }),
+  })
+  if (advice) cli.err(advice)
 }
 
-const SETTABLE_KEYS = [...CONFIG_KEYS, ...OLLAMA_KEYS].join(', ')
+const CONFIG_KEYS = Object.keys(DEFAULT_CONFIG) as Array<keyof PolyglotsConfig>
+// The parts of the two local server settings, settable on their own. Dotted
+// rather than a nested `config set ollama '{...}'`, because nobody should have
+// to type JSON to change a model name.
+const SERVER_KEYS = [
+  'ollama.model',
+  'ollama.baseUrl',
+  'ollama.contextLength',
+  'openaiCompatible.model',
+  'openaiCompatible.baseUrl',
+  'openaiCompatible.contextLength',
+] as const
+type ServerKey = (typeof SERVER_KEYS)[number]
+type ServerGroup = 'ollama' | 'openaiCompatible'
+type ServerField = 'model' | 'baseUrl' | 'contextLength'
+
+function isServerKey(key: string): key is ServerKey {
+  return (SERVER_KEYS as readonly string[]).includes(key)
+}
+
+function splitServerKey(key: ServerKey): [ServerGroup, ServerField] {
+  return key.split('.') as [ServerGroup, ServerField]
+}
+
+const SETTABLE_KEYS = [...CONFIG_KEYS, ...SERVER_KEYS].join(', ')
 
 function parseHttpUrl(key: string, raw: string): string {
   const url = raw.trim()
@@ -343,6 +410,15 @@ function coerceConfigValue(key: keyof PolyglotsConfig, raw: string): PolyglotsCo
       return parseDraftEngine(raw)
     case 'reviewProvider':
       return parseReviewProvider(raw)
+    case 'localServerKind': {
+      const kind = raw.trim()
+      if (kind === 'ollama' || kind === 'openai-compatible') return kind
+      throw new UsageError(`${key} must be ollama or openai-compatible, got "${raw}"`)
+    }
+    case 'openaiCompatible':
+      throw new UsageError(
+        'openaiCompatible has a model, a baseUrl and a contextLength; set them with: polyglots config set openaiCompatible.model <id> (or openaiCompatible.baseUrl <url>, openaiCompatible.contextLength <tokens>)',
+      )
     case 'defaultLocale':
       return parseLocaleArg(raw)
     // Validated here as well as in the schema, so a typo is refused at the
@@ -366,23 +442,31 @@ function coerceConfigValue(key: keyof PolyglotsConfig, raw: string): PolyglotsCo
         .filter((entry) => entry.length > 0)
         .map((entry) => parseHttpUrl(key, entry))
     case 'ollama':
-      throw new UsageError('ollama has a model and a baseUrl; set them with: polyglots config set ollama.model <name> (or ollama.baseUrl <url>)')
+      throw new UsageError(
+        'ollama has a model, a baseUrl and a contextLength; set them with: polyglots config set ollama.model <name> (or ollama.baseUrl <url>, ollama.contextLength <tokens>)',
+      )
   }
 }
 
-function coerceOllamaValue(key: OllamaKey, raw: string): string {
-  if (key === 'ollama.baseUrl') return parseHttpUrl(key, raw)
-  // Ollama names never hold whitespace, so a space inside is a typo or two
-  // arguments run together, and would only surface as a 404 on batch one.
+// undefined only for an empty contextLength, which unsets it: the server's
+// own default applies again.
+function coerceServerValue(key: ServerKey, raw: string): string | number | undefined {
+  const [, field] = splitServerKey(key)
+  if (field === 'baseUrl') return parseHttpUrl(key, raw)
+  if (field === 'contextLength') return raw.trim() === '' ? undefined : parsePositiveInt(key, raw)
+  // Model names never hold whitespace, on Ollama or on any OpenAI-compatible
+  // server, so a space inside is a typo or two arguments run together, and
+  // would only surface as a 404 on batch one.
   const model = raw.trim()
   if (model === '' || /\s/.test(model)) throw new UsageError(`${key} must be a model name without spaces, got "${raw}"`)
   return model
 }
 
 function formatConfigValue(key: keyof PolyglotsConfig, value: PolyglotsConfig[keyof PolyglotsConfig]): string {
-  if (key === 'ollama') {
-    const { baseUrl, model } = value as PolyglotsConfig['ollama']
-    return `${model} at ${baseUrl}`
+  if (key === 'ollama' || key === 'openaiCompatible') {
+    const { baseUrl, model, contextLength } = value as PolyglotsConfig['ollama']
+    const context = contextLength === undefined ? '' : `, ${contextLength}-token context`
+    return `${model || '(no model)'} at ${baseUrl}${context}`
   }
   if (key === 'localModelServers') {
     const servers = value as string[]
@@ -425,8 +509,9 @@ function configGet(cli: Cli, key: string | undefined): void {
     cli.out(`OPENAI_API_KEY = ${maskSecret(secrets.OPENAI_API_KEY)}`)
     return
   }
-  if (isOllamaKey(key)) {
-    cli.out(key === 'ollama.model' ? config.ollama.model : config.ollama.baseUrl)
+  if (isServerKey(key)) {
+    const [group, field] = splitServerKey(key)
+    cli.out(String(config[group][field] ?? ''))
     return
   }
   if (key === 'localModelServers') {
@@ -435,7 +520,8 @@ function configGet(cli: Cli, key: string | undefined): void {
     return
   }
   if (isConfigKey(key)) {
-    cli.out(String(config[key]))
+    // The two server objects printed as a line rather than [object Object].
+    cli.out(key === 'ollama' || key === 'openaiCompatible' ? formatConfigValue(key, config[key]) : String(config[key]))
     return
   }
   if (isSecretName(key)) {
@@ -447,21 +533,28 @@ function configGet(cli: Cli, key: string | undefined): void {
 
 async function configSet(cli: Cli, key: string, raw: string): Promise<void> {
   if (isSecretName(key)) throw new UsageError(`"${key}" is a secret; use: polyglots config set-key ${key}`)
-  if (isOllamaKey(key)) {
-    const value = coerceOllamaValue(key, raw)
-    const current = cli.config().ollama
-    const saved = saveConfig({
-      ollama: key === 'ollama.model' ? { ...current, model: value } : { ...current, baseUrl: value },
-    })
-    cli.out(`${key} = ${value}`)
+  if (isServerKey(key)) {
+    const [group, field] = splitServerKey(key)
+    const value = coerceServerValue(key, raw)
+    const { [field]: _previous, ...rest } = cli.config()[group]
+    const saved = saveConfig({ [group]: value === undefined ? rest : { ...rest, [field]: value } })
+    cli.out(value === undefined ? `${key} unset` : `${key} = ${value}`)
     // Saved first and checked after, with exit 0 either way: choosing a model
-    // before pulling it is ordinary, and the warning names the pull to run.
-    if (key === 'ollama.model') await warnAboutLocalModel(cli, saved.ollama)
+    // before pulling or loading it is ordinary, and the warning says what to run.
+    if (field === 'model') {
+      await warnAboutLocalModel(cli, {
+        kind: group === 'ollama' ? 'ollama' : 'openai-compatible',
+        baseUrl: saved[group].baseUrl,
+        model: saved[group].model,
+      })
+    }
     return
   }
   if (!isConfigKey(key)) throw new UsageError(`Unknown config key "${key}"; expected one of ${SETTABLE_KEYS}`)
   const saved = saveConfig({ [key]: coerceConfigValue(key, raw) })
   cli.out(`${key} = ${formatConfigValue(key, saved[key])}`)
+  // The one door to the experimental reviewer, so the warning is said here.
+  if (key === 'reviewProvider' && saved.reviewProvider === 'local') cli.err(LOCAL_REVIEW_NOTICE)
 }
 
 async function configSetKey(cli: Cli, rawName: string, value: string | undefined): Promise<number> {
@@ -510,13 +603,31 @@ async function runDoctor(cli: Cli, flags: { json?: boolean; live?: boolean }): P
   const live = flags.live === true
   if (live) cli.err(LIVE_WARNING)
   const agents = await cli.discoverAgents({ refresh: true, ...(live ? { live: true } : {}) })
+  // The experimental local reviewer is no agent, so its health is its model
+  // check: the same question `models` answers, asked of the one target a
+  // review would use. A live prompt is never sent to it; --live is for agents.
+  // An OpenAI-compatible server with no model chosen is an answer too, not a
+  // crash: the agents table is still worth printing, and the line says what
+  // is missing.
+  let local: { id: string; check: ModelCheck } | { unset: true } | undefined
+  if (configured === 'local') {
+    let target: LocalTarget | undefined
+    try {
+      target = resolveLocalTarget(cli.config())
+    } catch {
+      target = undefined
+    }
+    local = target ? { id: localModelId(target), check: await cli.checkLocalModel(target) } : { unset: true }
+  }
   const mine = agents.find((a) => a.provider === configured)
-  const ok = mine !== undefined && mine.usable && (!live || mine.live?.ok === true)
+  const ok = local
+    ? 'check' in local && local.check.state === 'installed'
+    : mine !== undefined && mine.usable && (!live || mine.live?.ok === true)
   if (flags.json) {
-    cli.out(JSON.stringify({ configured, agents }, null, 2))
+    cli.out(JSON.stringify({ configured, agents, ...(local ? { local } : {}) }, null, 2))
     return ok ? EXIT_OK : EXIT_ERROR
   }
-  const nameWidth = Math.max(...agents.map((a) => a.provider.length)) + 2
+  const nameWidth = Math.max(0, ...agents.map((a) => a.provider.length)) + 2
   for (const a of agents) {
     const facts = a.usable
       ? [a.path ?? a.bin, a.version, authText(a), a.model].filter((x): x is string => Boolean(x))
@@ -525,6 +636,16 @@ async function runDoctor(cli: Cli, flags: { json?: boolean; live?: boolean }): P
     if (liveLine) facts.push(liveLine)
     cli.out(`${a.provider.padEnd(nameWidth)}${(a.usable ? 'ready' : 'unavailable').padEnd(13)}${facts.join('  ')}`)
     for (const note of a.notes) cli.out(`${' '.repeat(nameWidth)}note: ${note}`)
+  }
+  if (local && 'unset' in local) {
+    cli.out('Review provider: local (experimental) (no model chosen)')
+    cli.out('Set one with: polyglots config set openaiCompatible.model <id>')
+    return EXIT_ERROR
+  }
+  if (local) {
+    cli.out(`Review provider: local (experimental) ${local.id} (${checkText(local.check)})`)
+    if (local.check.state !== 'installed' && local.check.message) cli.out(local.check.message)
+    return ok ? EXIT_OK : EXIT_ERROR
   }
   const state = !mine ? 'unknown' : mine.usable ? 'ready' : `unavailable: ${mine.reason ?? 'no reason given'}`
   cli.out(`Review provider: ${configured} (${state})`)
@@ -537,7 +658,8 @@ function plural(n: number, word: string): string {
 
 function checkText(check: ModelCheck): string {
   if (check.state === 'installed') return 'installed'
-  return check.state === 'missing' ? 'not installed' : 'Ollama unreachable'
+  if (check.state === 'missing') return 'not installed'
+  return check.kind === 'openai-compatible' ? 'server unreachable' : 'Ollama unreachable'
 }
 
 /**
@@ -548,26 +670,37 @@ function checkText(check: ModelCheck): string {
 async function runModels(cli: Cli, flags: { json?: boolean }): Promise<number> {
   const config = cli.config()
   const servers = await cli.discoverModels({ refresh: true, config })
-  const configured = await cli.checkOllamaModel(config.ollama)
+  // The target a local run would use. An OpenAI-compatible kind with no model
+  // yet is not an error here: the listing is exactly where one is chosen from.
+  let target: LocalTarget | undefined
+  try {
+    target = resolveLocalTarget(config)
+  } catch {
+    target = undefined
+  }
+  const configured = target ? await cli.checkLocalModel(target) : undefined
   const ok = servers.some((s) => s.state === 'up')
   if (flags.json) {
-    cli.out(JSON.stringify({ servers, configured }, null, 2))
+    cli.out(JSON.stringify({ servers, configured: configured ?? null }, null, 2))
     return ok ? EXIT_OK : EXIT_ERROR
   }
   const up = servers.filter((s) => s.state === 'up')
   const labelWidth = Math.max(0, ...up.map((s) => serverLabel(s).length)) + 2
   const urlWidth = Math.max(0, ...up.map((s) => s.target.baseUrl.length)) + 3
-  const configuredBase = normalizeBaseUrl(config.ollama.baseUrl)
+  // Compared without the API version, as discovery lists servers.
+  const configuredBase = target ? serverBaseUrl(target.baseUrl) : undefined
   for (const server of up) {
-    const listingOnly = server.selectable ? '' : `, ${LISTING_ONLY}`
-    cli.out(`${serverLabel(server).padEnd(labelWidth)}${server.target.baseUrl.padEnd(urlWidth)}${plural(server.models.length, 'model')}${listingOnly}`)
+    cli.out(`${serverLabel(server).padEnd(labelWidth)}${server.target.baseUrl.padEnd(urlWidth)}${plural(server.models.length, 'model')}`)
     const names = server.models.map((m) => sanitizeDisplay(m.name))
     const nameWidth = Math.max(0, ...names.map((n) => n.length)) + 2
     const facts = server.models.map(modelFacts)
     const widths = [0, 1, 2].map((i) => Math.max(0, ...facts.map((f) => f[i]!.length)))
     server.models.forEach((model, i) => {
       const isConfigured =
-        server.kind === 'ollama' && server.target.baseUrl === configuredBase && matchesModel(config.ollama.model, model)
+        target !== undefined &&
+        server.kind === target.kind &&
+        server.target.baseUrl === configuredBase &&
+        (target.kind === 'ollama' ? matchesModel(target.model, model) : model.name === target.model)
       const columns = server.kind === 'ollama' ? facts[i]!.map((f, c) => (c === 0 ? f.padStart(widths[c]!) : f.padEnd(widths[c]!))).join('  ') : ''
       const line = `  ${names[i]!.padEnd(nameWidth)}${columns}${isConfigured ? '  (configured)' : ''}`
       cli.out(line.trimEnd())
@@ -576,8 +709,12 @@ async function runModels(cli: Cli, flags: { json?: boolean }): Promise<number> {
   for (const server of servers.filter((s) => s.state !== 'up')) cli.out(unavailableLine(server))
   // Shown whatever the default engine: it costs nothing and answers the
   // question anyone reading a model list asks next.
-  cli.out(`Draft model: ${configured.model} (${checkText(configured)})`)
-  if (configured.state !== 'installed' && configured.message) cli.out(configured.message)
+  if (configured && target) {
+    cli.out(`Local model: ${configured.model} (${kindLabel(target.kind)}, ${checkText(configured)})`)
+    if (configured.state !== 'installed' && configured.message) cli.out(configured.message)
+  } else {
+    cli.out('Local model: none chosen for the OpenAI-compatible server. Set one with: polyglots config set openaiCompatible.model <id>')
+  }
   return ok ? EXIT_OK : EXIT_ERROR
 }
 
@@ -608,10 +745,11 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
     .option('--all', 'Re-translate every entry, including already-translated ones (asks for confirmation)')
     .option('--fresh', 'Ignore the cached drafts and reviews, and translate again')
     .option('--dry-run', 'Run the pipeline without writing to the .po files')
-    .option('--draft-engine <engine>', `Draft engine: deepl, openai or qwen (default: ${shown.defaultDraftEngine})`)
+    .option('--draft-engine <engine>', `Draft engine: deepl, openai or local (default: ${shown.defaultDraftEngine})`)
+    .option('--local-model <name>', 'Model for the local draft engine on this run, instead of the configured one')
     .option('--locale <locale>', `Target locale (default: ${shown.defaultLocale})`)
     .option('--batch-size <n>', `Entries per draft/review batch (default: ${shown.batchSize})`)
-    .option('--model <model>', 'Claude model for the review pass')
+    .option('--model <model>', 'Model for the review pass (the agent\'s, or the local reviewer\'s)')
     .option('--yes', 'Skip the --all confirmation prompt (required with --all when stdin is not a terminal)')
     .addHelpText('after', ENVIRONMENT_HELP)
     .action(async (files: string[], flags: TranslateFlags) => {
@@ -674,7 +812,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
     .option('--batch-size <n>', `Entries per batch (default: ${shown.batchSize})`)
     .option('--fresh', 'Ignore cached verdicts or drafts and ask again')
     .option('--no-ai', 'Review only: run the deterministic checks, skipping AI adjudication')
-    .option('--draft-engine <engine>', `Translate only: deepl, openai or qwen (default: ${shown.defaultDraftEngine})`)
+    .option('--draft-engine <engine>', `Translate only: deepl, openai or local (default: ${shown.defaultDraftEngine})`)
     .addHelpText(
       'after',
       '\nNames are slugs or translate.wordpress.org URLs, as arguments or one per line on stdin.\nA bare slug is tried as a theme first, then as a plugin.',
@@ -715,10 +853,12 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
       // believes are in force when the file that says so cannot be read.
       loadLocaleRules(locale)
       warnUniversalOnly(cli, locale)
-      const batchSize =
-        flags.batchSize === undefined ? config.batchSize : parsePositiveInt('--batch-size', flags.batchSize)
+      const batchSize = resolveBatchSize(config, flags.batchSize)
       const advice = batchAdvice(config.reviewProvider, batchSize)
       if (advice) cli.err(advice)
+      if (config.reviewProvider === 'local' && flags.ai !== false) {
+        await warnAboutLocalReview(cli, resolveLocalTarget(config), batchSize, locale)
+      }
       const report = createReviewProgressReporter(cli.streams.stderr)
       // Only binds on a terminal. A piped or scheduled run has nobody to press
       // anything, and raw mode on a pipe would break it.
@@ -801,7 +941,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
 
   program
     .command('models')
-    .description('List local model servers (Ollama, LM Studio, llama.cpp) and the models they hold, without loading any')
+    .description('List local model servers (Ollama, LM Studio, llama.cpp, vLLM) and the models they hold, without loading any')
     .option('--json', 'Print the result as JSON')
     .addHelpText(
       'after',

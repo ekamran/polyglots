@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { Box, Text, useInput } from 'ink'
-import { agentBinOverride, batchAdvice } from '../../agent/providers.js'
+import { agentBinOverride } from '../../agent/providers.js'
+import { initialBatchSize, providerLabel, screenBatchAdvice } from '../local.js'
 import { MAX_PARALLEL, runProjects, withSharedDbs } from '../../commands/batch.js'
 import { defaultOutDir, type Ready, type Resolution } from '../../commands/fetch.js'
 import {
@@ -27,7 +28,7 @@ export interface FetchProps {
 
 type Stage = 'list' | 'get' | 'resolving' | 'resolved' | 'options' | 'running' | 'done'
 
-const ENGINES: DraftEngineChoice[] = ['deepl', 'openai', 'qwen']
+const ENGINES: DraftEngineChoice[] = ['deepl', 'openai', 'local']
 
 // The fields differ by action, so each list is spelled out rather than one list
 // with entries hidden: the cursor index then always names a field on screen.
@@ -76,7 +77,7 @@ export function Fetch({ onBack }: FetchProps) {
   const [waiting, setWaiting] = useState<string | undefined>(undefined)
   const [focus, setFocus] = useState(0)
   const [parallel, setParallel] = useState(1)
-  const [batchSize, setBatchSize] = useState(config.batchSize)
+  const [batchSize, setBatchSize] = useState(initialBatchSize(config))
   const [fresh, setFresh] = useState(false)
   const [noAi, setNoAi] = useState(false)
   const [engine, setEngine] = useState<DraftEngineChoice>(config.defaultDraftEngine)
@@ -276,7 +277,7 @@ export function Fetch({ onBack }: FetchProps) {
       // Parallel stops at its ends instead of wrapping: wrapping from eight to
       // one on a held key would quietly turn a fast batch into a slow one.
       if (field === 'parallel') setParallel((n) => Math.min(MAX_PARALLEL, Math.max(1, n + step)))
-      if (field === 'batch') setBatchSize((n) => next(batchSizeChoices(config.batchSize), n, step))
+      if (field === 'batch') setBatchSize((n) => next(batchSizeChoices(initialBatchSize(config)), n, step))
       if (field === 'engine') setEngine((e) => next(ENGINES, e, step))
       if (field === 'fresh') setFresh((v) => !v)
       if (field === 'noAi') setNoAi((v) => !v)
@@ -294,7 +295,7 @@ export function Fetch({ onBack }: FetchProps) {
     <Box flexDirection="column">
       <Text bold>Fetch from translate.wordpress.org</Text>
       {configError && <Text color="yellow">Config error, using defaults: {configError}</Text>}
-      {shown !== 'list' && shown !== 'get' && <Text dimColor>Provider: {config.reviewProvider} · locale {locale}</Text>}
+      {shown !== 'list' && shown !== 'get' && <Text dimColor>Provider: {providerLabel(config.reviewProvider)} · locale {locale}</Text>}
 
       {shown === 'list' && (
         <>
@@ -354,8 +355,8 @@ export function Fetch({ onBack }: FetchProps) {
           <Text>
             {marker('batch')}Batch size:    {batchSize} entries per call
           </Text>
-          {batchAdvice(config.reviewProvider, batchSize) && (
-            <Text color="yellow">{batchAdvice(config.reviewProvider, batchSize)}</Text>
+          {screenBatchAdvice(config, batchSize, locale) && (
+            <Text color="yellow">{screenBatchAdvice(config, batchSize, locale)}</Text>
           )}
           {!review && (
             <Text>

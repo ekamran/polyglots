@@ -106,6 +106,10 @@ export interface AuditOptions extends Partial<AgentRunOptions> {
   // Identifies the glossary, rules and prompt a verdict was formed under.
   // Required whenever `store` is set.
   configHash?: string
+  // Set when the prompt is not the agents' one (the local reviewer's), so its
+  // verdicts key apart per entry. See AuditContext.promptVariant for why this
+  // is not folded into configHash.
+  promptVariant?: string
   // The verdicts answered from the cache, handed over once before the first
   // batch runs. A caller that writes the output file after every batch needs
   // these in it from the start: they never pass through onBatch, so without
@@ -298,6 +302,7 @@ export async function auditEntries(opts: AuditOptions): Promise<Verdict[]> {
         nplurals: opts.nplurals,
         ...(opts.pluralForms === undefined ? {} : { pluralForms: opts.pluralForms }),
         repaired: candidate.repaired !== undefined,
+        ...(opts.promptVariant === undefined ? {} : { promptVariant: opts.promptVariant }),
       },
     ),
     configHash: opts.configHash ?? '',

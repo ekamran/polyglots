@@ -73,6 +73,13 @@ export interface AuditContext {
   // entry whose whitespace was fixed and the same entry submitted already
   // clean would share a key while having been asked different questions.
   repaired: boolean
+  // A digest of the prompt template when it is not the agents' one: the local
+  // reviewer has no tools, so its prompt says so and states the reply shape.
+  // Per entry rather than in the configuration hash, because pruning deletes
+  // every row whose configuration differs, whatever its engine, and a local
+  // run would then wipe the agents' verdicts. Appended only when set, so every
+  // agent key is the joined string it always was.
+  promptVariant?: string
 }
 
 // The key a review verdict is stored under. It covers the whole question the
@@ -103,6 +110,7 @@ export function auditSrcHash(entry: SourceText, context: AuditContext): string {
     // hash is taken after the repair and the `repaired` hint is excluded.
     context.repaired ? 'repaired' : '',
     ...(context.pluralForms === undefined ? [] : [context.pluralForms]),
+    ...(context.promptVariant === undefined ? [] : [`prompt ${context.promptVariant}`]),
   )
 }
 

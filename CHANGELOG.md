@@ -10,10 +10,24 @@ Entries say what changed. For why and how, read the commit.
 
 ## [Unreleased]
 
+### Added
+
+- The local draft engine runs on OpenAI-compatible servers (LM Studio, llama.cpp server, vLLM) as
+  well as Ollama, chosen with `localServerKind` and `openaiCompatible.{baseUrl,model}`.
+- `polyglots models` and the Local models screen can pick an OpenAI-compatible server's model.
+- `translate --local-model <name>` drafts with another local model for one run.
+- Experimental local review, opted into only with `config set reviewProvider local`.
+- `ollama.contextLength` and `openaiCompatible.contextLength`, sent to Ollama as `num_ctx`, and a
+  warning before a local review whose batch will not fit.
+- `docs/local-models.md`: server setup, context windows and batch sizes.
+
 ### Changed
 
 - The stats page strings are translatable: an English template at `i18n/stats/stats.pot`, with each
   `<locale>.po` beside it embedded at build time. Turkish moved into `tr_TR.po`.
+- The `qwen` draft engine is now called `local`. `qwen` is still accepted, Ollama draft caches are
+  kept, and a saved config is rewritten with `local`, which 0.22 and older cannot read.
+- A local model's reply that is cut off by the server reports that, rather than invalid JSON.
 
 ## [0.22.0] - 2026-10-07
 

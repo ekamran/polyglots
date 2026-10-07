@@ -1,7 +1,10 @@
 import { z } from 'zod'
 import { loadConfig } from '../config.js'
-import type { PolyglotsConfig } from '../types.js'
+import type { LocalServerKind, PolyglotsConfig } from '../types.js'
 import { DEFAULT_QWEN_BASE_URL } from './qwen.js'
+import { normalizeBaseUrl, serverBaseUrl } from './local-chat.js'
+
+export { normalizeBaseUrl, serverBaseUrl }
 
 /**
  * Which local model servers are listening, and what they hold.
@@ -16,7 +19,7 @@ import { DEFAULT_QWEN_BASE_URL } from './qwen.js'
  * draft engine id or a cache key.
  */
 
-export type ServerKind = 'ollama' | 'openai-compatible'
+export type ServerKind = LocalServerKind
 
 export interface LocalModel {
   // Ollama's `name`, or the OpenAI `id`.
@@ -29,6 +32,9 @@ export interface LocalModel {
   parameterSize?: string
   quantization?: string
   family?: string
+  // The context the server was started with, in tokens, when it says. Only
+  // vLLM's listing does (max_model_len); nothing is guessed for the rest.
+  contextLength?: number
 }
 
 export interface ServerTarget {
@@ -47,16 +53,20 @@ export interface ModelServer {
   models: LocalModel[]
   // One line, e.g. "not running", "timed out after 1.5s", "HTTP 404".
   error?: string
-  // Only an Ollama model can be drafted with today. A model from LM Studio
-  // saved into `ollama.model` would be sent to Ollama's /api/chat and fail on
-  // the first batch, which is the exact failure discovery exists to prevent.
+  // Whether a model listed here can be chosen. Every server that is up
+  // qualifies since #5: a choice is saved with its kind and server, so the run
+  // asks the server that listed it, in that server's own protocol.
   selectable: boolean
 }
 
 export interface ModelCheck {
   state: 'installed' | 'missing' | 'unreachable'
+  // Set by checkLocalModel. checkOllamaModel predates the second kind.
+  kind?: ServerKind
   model: string
   baseUrl: string
+  // From the server's listing, when it reports one; see LocalModel.
+  contextLength?: number
   // Set unless installed. Names the pull command or `ollama serve`.
   message?: string
 }
@@ -92,22 +102,9 @@ const OllamaTagsSchema = z.object({
   ),
 })
 
-const OpenAiModelsSchema = z.object({ data: z.array(z.looseObject({ id: z.string() })) })
-
-/**
- * A base URL in the one spelling targets are compared by: scheme and host
- * lowercased (the URL parser does both), trailing slashes gone, query and
- * fragment dropped. `localhost` and `127.0.0.1` stay distinct on purpose,
- * because they can be two different listeners.
- */
-export function normalizeBaseUrl(raw: string): string {
-  try {
-    const url = new URL(raw.trim())
-    return `${url.protocol}//${url.host}${url.pathname.replace(/\/+$/, '')}`
-  } catch {
-    return raw.trim().replace(/\/+$/, '')
-  }
-}
+const OpenAiModelsSchema = z.object({
+  data: z.array(z.looseObject({ id: z.string(), max_model_len: z.number().int().positive().optional().catch(undefined) })),
+})
 
 export function defaultTargets(config: Pick<PolyglotsConfig, 'ollama' | 'localModelServers'>): ServerTarget[] {
   const candidates: ServerTarget[] = [
@@ -205,7 +202,11 @@ async function list(baseUrl: string, kind: ServerKind, probe: Probe): Promise<Li
   }
   const parsed = OpenAiModelsSchema.safeParse(body)
   if (!parsed.success) return { state: 'not-a-model-server', error: 'not a model listing' }
-  return { state: 'up', kind, models: parsed.data.data.map((m) => ({ name: m.id })) }
+  return {
+    state: 'up',
+    kind,
+    models: parsed.data.data.map((m) => ({ name: m.id, ...(m.max_model_len === undefined ? {} : { contextLength: m.max_model_len }) })),
+  }
 }
 
 async function probeTarget(target: ServerTarget, probe: Probe): Promise<ModelServer> {
@@ -221,7 +222,7 @@ async function probeTarget(target: ServerTarget, probe: Probe): Promise<ModelSer
     if (listing.state === 'not-a-model-server') listing = await list(target.baseUrl, 'openai-compatible', probe)
   }
   if (listing.state === 'up') {
-    return { target, state: 'up', kind: listing.kind, models: listing.models, selectable: listing.kind === 'ollama' }
+    return { target, state: 'up', kind: listing.kind, models: listing.models, selectable: true }
   }
   return { target, state: listing.state, models: [], error: listing.error, selectable: false }
 }
@@ -314,6 +315,55 @@ export async function checkOllamaModel(ollama: { baseUrl: string; model: string 
     ...base,
     state: 'missing',
     message: `${ollama.model} is not installed in Ollama at ${baseUrl}.${installed} Pull it with: ${pullCommand(ollama.model, baseUrl)}`,
+  }
+}
+
+/**
+ * Whether the local target a run will use answers and holds its model, for
+ * either kind of server. Warns and never refuses, like checkOllamaModel, whose
+ * answer it returns for an Ollama target. A target with no kind is Ollama,
+ * which is what a caller from before the second kind means.
+ *
+ * An OpenAI-compatible model id is matched exactly. There is no implicit tag
+ * to apply, and a near miss is the server's naming, not ours to second-guess.
+ */
+export async function checkLocalModel(
+  target: { kind?: ServerKind; baseUrl: string; model: string },
+  deps: DiscoverModelsDeps = {},
+): Promise<ModelCheck> {
+  const kind = target.kind ?? 'ollama'
+  if (kind === 'ollama') {
+    const check = await checkOllamaModel(target, deps)
+    return { ...check, kind }
+  }
+  const fetchImpl = deps.fetch ?? globalThis.fetch
+  // Probed without the API version: list() adds /v1/models itself, and LM
+  // Studio's documentation has people type the base URL with /v1 on it.
+  const baseUrl = serverBaseUrl(target.baseUrl)
+  let server: ModelServer | undefined
+  if (cached && cached.fetch === fetchImpl) {
+    const servers = await cached.run.catch(() => undefined)
+    server = servers?.find((s) => s.target.baseUrl === baseUrl && s.state === 'up' && s.kind === kind)
+  }
+  server ??= await probeTarget(
+    { baseUrl, kind, label: 'OpenAI-compatible server', source: 'config' },
+    { fetch: fetchImpl, timeoutMs: deps.timeoutMs ?? DEFAULT_TIMEOUT_MS },
+  )
+  const base = { kind, model: target.model, baseUrl }
+  if (server.state !== 'up') {
+    return {
+      ...base,
+      state: 'unreachable',
+      message: `No OpenAI-compatible server answers at ${baseUrl} (${server.error ?? 'not a model server'}). Start LM Studio's server, llama-server or vllm serve there.`,
+    }
+  }
+  const found = server.models.find((m) => m.name === target.model)
+  if (found) return { ...base, state: 'installed', ...(found.contextLength === undefined ? {} : { contextLength: found.contextLength }) }
+  const served = server.models.map((m) => sanitizeDisplay(m.name))
+  return {
+    ...base,
+    state: 'missing',
+    message: `${target.model} is not served at ${baseUrl}.${served.length > 0 ? ` Served: ${served.join(', ')}.` : ' It serves no models.'}`,
   }
 }
 
@@ -414,4 +464,7 @@ export function modelFacts(model: LocalModel): [string, string, string] {
   ]
 }
 
-export const LISTING_ONLY = 'listing only: not usable as a draft engine yet'
+/** The kind's name, as the CLI and the menu print it beside a model. */
+export function kindLabel(kind: ServerKind): string {
+  return kind === 'ollama' ? 'Ollama' : 'OpenAI-compatible'
+}

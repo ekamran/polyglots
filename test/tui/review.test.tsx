@@ -507,6 +507,31 @@ describe('Review screen', () => {
     expect(flat(view.lastFrame())).toMatch(/Batch size:\s*50/)
   })
 
+  // An agent's batch, often 100, is three times what a small local context
+  // holds, so the experimental local reviewer starts small and says why.
+  it('starts a local review at a small batch, marked experimental, with a warning over the context', async () => {
+    await mkdir(join(home.path, 'config'), { recursive: true })
+    await writeFile(
+      join(home.path, 'config', 'config.json'),
+      JSON.stringify({
+        batchSize: 100,
+        reviewProvider: 'local',
+        ollama: { baseUrl: 'http://localhost:11434', model: 'qwen3.8:27b-mlx', contextLength: 4096 },
+      }),
+    )
+    const view = await openReview()
+    await pickFile(view)
+    const frame = flat(view.lastFrame())
+    expect(frame).toMatch(/Batch size:\s*12/)
+    expect(frame).toContain('Provider: local (experimental)')
+    expect(frame).not.toMatch(/more than the 4,096-token context/)
+    view.stdin.write(keys.down)
+    await tick()
+    view.stdin.write(keys.right)
+    await waitForText(view.lastFrame, /Batch size:\s*25/)
+    expect(flat(view.lastFrame())).toMatch(/more than the 4,096-token context/)
+  })
+
   // A whole-night review is where batch size actually matters: fewer, larger
   // calls finish sooner, and the CLI flag is no help from inside the TUI.
   it('passes the chosen batch size to the command', async () => {

@@ -6,7 +6,16 @@ import { intlTag } from '../wporg/locales.js'
 import { chunk } from '../batch.js'
 import type { RunControl } from '../run-control.js'
 import { loadConfig, loadSecrets } from '../config.js'
-import { draftEngineId, DraftQuotaError, DraftRateLimitError, getDraftEngine } from '../draft/index.js'
+import {
+  draftEngineId,
+  DraftQuotaError,
+  DraftRateLimitError,
+  getDraftEngine,
+  normalizeDraftEngine,
+  type DraftEngineInput,
+} from '../draft/index.js'
+import { createLocalChat, localModelId, resolveLocalTarget, type LocalChat } from '../draft/local-chat.js'
+import { createLocalDraftReviewer, draftReviewPromptVariant } from '../review/local.js'
 import {
   endRun,
   draftConfigHash,
@@ -33,11 +42,10 @@ import { allGlossary, findMemory, openDb } from '../storage/index.js'
 import { normalizeLocale } from '../tmx/parse.js'
 import type {
   DraftEngine,
-  DraftEngineChoice,
   Locale,
+  ReviewChoice,
   ReviewInput,
   ReviewResult,
-  ReviewProvider,
   Secrets,
   TranslationUnit,
 } from '../types.js'
@@ -77,7 +85,8 @@ export interface TranslateOptions {
   file: string
   locale: Locale
   mode: 'pending' | 'all'
-  draftEngine: DraftEngineChoice
+  // `qwen` is read as `local`, the name it has had since 0.23.
+  draftEngine: DraftEngineInput
   // Ignore the cached draft and its review, and ask again. `--mode all` exists
   // to re-translate entries that already have a translation, and without this
   // it replayed a cached draft forever: a user re-running after a bad batch, or
@@ -86,7 +95,14 @@ export interface TranslateOptions {
   fresh?: boolean
   dryRun?: boolean
   batchSize?: number
+  // The review pass's model: an agent's, or the local reviewer's.
   model?: string
+  // The local draft engine's model for this run only, instead of the
+  // configured one. Part of the draft engine id, so its drafts key apart.
+  localModel?: string
+  // Stands in for the local transport, for both the draft engine and the
+  // local reviewer, in tests.
+  localChat?: LocalChat
   // Lets the caller park the run between batches, or end it early.
   control?: RunControl
   db?: Database.Database
@@ -98,7 +114,8 @@ export interface TranslateOptions {
   bin?: string
   // Which agent reviews the drafts. Defaults to the configured provider, so the
   // menu's choice reaches both halves of the tool rather than only review.
-  provider?: ReviewProvider
+  // `local` is the experimental local reviewer.
+  provider?: ReviewChoice
   onProgress?: (e: TranslateEvent) => void
 }
 
@@ -223,8 +240,10 @@ interface CacheSetup {
   draftConfig: string
   reviewConfig: string
   engineName: string
-  model?: string
-  provider?: ReviewProvider
+  // Which model judged a draft, as engineId renders it. Computed by the
+  // caller, which is the one place that knows whether it is an agent or a
+  // local model.
+  reviewEngine: string
   fresh: boolean
 }
 
@@ -277,7 +296,7 @@ function buildCaches(
     srcHash: unitHash(unit, true),
     draftHash: draftHash(text),
     configHash: setup.reviewConfig,
-    engine: engineId(setup.model, setup.provider),
+    engine: setup.reviewEngine,
   })
 
   return {
@@ -293,6 +312,14 @@ function buildCaches(
   }
 }
 
+// What a reviewer without tools is told beyond the agents' prompt: which
+// prompt variant it was asked, and each entry's glossary terms. Absent for an
+// agent, whose keys stay exactly as they were.
+interface LocalAsk {
+  variant: string
+  terms: (unit: TranslationUnit) => Array<{ term: string; translations: string[] }>
+}
+
 async function reviewDrafts(
   units: TranslationUnit[],
   drafts: Drafts,
@@ -304,10 +331,12 @@ async function reviewDrafts(
   mcpConfigPath: string,
   cache?: ReviewCache,
   checks?: Map<string, string[]>,
+  local?: LocalAsk,
 ): Promise<ReviewResult[]> {
   const byKey = new Map(units.map((u) => [u.key, u]))
   const inputs: ReviewInput[] = units.map((u) => {
     const failed = checks?.get(u.key) ?? []
+    const terms = local?.terms(u) ?? []
     return {
       key: u.key,
       msgid: u.msgid,
@@ -317,12 +346,24 @@ async function reviewDrafts(
       drafts: drafts.get(u.key) ?? [],
       ...(failed.length > 0 ? { automatedChecks: failed } : {}),
       ...(controlSpec(u) ? { control: true } : {}),
+      ...(terms.length > 0 ? { glossary: terms } : {}),
     }
   })
   // The checks are part of what the AI was asked, so they key its answer: a
   // glossary or rule edit that changes one entry's checks re-asks for that
   // entry alone. A clean draft keys exactly as it did before checks existed.
-  const asked = (input: ReviewInput) => [...input.drafts, ...(input.automatedChecks ?? []).map((c) => `\u0000check ${c}`)]
+  //
+  // A local reviewer is also told which prompt it was asked, which is not in
+  // the configuration hash (see AuditContext.promptVariant), and each entry's
+  // glossary terms, which the agents look up themselves. Both go in the same
+  // way, so a glossary edit re-asks a local review only for the entries whose
+  // terms it changed.
+  const asked = (input: ReviewInput) => [
+    ...input.drafts,
+    ...(input.automatedChecks ?? []).map((c) => `\u0000check ${c}`),
+    ...(local ? [`\u0000prompt ${local.variant}`] : []),
+    ...(input.glossary ?? []).map((g) => `\u0000glossary ${g.term}=${g.translations.join('|')}`),
+  ]
 
   const cached: ReviewResult[] = []
   const missing: ReviewInput[] = []
@@ -340,9 +381,11 @@ async function reviewDrafts(
           nplurals,
           ...(pluralForms === undefined ? {} : { pluralForms }),
           mcpConfigPath,
-          ...(opts.bin ? { bin: opts.bin } : {}),
-          ...(opts.provider ? { provider: opts.provider } : {}),
-          ...(opts.model ? { model: opts.model } : {}),
+          // Agent options only: a local reviewer has none, and `local` must
+          // never reach an agent spawn as a provider name.
+          ...(!local && opts.bin ? { bin: opts.bin } : {}),
+          ...(opts.provider && opts.provider !== 'local' ? { provider: opts.provider } : {}),
+          ...(!local && opts.model ? { model: opts.model } : {}),
         })
       : []
 
@@ -429,7 +472,17 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
     // The configured provider unless the caller named one. Read once: a run
     // must not change agent part way because the setting moved underneath it.
     const provider = opts.provider ?? settings.reviewProvider
-    const engineName = opts.engine?.name ?? draftEngineId(opts.draftEngine, settings.ollama)
+    const draftChoice = normalizeDraftEngine(opts.draftEngine)
+    // Both local targets are resolved before the run row exists, so an
+    // OpenAI-compatible server with no model is refused, not recorded as a
+    // run that failed. The draft engine and the reviewer may use different
+    // models: --local-model is the one, --model the other.
+    const localDraft = draftChoice === 'local' && !opts.engine ? resolveLocalTarget(settings, opts.localModel) : undefined
+    const localReview = provider === 'local' ? resolveLocalTarget(settings, opts.model) : undefined
+    const engineName = opts.engine?.name ?? (localDraft ? localModelId(localDraft) : draftEngineId(opts.draftEngine))
+    const reviewEngine = localReview
+      ? engineId(localModelId(localReview), 'local')
+      : engineId(opts.model, provider)
     const { draftCache, reviewCache } = buildCaches(jobs, {
       nplurals: po.nplurals,
       ...(pluralForms === undefined ? {} : { pluralForms }),
@@ -437,8 +490,7 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
       draftConfig,
       reviewConfig: config,
       engineName,
-      ...(opts.model ? { model: opts.model } : {}),
-      ...(provider ? { provider } : {}),
+      reviewEngine,
       fresh: opts.fresh === true,
     })
 
@@ -475,13 +527,18 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
         opts.engine ??
         getDraftEngine(opts.draftEngine, opts.secrets ?? loadSecrets(), {
           onWarning: (message) => emit({ type: 'warning', message }),
-          // Where the local runner lives and which model it should load. Read
-          // here rather than defaulted inside the factory so a user who set it
-          // in config.json gets what they asked for.
-          ollama: loadConfig().ollama,
+          // Where the local runner lives and which model it should load,
+          // resolved above from config so a user who set it gets what they
+          // asked for, and so the engine and its cache key agree.
+          ...(localDraft ? { local: localDraft } : {}),
+          ...(opts.localChat ? { localChat: opts.localChat } : {}),
         })
-      const review = opts.review ?? reviewBatch
-      const mcpConfigPath = opts.mcpConfigPath ?? (await writeMcpConfig({ env: { [MCP_ENV.locale]: locale } }))
+      const review =
+        opts.review ??
+        (localReview ? createLocalDraftReviewer(opts.localChat ?? createLocalChat(localReview), reviewEngine) : reviewBatch)
+      // A local reviewer has no MCP, so nothing would read the file.
+      const mcpConfigPath =
+        opts.mcpConfigPath ?? (localReview ? '' : await writeMcpConfig({ env: { [MCP_ENV.locale]: locale } }))
 
       // Review's rules, on translate's own drafts: built once for the file.
       const checker = createDraftChecker({
@@ -492,6 +549,15 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
         units: rest,
       })
       const unitOf = new Map(rest.map((u) => [u.key, u]))
+      const localAsk: LocalAsk | undefined = localReview
+        ? {
+            variant: draftReviewPromptVariant(locale),
+            // A setting the code reads takes no glossary term, as in review:
+            // its translator comment decides the value, and "kapalı" for
+            // "off" is exactly the mistake a glossary match would invite.
+            terms: (u) => (controlSpec(u) ? [] : checker.terms(u)),
+          }
+        : undefined
 
       let consecutiveSkips = 0
 
@@ -519,7 +585,7 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
             const checks = new Map([...prepared].map(([k, p]) => [k, p.checks]))
             emit({ type: 'batch-phase', index, phase: 'reviewing', at: Date.now() })
             results = (
-              await reviewDrafts(batch, fixedDrafts, review, opts, locale, po.nplurals, pluralForms, mcpConfigPath, reviewCache, checks)
+              await reviewDrafts(batch, fixedDrafts, review, opts, locale, po.nplurals, pluralForms, mcpConfigPath, reviewCache, checks, localAsk)
             ).map((r) => {
               const unit = unitOf.get(r.key)
               return unit ? checker.finalize(unit, r) : r

@@ -91,12 +91,23 @@ export function pluralFormsLine(nplurals: number, pluralForms: string | undefine
  * cached verdicts for the locale. That is the intended cost of changing the
  * question.
  */
+export interface PromptOptions {
+  // False for a reviewer that has no MCP tools: a local chat model. The
+  // glossary terms and the memory are already on each entry, so what changes
+  // is only what the prompt promises. Absent or true gives the agents' prompt
+  // byte for byte, which the configuration hash and every cached verdict
+  // depend on.
+  tools?: boolean
+}
+
 export function buildAuditPrompt(
   candidates: AuditCandidate[],
   locale: Locale,
   nplurals: number,
   pluralForms?: string,
+  options: PromptOptions = {},
 ): string {
+  const tools = options.tools !== false
   const language = languageName(locale)
   const profile = profileFor(locale)
   const pack = packFor(locale)
@@ -148,10 +159,10 @@ Target locale: ${locale}
 nplurals: ${nplurals}
 ${pluralFormsLine(nplurals, pluralForms)}
 The locale team's standards:
-- The official WordPress ${language} glossary is binding. Every glossary term an entry's source contains is listed on that entry under "glossary", with its approved translation, so you do not need to look those up. Call glossary_lookup only for a term you need that is not listed there.
+- The official WordPress ${language} glossary is binding. Every glossary term an entry's source contains is listed on that entry under "glossary", with its approved translation, so you do not need to look those up. ${tools ? 'Call glossary_lookup only for a term you need that is not listed there.' : 'A term that is not listed there is not in the glossary.'}
 ${capitalization}${isUniversalOnly(profile) ? universalOnlyNote(language) : ''}- Each entry's "references" are the source file and line the string comes from, and they are the best clue to its role: a path like admin-menu.php or help.php points at a label or a heading, while one like actions.php, or a translation in the imperative, points at a command.
 - Placeholders (%s, %1$s, %d, {x}), HTML tags, and leading/trailing whitespace must match the source exactly.
-${register}- An entry's "memory" lists how this exact source has been translated and approved before, and every wording in it is already approved. Prefer one of them unless the source means something different here, or it breaks one of the standards above; where there are several, they are alternatives the locale accepts and any of them is a correct answer. You do not need tm_lookup for an entry that has one; call it only for near matches to an entry that has none. Call consistency_lookup to see how WordPress core already translates a string. Prefer established usage over a fresh invention.
+${register}- An entry's "memory" lists how this exact source has been translated and approved before, and every wording in it is already approved. Prefer one of them unless the source means something different here, or it breaks one of the standards above; where there are several, they are alternatives the locale accepts and any of them is a correct answer. ${tools ? 'You do not need tm_lookup for an entry that has one; call it only for near matches to an entry that has none. Call consistency_lookup to see how WordPress core already translates a string. ' : ''}Prefer established usage over a fresh invention.
 ${guidanceSection(locale)}
 Some entries carry an "automatedChecks" list: findings from deterministic checks that could not be decided mechanically. ${language} may inflect a glossary term so it no longer matches the dictionary form exactly, and a check may be wrong on that basis. Adjudicate each one: confirm it only if it is a real problem, and clear it otherwise. Entries with no automatedChecks still need your own judgment on meaning, register and fluency.
 
@@ -166,7 +177,11 @@ Categories: ${AUDIT_CATEGORIES.join(', ')}. Use an empty array when problem is f
 - An entry marked "control" is a setting WordPress code reads, not text a person reads: "on" or "off" for a font, "ltr" for text direction, a language tag, a number separator. Its translator comment says which value to use. Never translate the English word; a fix is one of the values the comment names.
 - An entry marked "condemned" has been proved wrong by a deterministic check, so it is already known to be broken whatever you think of it. Do not argue about whether it is wrong; return the fix.
 
-There are ${candidates.length} entries below, with ids 1 to ${candidates.length}. Return exactly that many results, one per id. The count is stated so that nothing has to work it out: this prompt and the three lookup tools are everything you have. There is no shell and no filesystem, and reaching for one ends the batch with no output at all.
+There are ${candidates.length} entries below, with ids 1 to ${candidates.length}. Return exactly that many results, one per id. ${
+    tools
+      ? 'The count is stated so that nothing has to work it out: this prompt and the three lookup tools are everything you have. There is no shell and no filesystem, and reaching for one ends the batch with no output at all.'
+      : 'This prompt is everything you have; there are no tools. Reply with only a JSON object of the shape {"results":[{"id":1,"problem":false,"categories":[],"reason":"..."}]}, adding "fix" to a result when you have one, and nothing before or after it.'
+  }
 
 ${entries}`
 }

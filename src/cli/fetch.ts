@@ -1,4 +1,5 @@
 import { text } from 'node:stream/consumers'
+import { LOCAL_REVIEW_NOTICE, localReviewBatchSize } from '../review/local.js'
 import { agentBinOverride, batchAdvice } from '../agent/providers.js'
 import { runProjects, withSharedDbs, MAX_PARALLEL } from '../commands/batch.js'
 import { defaultOutDir, type fetchProjects, type resolveProjects, type Fetched, type Resolution } from '../commands/fetch.js'
@@ -91,7 +92,14 @@ export async function runFetch(cli: FetchCli, names: string[], flags: FetchFlags
   const config = cli.config()
   const locale = parseLocaleArg(flags.locale ?? config.defaultLocale)
   loadLocaleRules(locale)
-  const batchSize = flags.batchSize === undefined ? config.batchSize : parsePositiveInt('--batch-size', flags.batchSize)
+  // The experimental local reviewer gets its own small default, as on review
+  // and translate; see resolveBatchSize in cli.ts.
+  const batchSize =
+    flags.batchSize !== undefined
+      ? parsePositiveInt('--batch-size', flags.batchSize)
+      : config.reviewProvider === 'local'
+        ? localReviewBatchSize(config.batchSize)
+        : config.batchSize
   const outDir = flags.outDir ?? defaultOutDir()
   const review = status === 'waiting'
 
@@ -113,6 +121,7 @@ export async function runFetch(cli: FetchCli, names: string[], flags: FetchFlags
     const advice = batchAdvice(config.reviewProvider, batchSize)
     if (advice) cli.err(advice)
   }
+  if (config.reviewProvider === 'local' && !(review && flags.ai === false)) cli.err(LOCAL_REVIEW_NOTICE)
 
   cli.err(`Checking ${refs.length} ${refs.length === 1 ? 'project' : 'projects'} on translate.wordpress.org...`)
   const onWait = (ms: number) => cli.err(waitNotice(ms))

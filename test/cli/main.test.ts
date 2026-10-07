@@ -1043,7 +1043,7 @@ describe('local models', () => {
     target: { baseUrl: 'http://localhost:1234', kind: 'openai-compatible', label: 'LM Studio', source: 'default' },
     state: 'up',
     kind: 'openai-compatible',
-    selectable: false,
+    selectable: true,
     models: [{ name: 'qwen2.5-7b-instruct' }],
   }
   const llamaCpp: ModelServer = {
@@ -1075,8 +1075,8 @@ describe('local models', () => {
   }
 
   function fakeCheck(result: ModelCheck | Error) {
-    const calls: Array<{ baseUrl: string; model: string }> = []
-    const fn = async (o: { baseUrl: string; model: string }) => {
+    const calls: Array<{ kind?: string; baseUrl: string; model: string }> = []
+    const fn = async (o: { kind?: 'ollama' | 'openai-compatible'; baseUrl: string; model: string }) => {
       calls.push(o)
       if (result instanceof Error) throw result
       return result
@@ -1093,23 +1093,25 @@ describe('local models', () => {
     it('prints each server, its models and the draft model line', async () => {
       const h = harness()
       const discover = fakeModels([ollama, lmStudio, llamaCpp])
-      const code = await h.run(['models'], { discoverModels: discover.fn, checkOllamaModel: fakeCheck(installed).fn })
+      const code = await h.run(['models'], { discoverModels: discover.fn, checkLocalModel: fakeCheck(installed).fn })
       expect(code).toBe(0)
       const out = h.stdout.text
       expect(out).toMatch(/Ollama\s+http:\/\/localhost:11434\s+2 models/)
       expect(out).toMatch(/qwen3\.8:27b-mlx\s+17\.2 GB\s+27B\s+Q4_K_M\s+\(configured\)/)
       expect(out).toMatch(/llama3\.2:latest\s+2\.0 GB\s+3\.2B\s+Q4_K_M/)
-      expect(out).toMatch(/LM Studio\s+http:\/\/localhost:1234\s+1 model, listing only: not usable as a draft engine yet/)
+      // Selectable since #5, so no longer marked as listing only.
+      expect(out).toMatch(/LM Studio\s+http:\/\/localhost:1234\s+1 model\n/)
+      expect(out).not.toContain('listing only')
       expect(out).toContain('qwen2.5-7b-instruct')
       expect(out).toContain('Not running: llama.cpp server (http://localhost:8080)')
-      expect(out).toContain('Draft model: qwen3.8:27b-mlx (installed)')
+      expect(out).toContain('Local model: qwen3.8:27b-mlx (Ollama, installed)')
       expect(discover.calls[0]).toMatchObject({ refresh: true })
     })
 
     it('names the pull command when the draft model is not installed', async () => {
       const h = harness()
-      await h.run(['models'], { discoverModels: fakeModels([ollama]).fn, checkOllamaModel: fakeCheck(missing('qwen3.8:9b')).fn })
-      expect(h.stdout.text).toContain('Draft model: qwen3.8:9b (not installed)')
+      await h.run(['models'], { discoverModels: fakeModels([ollama]).fn, checkLocalModel: fakeCheck(missing('qwen3.8:9b')).fn })
+      expect(h.stdout.text).toContain('Local model: qwen3.8:9b (Ollama, not installed)')
       expect(h.stdout.text).toContain('Pull it with: ollama pull qwen3.8:9b')
     })
 
@@ -1117,7 +1119,7 @@ describe('local models', () => {
       const h = harness()
       const code = await h.run(['models'], {
         discoverModels: fakeModels([down(ollama), down(lmStudio), llamaCpp]).fn,
-        checkOllamaModel: fakeCheck({ ...installed, state: 'unreachable', message: 'Ollama is not reachable' }).fn,
+        checkLocalModel: fakeCheck({ ...installed, state: 'unreachable', message: 'Ollama is not reachable' }).fn,
       })
       expect(code).toBe(1)
       expect(h.stdout.text).toContain('Not running: Ollama (http://localhost:11434)')
@@ -1127,7 +1129,7 @@ describe('local models', () => {
       const h = harness()
       const code = await h.run(['models', '--json'], {
         discoverModels: fakeModels([ollama, llamaCpp]).fn,
-        checkOllamaModel: fakeCheck(installed).fn,
+        checkLocalModel: fakeCheck(installed).fn,
       })
       expect(code).toBe(0)
       const parsed = JSON.parse(h.stdout.text) as { servers: ModelServer[]; configured: ModelCheck }
@@ -1138,7 +1140,7 @@ describe('local models', () => {
     it('strips control characters from what a listener reports', async () => {
       const h = harness()
       const hostile: ModelServer = { ...lmStudio, models: [{ name: '\x1b[2Jevil\x07' }] }
-      await h.run(['models'], { discoverModels: fakeModels([hostile]).fn, checkOllamaModel: fakeCheck(installed).fn })
+      await h.run(['models'], { discoverModels: fakeModels([hostile]).fn, checkLocalModel: fakeCheck(installed).fn })
       expect(h.stdout.text).toContain('evil')
       expect(h.stdout.text).not.toMatch(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/)
     })
@@ -1150,9 +1152,9 @@ describe('local models', () => {
       const h = harness()
       const translate = fakeTranslate()
       const check = fakeCheck(missing('qwen3.8:27b-mlx'))
-      const code = await h.run(['translate', file], { translate: translate.fn, checkOllamaModel: check.fn })
+      const code = await h.run(['translate', file], { translate: translate.fn, checkLocalModel: check.fn })
       expect(code).toBe(0)
-      expect(check.calls).toEqual([{ baseUrl: 'http://localhost:11434', model: 'qwen3.8:27b-mlx' }])
+      expect(check.calls).toEqual([{ kind: 'ollama', baseUrl: 'http://localhost:11434', model: 'qwen3.8:27b-mlx' }])
       expect(h.stderr.text).toContain('Warning: qwen3.8:27b-mlx is not installed in Ollama at http://localhost:11434. Pull it with: ollama pull qwen3.8:27b-mlx')
       expect(translate.calls).toHaveLength(1)
     })
@@ -1163,7 +1165,7 @@ describe('local models', () => {
       const h = harness()
       const translate = fakeTranslate()
       const check = fakeCheck(installed)
-      await h.run(['translate', file, second, '--draft-engine', 'qwen'], { translate: translate.fn, checkOllamaModel: check.fn })
+      await h.run(['translate', file, second, '--draft-engine', 'qwen'], { translate: translate.fn, checkLocalModel: check.fn })
       expect(check.calls).toHaveLength(1)
       expect(translate.calls).toHaveLength(2)
       expect(h.stderr.text).not.toContain('Warning')
@@ -1173,7 +1175,7 @@ describe('local models', () => {
       await useQwen()
       const h = harness()
       const translate = fakeTranslate()
-      const code = await h.run(['translate', file], { translate: translate.fn, checkOllamaModel: fakeCheck(new Error('boom')).fn })
+      const code = await h.run(['translate', file], { translate: translate.fn, checkLocalModel: fakeCheck(new Error('boom')).fn })
       expect(code).toBe(0)
       expect(h.stderr.text).toContain('Warning: could not check the local model: boom')
       expect(translate.calls).toHaveLength(1)
@@ -1182,7 +1184,7 @@ describe('local models', () => {
     it('never checks for a metered engine', async () => {
       const h = harness()
       const check = fakeCheck(installed)
-      await h.run(['translate', file, '--draft-engine', 'deepl'], { translate: fakeTranslate().fn, checkOllamaModel: check.fn })
+      await h.run(['translate', file, '--draft-engine', 'deepl'], { translate: fakeTranslate().fn, checkLocalModel: check.fn })
       expect(check.calls).toEqual([])
     })
   })
@@ -1195,23 +1197,23 @@ describe('local models', () => {
     it('sets ollama.model, and warns without failing when it is not installed', async () => {
       const h = harness()
       const check = fakeCheck(missing('llama3.2:1b'))
-      const code = await h.run(['config', 'set', 'ollama.model', ' llama3.2:1b '], { checkOllamaModel: check.fn })
+      const code = await h.run(['config', 'set', 'ollama.model', ' llama3.2:1b '], { checkLocalModel: check.fn })
       expect(code).toBe(0)
       expect((await configJson()).ollama).toEqual({ baseUrl: 'http://localhost:11434', model: 'llama3.2:1b' })
       expect(h.stdout.text).toBe('ollama.model = llama3.2:1b\n')
       expect(h.stderr.text).toContain('Warning: llama3.2:1b is not installed')
-      expect(check.calls).toEqual([{ baseUrl: 'http://localhost:11434', model: 'llama3.2:1b' }])
+      expect(check.calls).toEqual([{ kind: 'ollama', baseUrl: 'http://localhost:11434', model: 'llama3.2:1b' }])
     })
 
     it('says nothing more when the model is installed', async () => {
       const h = harness()
-      await h.run(['config', 'set', 'ollama.model', 'qwen3.8:27b-mlx'], { checkOllamaModel: fakeCheck(installed).fn })
+      await h.run(['config', 'set', 'ollama.model', 'qwen3.8:27b-mlx'], { checkLocalModel: fakeCheck(installed).fn })
       expect(h.stderr.text).toBe('')
     })
 
     it('refuses a model name with whitespace inside', async () => {
       const h = harness()
-      expect(await h.run(['config', 'set', 'ollama.model', 'llama 3'], { checkOllamaModel: fakeCheck(installed).fn })).toBe(2)
+      expect(await h.run(['config', 'set', 'ollama.model', 'llama 3'], { checkLocalModel: fakeCheck(installed).fn })).toBe(2)
     })
 
     it('sets ollama.baseUrl, keeping the model', async () => {
@@ -1295,5 +1297,267 @@ describe('universal-only notice', () => {
       await h.run(['translate', file, '--locale', locale], { translate: fakeTranslate().fn })
       expect(h.stderr.text).not.toContain('Note: no locale rules')
     }
+  })
+})
+
+describe('local model support', () => {
+  const installed = (target: { kind?: 'ollama' | 'openai-compatible'; baseUrl: string; model: string }): ModelCheck => ({
+    state: 'installed',
+    kind: target.kind ?? 'ollama',
+    baseUrl: target.baseUrl,
+    model: target.model,
+  })
+
+  // Never the real check: no test may send a request to a real local server.
+  function fakeCheck(answer: (o: { kind?: 'ollama' | 'openai-compatible'; baseUrl: string; model: string }) => ModelCheck = installed) {
+    const calls: Array<{ kind?: string; baseUrl: string; model: string }> = []
+    const fn = async (o: { kind?: 'ollama' | 'openai-compatible'; baseUrl: string; model: string }) => {
+      calls.push(o)
+      return answer(o)
+    }
+    return { fn, calls }
+  }
+
+  async function writeConfig(config: Record<string, unknown>): Promise<void> {
+    await mkdir(join(home, 'config'), { recursive: true })
+    await writeFile(join(home, 'config', 'config.json'), JSON.stringify(config))
+  }
+
+  async function configJson() {
+    return JSON.parse(await readFile(join(home, 'config', 'config.json'), 'utf8'))
+  }
+
+  function fakeReviewFile() {
+    const calls: Array<Parameters<NonNullable<CliDeps['reviewFile']>>[0]> = []
+    const fn: NonNullable<CliDeps['reviewFile']> = async (opts) => {
+      calls.push(opts)
+      return {
+        file: opts.file,
+        locale: opts.locale,
+        total: 1,
+        skipped: 0,
+        reviewed: 1,
+        problems: 0,
+        needsReview: 0,
+        approvable: 1,
+        unreviewed: 0,
+        repaired: 0,
+        written: 0,
+        pending: 0,
+        byRule: {},
+        byGroup: {},
+      }
+    }
+    return { fn, calls }
+  }
+
+  describe('translate', () => {
+    it('reads --draft-engine qwen as local', async () => {
+      const h = harness()
+      const translate = fakeTranslate()
+      expect(await h.run(['translate', file, '--draft-engine', 'qwen'], { translate: translate.fn, checkLocalModel: fakeCheck().fn })).toBe(0)
+      expect(translate.calls[0]!.draftEngine).toBe('local')
+    })
+
+    it('passes --local-model through, and checks that model rather than the configured one', async () => {
+      const h = harness()
+      const translate = fakeTranslate()
+      const check = fakeCheck()
+      await h.run(['translate', file, '--draft-engine', 'local', '--local-model', 'llama3.2'], { translate: translate.fn, checkLocalModel: check.fn })
+      expect(translate.calls[0]!.localModel).toBe('llama3.2')
+      expect(check.calls).toEqual([{ kind: 'ollama', baseUrl: 'http://localhost:11434', model: 'llama3.2' }])
+    })
+
+    it('refuses an unknown engine, naming local', async () => {
+      const h = harness()
+      expect(await h.run(['translate', file, '--draft-engine', 'bing'], { translate: fakeTranslate().fn })).toBe(2)
+      expect(h.stderr.text).toMatch(/deepl, openai, local/)
+    })
+
+    it('refuses an OpenAI-compatible server with no model before translating', async () => {
+      await writeConfig({ localServerKind: 'openai-compatible' })
+      const h = harness()
+      const translate = fakeTranslate()
+      expect(await h.run(['translate', file, '--draft-engine', 'local'], { translate: translate.fn, checkLocalModel: fakeCheck().fn })).toBe(1)
+      expect(h.stderr.text).toContain('openaiCompatible.model is not set')
+      expect(translate.calls).toHaveLength(0)
+    })
+
+    it('gives a local reviewer a small batch, says it is experimental, and checks its model', async () => {
+      await writeConfig({ reviewProvider: 'local', batchSize: 100 })
+      const h = harness()
+      const translate = fakeTranslate()
+      const check = fakeCheck()
+      await h.run(['translate', file, '--draft-engine', 'deepl'], { translate: translate.fn, checkLocalModel: check.fn })
+      expect(translate.calls[0]!.batchSize).toBe(12)
+      expect(h.stderr.text).toContain('Local review is experimental')
+      expect(check.calls).toHaveLength(1)
+    })
+  })
+
+  describe('review', () => {
+    it('defaults a local review to a batch of 12, warns that it is experimental, and checks the model', async () => {
+      await writeConfig({ reviewProvider: 'local' })
+      const h = harness()
+      const review = fakeReviewFile()
+      const check = fakeCheck()
+      expect(await h.run(['review', file], { reviewFile: review.fn, checkLocalModel: check.fn })).toBe(0)
+      expect(review.calls[0]!.batchSize).toBe(12)
+      expect(review.calls[0]!.bin).toBeUndefined()
+      expect(h.stderr.text).toContain('Local review is experimental')
+      // Stock Ollama with no context set: always one line saying to set it.
+      expect(h.stderr.text).toContain('polyglots config set ollama.contextLength')
+      expect(check.calls).toEqual([{ kind: 'ollama', baseUrl: 'http://localhost:11434', model: 'qwen3.8:27b-mlx' }])
+    })
+
+    it('keeps an explicit --batch-size, and warns when it will not fit the context', async () => {
+      await writeConfig({ reviewProvider: 'local', ollama: { baseUrl: 'http://localhost:11434', model: 'qwen3.8:27b-mlx', contextLength: 8192 } })
+      const h = harness()
+      const review = fakeReviewFile()
+      await h.run(['review', file, '--batch-size', '100'], { reviewFile: review.fn, checkLocalModel: fakeCheck().fn })
+      expect(review.calls[0]!.batchSize).toBe(100)
+      expect(h.stderr.text).toMatch(/more than the 8,192-token context.*Use a batch size of \d+ or less/)
+    })
+
+    it('uses the context the server reports when none is configured', async () => {
+      await writeConfig({ reviewProvider: 'local' })
+      const h = harness()
+      await h.run(['review', file, '--batch-size', '100'], {
+        reviewFile: fakeReviewFile().fn,
+        checkLocalModel: fakeCheck((o) => ({ ...installed(o), contextLength: 4096 })).fn,
+      })
+      expect(h.stderr.text).toMatch(/4,096-token context/)
+    })
+
+    it('says nothing about local models when an agent reviews', async () => {
+      const h = harness()
+      const check = fakeCheck()
+      await h.run(['review', file], { reviewFile: fakeReviewFile().fn, checkLocalModel: check.fn })
+      expect(check.calls).toHaveLength(0)
+      expect(h.stderr.text).not.toContain('experimental')
+    })
+  })
+
+  describe('config', () => {
+    it('takes reviewProvider local only when told, and says it is experimental', async () => {
+      const h = harness()
+      expect(await h.run(['config', 'set', 'reviewProvider', 'local'])).toBe(0)
+      expect((await configJson()).reviewProvider).toBe('local')
+      expect(h.stderr.text).toContain('Local review is experimental')
+    })
+
+    it('reads defaultDraftEngine qwen as local', async () => {
+      const h = harness()
+      await h.run(['config', 'set', 'defaultDraftEngine', 'qwen'])
+      expect((await configJson()).defaultDraftEngine).toBe('local')
+    })
+
+    it('sets the OpenAI-compatible model and checks it on that server', async () => {
+      const h = harness()
+      const check = fakeCheck()
+      expect(await h.run(['config', 'set', 'openaiCompatible.model', 'qwen/qwen3-8b'], { checkLocalModel: check.fn })).toBe(0)
+      expect((await configJson()).openaiCompatible).toEqual({ baseUrl: 'http://localhost:1234', model: 'qwen/qwen3-8b' })
+      expect(check.calls).toEqual([{ kind: 'openai-compatible', baseUrl: 'http://localhost:1234', model: 'qwen/qwen3-8b' }])
+      h.stdout.text = ''
+      await h.run(['config', 'get', 'openaiCompatible.model'])
+      expect(h.stdout.text).toBe('qwen/qwen3-8b\n')
+    })
+
+    it('sets the OpenAI-compatible base URL, refusing one that is not http', async () => {
+      const h = harness()
+      expect(await h.run(['config', 'set', 'openaiCompatible.baseUrl', 'http://localhost:8080'])).toBe(0)
+      expect((await configJson()).openaiCompatible.baseUrl).toBe('http://localhost:8080')
+      expect(await h.run(['config', 'set', 'openaiCompatible.baseUrl', 'localhost:8080'])).toBe(2)
+    })
+
+    it('sets which kind of local server is used, refusing anything else', async () => {
+      const h = harness()
+      expect(await h.run(['config', 'set', 'localServerKind', 'openai-compatible'])).toBe(0)
+      expect((await configJson()).localServerKind).toBe('openai-compatible')
+      expect(await h.run(['config', 'set', 'localServerKind', 'lmstudio'])).toBe(2)
+    })
+
+    it('unsets a context length with an empty value', async () => {
+      const h = harness()
+      await h.run(['config', 'set', 'ollama.contextLength', '16384'])
+      expect(await h.run(['config', 'set', 'ollama.contextLength', ''])).toBe(0)
+      expect((await configJson()).ollama).not.toHaveProperty('contextLength')
+      await h.run(['config', 'set', 'openaiCompatible.contextLength', '8192'])
+      expect(await h.run(['config', 'set', 'openaiCompatible.contextLength', ''])).toBe(0)
+      expect((await configJson()).openaiCompatible).not.toHaveProperty('contextLength')
+    })
+
+    it('names every settable part when ollama is set whole', async () => {
+      const h = harness()
+      expect(await h.run(['config', 'set', 'ollama', 'x'])).toBe(2)
+      expect(h.stderr.text).toContain('ollama.contextLength')
+    })
+
+    it('sets a context length as a positive whole number', async () => {
+      const h = harness()
+      expect(await h.run(['config', 'set', 'ollama.contextLength', '16384'])).toBe(0)
+      expect((await configJson()).ollama.contextLength).toBe(16384)
+      expect(await h.run(['config', 'set', 'openaiCompatible.contextLength', '0'])).toBe(2)
+    })
+  })
+
+  describe('doctor', () => {
+    const agents = async () => []
+
+    it('reports the local reviewer and exits by its model check', async () => {
+      await writeConfig({ reviewProvider: 'local' })
+      const h = harness()
+      expect(await h.run(['doctor'], { discoverAgents: agents, checkLocalModel: fakeCheck().fn })).toBe(0)
+      expect(h.stdout.text).toContain('Review provider: local (experimental) ollama:qwen3.8:27b-mlx (installed)')
+      const missing = harness()
+      const code = await missing.run(['doctor'], {
+        discoverAgents: agents,
+        checkLocalModel: fakeCheck((o) => ({ ...installed(o), state: 'missing', message: 'not pulled' })).fn,
+      })
+      expect(code).toBe(1)
+      expect(missing.stdout.text).toContain('(not installed)')
+    })
+  })
+
+  describe('doctor without a local model', () => {
+    it('still prints the agents, says no model is chosen, and exits 1', async () => {
+      await writeConfig({ reviewProvider: 'local', localServerKind: 'openai-compatible' })
+      const h = harness()
+      const agent = {
+        provider: 'claude' as const,
+        bin: 'claude',
+        binSource: 'default' as const,
+        path: '/opt/bin/claude',
+        version: '2.1.292',
+        auth: { state: 'signed-in' as const },
+        setup: { state: 'ok' as const },
+        usable: true,
+        notes: [],
+      }
+      const check = fakeCheck()
+      const code = await h.run(['doctor'], { discoverAgents: async () => [agent], checkLocalModel: check.fn })
+      expect(code).toBe(1)
+      expect(h.stdout.text).toMatch(/claude\s+ready/)
+      expect(h.stdout.text).toContain('Review provider: local (experimental) (no model chosen)')
+      expect(check.calls).toHaveLength(0)
+    })
+  })
+
+  describe('models', () => {
+    it('marks the configured OpenAI-compatible model and names it as the local model', async () => {
+      await writeConfig({ localServerKind: 'openai-compatible', openaiCompatible: { baseUrl: 'http://localhost:1234', model: 'qwen2.5-7b-instruct' } })
+      const lm: ModelServer = {
+        target: { baseUrl: 'http://localhost:1234', kind: 'openai-compatible', label: 'LM Studio', source: 'default' },
+        state: 'up',
+        kind: 'openai-compatible',
+        selectable: true,
+        models: [{ name: 'qwen2.5-7b-instruct' }, { name: 'other' }],
+      }
+      const h = harness()
+      await h.run(['models'], { discoverModels: async () => [lm], checkLocalModel: fakeCheck().fn })
+      expect(h.stdout.text).toMatch(/qwen2\.5-7b-instruct\s+\(configured\)/)
+      expect(h.stdout.text).not.toMatch(/other\s+\(configured\)/)
+      expect(h.stdout.text).toContain('Local model: qwen2.5-7b-instruct (OpenAI-compatible, installed)')
+    })
   })
 })

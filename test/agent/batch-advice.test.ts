@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ANTIGRAVITY_MIN_BATCH, batchAdvice } from '../../src/agent/providers.js'
+import { agentBinOverride, ANTIGRAVITY_MIN_BATCH, batchAdvice } from '../../src/agent/providers.js'
 
 describe('batchAdvice', () => {
   // The instinct after a timeout is to shrink the batch. On this agent that
@@ -19,5 +19,17 @@ describe('batchAdvice', () => {
   it('says nothing for claude, whatever the size', () => {
     expect(batchAdvice('claude', 5)).toBeUndefined()
     expect(batchAdvice(undefined, 5)).toBeUndefined()
+  })
+})
+
+describe('the local reviewer', () => {
+  // A local model's batch advice is about its context window, not about tool
+  // round trips, and lives with the local reviewer (localBatchAdvice).
+  it('gets no agent batch advice', () => {
+    expect(batchAdvice('local', 5)).toBeUndefined()
+  })
+
+  it('has no binary to override, whatever the environment says', () => {
+    expect(agentBinOverride('local', { POLYGLOTS_AGENT_BIN: '/x/agent' })).toBeUndefined()
   })
 })

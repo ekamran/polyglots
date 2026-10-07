@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import React from 'react'
 import { cleanup } from 'ink-testing-library'
 import { saveConfig } from '../../src/config.js'
+import { configDir, configFile } from '../../src/paths.js'
 import type { TranslateOptions } from '../../src/commands/translate.js'
 import { CommandsProvider } from '../../src/tui/commands.js'
 import { Translate } from '../../src/tui/screens/Translate.js'
@@ -274,7 +275,7 @@ describe('Translate with the local engine', () => {
     stdin.write(keys.right)
     await waitForText(lastFrame, /Draft engine:\s+openai/)
     stdin.write(keys.right)
-    await waitForText(lastFrame, /Draft engine:\s+qwen/)
+    await waitForText(lastFrame, /Draft engine:\s+local/)
   }
 
   it('checks the model and names it under the engine', async () => {
@@ -282,14 +283,14 @@ describe('Translate with the local engine', () => {
     const { lastFrame, stdin } = mount(commands)
     await pickFile(stdin, lastFrame)
     await toQwen(stdin, lastFrame)
-    await waitForText(() => flat(lastFrame()), 'Model: qwen3.8:27b-mlx at http://localhost:11434')
-    expect(commands.checkOllamaModel).toHaveBeenCalledWith({ baseUrl: 'http://localhost:11434', model: 'qwen3.8:27b-mlx' })
+    await waitForText(() => flat(lastFrame()), 'Model: qwen3.8:27b-mlx at http://localhost:11434 (Ollama)')
+    expect(commands.checkLocalModel).toHaveBeenCalledWith({ kind: 'ollama', baseUrl: 'http://localhost:11434', model: 'qwen3.8:27b-mlx' })
   })
 
   it('shows the warning when the model is missing, and still starts', async () => {
     const message = 'qwen3.8:27b-mlx is not installed in Ollama at http://localhost:11434. Pull it with: ollama pull qwen3.8:27b-mlx'
     const commands = fakeCommands({
-      checkOllamaModel: vi.fn(async (o: { baseUrl: string; model: string }) => ({ state: 'missing' as const, ...o, message })),
+      checkLocalModel: vi.fn(async (o: { baseUrl: string; model: string }) => ({ state: 'missing' as const, ...o, message })),
     })
     const { lastFrame, stdin } = mount(commands)
     await pickFile(stdin, lastFrame)
@@ -301,11 +302,11 @@ describe('Translate with the local engine', () => {
     }
     stdin.write(keys.enter)
     await waitFor(() => (commands.translateFile as ReturnType<typeof vi.fn>).mock.calls.length > 0)
-    expect((commands.translateFile as ReturnType<typeof vi.fn>).mock.calls[0]![0]).toMatchObject({ draftEngine: 'qwen' })
+    expect((commands.translateFile as ReturnType<typeof vi.fn>).mock.calls[0]![0]).toMatchObject({ draftEngine: 'local' })
   })
 
   it('shows nothing extra when the check rejects', async () => {
-    const commands = fakeCommands({ checkOllamaModel: vi.fn(async () => Promise.reject(new Error('boom'))) })
+    const commands = fakeCommands({ checkLocalModel: vi.fn(async () => Promise.reject(new Error('boom'))) })
     const { lastFrame, stdin } = mount(commands)
     await pickFile(stdin, lastFrame)
     await toQwen(stdin, lastFrame)
@@ -320,6 +321,35 @@ describe('Translate with the local engine', () => {
     await pickFile(stdin, lastFrame)
     await tick(10)
     expect(lastFrame()).not.toContain('Model:')
-    expect(commands.checkOllamaModel).not.toHaveBeenCalled()
+    expect(commands.checkLocalModel).not.toHaveBeenCalled()
+  })
+
+  // A config saved before the rename still says qwen; the screen must show
+  // and run the engine it means, not an engine nobody can cycle back to.
+  it('reads a saved qwen as local', async () => {
+    await mkdir(configDir(), { recursive: true })
+    await writeFile(configFile(), JSON.stringify({ defaultDraftEngine: 'qwen' }))
+    const commands = fakeCommands()
+    const { lastFrame, stdin } = mount(commands)
+    await pickFile(stdin, lastFrame)
+    await waitForText(lastFrame, /Draft engine:\s+local/)
+  })
+
+  it('names an OpenAI-compatible model with its server', async () => {
+    saveConfig({ defaultDraftEngine: 'local', localServerKind: 'openai-compatible', openaiCompatible: { baseUrl: 'http://localhost:1234', model: 'qwen/qwen3-8b' } })
+    const commands = fakeCommands()
+    const { lastFrame, stdin } = mount(commands)
+    await pickFile(stdin, lastFrame)
+    await waitForText(() => flat(lastFrame()), 'Model: qwen/qwen3-8b at http://localhost:1234 (OpenAI-compatible)')
+    expect(commands.checkLocalModel).toHaveBeenCalledWith({ kind: 'openai-compatible', baseUrl: 'http://localhost:1234', model: 'qwen/qwen3-8b' })
+  })
+
+  it('says what to do when the OpenAI-compatible server has no model chosen', async () => {
+    saveConfig({ defaultDraftEngine: 'local', localServerKind: 'openai-compatible' })
+    const commands = fakeCommands()
+    const { lastFrame, stdin } = mount(commands)
+    await pickFile(stdin, lastFrame)
+    await waitForText(() => flat(lastFrame()), 'openaiCompatible.model is not set')
+    expect(commands.checkLocalModel).not.toHaveBeenCalled()
   })
 })

@@ -4,7 +4,8 @@ import { Box, Text, useInput } from 'ink'
 import SelectInput from 'ink-select-input'
 import { usableProviders, type AgentStatus } from '../../agent/discover.js'
 import { PROVIDERS } from '../../agent/providers.js'
-import type { ReviewProvider } from '../../types.js'
+import type { ReviewChoice, ReviewProvider } from '../../types.js'
+import { providerLabel } from '../local.js'
 import { Hint } from '../components/Hint.js'
 
 // Read the same way the CLI reads it, so the two can never disagree about
@@ -49,9 +50,16 @@ export const MENU_ITEMS: { label: string; value: MenuAction }[] = [
  * Otherwise the candidates are the usable ones plus the current one, in
  * PROVIDERS order, and the result is `current` itself when nothing else
  * qualifies.
+ *
+ * The experimental local reviewer is not in PROVIDERS, so from `local` this
+ * moves to the first candidate agent and nothing ever moves to `local`: it is
+ * reached only by `config set reviewProvider local`, never by a key that
+ * cycles. With no usable agent at all it stays put.
  */
-export function nextProvider(current: ReviewProvider, usable?: readonly ReviewProvider[]): ReviewProvider {
-  const pool = usable === undefined ? PROVIDERS : PROVIDERS.filter((p) => p === current || usable.includes(p))
+export function nextProvider(current: ReviewChoice, usable?: readonly ReviewChoice[]): ReviewChoice {
+  const pool: readonly ReviewChoice[] =
+    usable === undefined ? PROVIDERS : PROVIDERS.filter((p) => p === current || usable.includes(p))
+  if (pool.length === 0) return current
   const at = pool.indexOf(current)
   return pool[(at + 1) % pool.length]!
 }
@@ -59,10 +67,10 @@ export function nextProvider(current: ReviewProvider, usable?: readonly ReviewPr
 export interface MenuProps {
   onSelect: (action: MenuAction) => void
   onQuit: () => void
-  provider: ReviewProvider
+  provider: ReviewChoice
   // Persisted by the caller rather than here, so this screen stays something
   // that can be rendered without writing to the user's config.
-  onProvider: (next: ReviewProvider) => void
+  onProvider: (next: ReviewChoice) => void
   // Shown when the choice could not be saved. The displayed provider does not
   // move in that case: a run reads the saved config, so showing the new one
   // would name an agent no review is going to use.
@@ -73,7 +81,7 @@ export interface MenuProps {
   // The provider the config named at launch. Always kept in the rotation, so
   // that `p` can return to it after a switch away even when it is unusable:
   // the choice was the person's, and the menu does not get to erase it.
-  configured?: ReviewProvider
+  configured?: ReviewChoice
 }
 
 export function Menu({ onSelect, onQuit, provider, onProvider, providerError, agents, checking, configured }: MenuProps) {
@@ -101,7 +109,7 @@ export function Menu({ onSelect, onQuit, provider, onProvider, providerError, ag
         polyglots <Text dimColor>v{VERSION}</Text>
       </Text>
       <Text dimColor>
-        Provider: {provider} · p to switch
+        Provider: {providerLabel(provider)} · p to switch
       </Text>
       {current && !current.usable && <Text color="yellow">{current.reason ?? 'unavailable'}</Text>}
       {others.length > 0 && (

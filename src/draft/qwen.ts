@@ -2,37 +2,32 @@ import { z } from 'zod'
 import type { DraftEngine, DraftEngineName, DraftResult, Locale, TranslationUnit } from '../types.js'
 import { draftSystemPrompt } from './prompt.js'
 import { warnMissingPlaceholders, type WarningSink } from './placeholders.js'
+import {
+  chatFromOllama,
+  createLocalChat,
+  localModelId,
+  ollamaTransport,
+  type LocalChat,
+  type LocalTarget,
+  type QwenClientLike,
+} from './local-chat.js'
 
-// A draft engine that runs against a local Ollama, so a long translate costs
+// The local draft engine: a model on this machine, so a long translate costs
 // nothing and has no quota. It is shaped like the OpenAI engine (same prompt,
-// same {items} reply, same placeholder warnings) and differs in two ways that
-// are both consequences of the model running on this machine.
+// same {items} reply, same placeholder warnings) and differs in ways that are
+// all consequences of the model running here.
+//
+// The file keeps the name of the first model it ran. The engine choice is
+// `local` since 0.23, and the server can be Ollama or anything that speaks the
+// OpenAI chat API; the wire formats are in local-chat.ts, so this file is the
+// one copy of the prompt, the parsing and the warnings for both.
 
-export interface QwenChatMessage {
-  role: 'system' | 'user'
-  content: string
-}
-
-export interface QwenChatBody {
-  model: string
-  // Always true. Node's fetch abandons a request after 300s without response
-  // headers, and Ollama sends none until the whole generation is finished, so
-  // a non-streamed call dies on any batch worth sending. Streaming makes the
-  // headers arrive immediately; the deltas themselves are incidental.
-  stream: true
-  think: false
-  format: unknown
-  messages: QwenChatMessage[]
-}
-
-/** Returns the assistant's full message content, accumulated from the stream. */
-export interface QwenClientLike {
-  chat(body: QwenChatBody): Promise<string>
-}
+export type { QwenChatBody, QwenChatMessage, QwenClientLike } from './local-chat.js'
 
 export interface QwenEngineOptions {
   model: string
   baseUrl?: string
+  contextLength?: number
   client?: QwenClientLike
   onWarning?: WarningSink
 }
@@ -81,10 +76,15 @@ function userPrompt(units: TranslationUnit[]): string {
   return JSON.stringify({ items })
 }
 
-// Constrained decoding sometimes emits a fragment before the object, and the
-// reply is pretty-printed, so neither "parse the whole string" nor "find a
-// literal {"items"" works. Slice from the first brace and let JSON.parse judge.
-function extractJson(text: string): unknown {
+/**
+ * The JSON object in a local model's reply.
+ *
+ * Constrained decoding sometimes emits a fragment before the object, and the
+ * reply is pretty-printed, so neither "parse the whole string" nor "find a
+ * literal {"items"" works. Slice from the first brace and let JSON.parse judge.
+ * Exported for the local reviewer, whose replies have the same habits.
+ */
+export function extractJson(text: string): unknown {
   const at = text.indexOf('{')
   if (at === -1) throw new MalformedOutputError('reply contained no JSON object')
   try {
@@ -113,45 +113,16 @@ function parseResponse(content: string, units: TranslationUnit[], nplurals: numb
   })
 }
 
-// The default transport. Kept apart from the engine so a test can stand in for
-// the socket without standing in for the parsing.
-function httpClient(baseUrl: string): QwenClientLike {
-  return {
-    async chat(body) {
-      const res = await fetch(`${baseUrl.replace(/\/$/, '')}/api/chat`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`)
-      if (!res.body) throw new Error('response had no body')
-
-      let text = ''
-      let buffered = ''
-      for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
-        buffered += Buffer.from(chunk).toString('utf8')
-        const lines = buffered.split('\n')
-        buffered = lines.pop() ?? ''
-        for (const line of lines) {
-          if (line.trim() === '') continue
-          try {
-            text += (JSON.parse(line) as { message?: { content?: string } }).message?.content ?? ''
-          } catch {
-            // A partial line is normal mid-stream; the next chunk completes it.
-          }
-        }
-      }
-      return text
-    },
-  }
-}
-
-export function createQwenEngine(options: QwenEngineOptions): DraftEngine {
-  const client = options.client ?? httpClient(options.baseUrl ?? DEFAULT_QWEN_BASE_URL)
+export interface LocalEngineOptions {
   // Named for the model, not just the runner. The draft cache keys on this, and
   // two models behind one name would serve one model's drafts as the other's.
-  const name: DraftEngineName = `ollama:${options.model}`
+  name: DraftEngineName
+  chat: LocalChat
+  onWarning?: WarningSink
+}
 
+export function createLocalEngine(options: LocalEngineOptions): DraftEngine {
+  const { name, chat } = options
   return {
     name,
     async translate(units, locale: Locale, nplurals: number): Promise<DraftResult[]> {
@@ -164,15 +135,11 @@ export function createQwenEngine(options: QwenEngineOptions): DraftEngine {
 
       let content: string
       try {
-        content = await client.chat({
-          model: options.model,
-          stream: true,
-          think: false,
-          format: REPLY_FORMAT,
-          messages: [
-            { role: 'system', content: draftSystemPrompt(locale, nplurals) },
-            { role: 'user', content: userPrompt(units) },
-          ],
+        content = await chat({
+          system: draftSystemPrompt(locale, nplurals),
+          user: userPrompt(units),
+          schema: REPLY_FORMAT,
+          schemaName: 'drafts',
         })
       } catch (err) {
         // Says which model, because the usual failure is that this one is not
@@ -189,4 +156,26 @@ export function createQwenEngine(options: QwenEngineOptions): DraftEngine {
       return drafts
     },
   }
+}
+
+/** A local engine for any target, with the transport its kind needs. */
+export function createLocalTargetEngine(
+  target: LocalTarget,
+  options: { chat?: LocalChat; fetch?: typeof fetch; onWarning?: WarningSink } = {},
+): DraftEngine {
+  return createLocalEngine({
+    name: localModelId(target),
+    chat: options.chat ?? createLocalChat(target, options.fetch ? { fetch: options.fetch } : {}),
+    ...(options.onWarning ? { onWarning: options.onWarning } : {}),
+  })
+}
+
+/** The Ollama engine, as it was built before there was a second kind. */
+export function createQwenEngine(options: QwenEngineOptions): DraftEngine {
+  const client = options.client ?? ollamaTransport(options.baseUrl ?? DEFAULT_QWEN_BASE_URL)
+  return createLocalEngine({
+    name: localModelId({ kind: 'ollama', baseUrl: options.baseUrl ?? DEFAULT_QWEN_BASE_URL, model: options.model }),
+    chat: chatFromOllama(client, options.model, options.contextLength),
+    ...(options.onWarning ? { onWarning: options.onWarning } : {}),
+  })
 }

@@ -60,6 +60,11 @@ describe('loadConfig', () => {
       // models from. Empty, so nothing beyond the loopback defaults is ever
       // probed until the person names a server.
       localModelServers: [],
+      // Added deliberately with local model support (#5): Ollama stays the
+      // local server a config from before then uses, and the OpenAI-compatible
+      // server has no model until one is chosen.
+      localServerKind: 'ollama',
+      openaiCompatible: { baseUrl: 'http://localhost:1234', model: '' },
     })
   })
 
@@ -323,13 +328,50 @@ describe('loadConfig and the local engine', () => {
       }),
     )
     const config = loadConfig()
-    expect(config.defaultDraftEngine).toBe('qwen')
+    expect(config.defaultDraftEngine).toBe('local')
     expect(config.ollama).toEqual({ baseUrl: 'http://box:11434', model: 'other-model' })
   })
 
-  it('accepts qwen as the default engine', async () => {
+  // `qwen` is what `local` was called until 0.23. A saved config still says
+  // it, and must keep drafting with the same engine.
+  it('reads qwen as the default engine under its new name', async () => {
     await writeConfigRaw(JSON.stringify({ defaultDraftEngine: 'qwen' }))
-    expect(loadConfig().defaultDraftEngine).toBe('qwen')
+    expect(loadConfig().defaultDraftEngine).toBe('local')
+  })
+
+  it('accepts local as the default engine', async () => {
+    await writeConfigRaw(JSON.stringify({ defaultDraftEngine: 'local' }))
+    expect(loadConfig().defaultDraftEngine).toBe('local')
+  })
+
+  it('writes the new name back on the next save', async () => {
+    await writeConfigRaw(JSON.stringify({ defaultDraftEngine: 'qwen' }))
+    saveConfig({ batchSize: 9 })
+    expect(JSON.parse(await readFile(configFile(), 'utf8')).defaultDraftEngine).toBe('local')
+  })
+
+  it('accepts local as the review provider, which only an explicit setting reaches', async () => {
+    await writeConfigRaw(JSON.stringify({ reviewProvider: 'local' }))
+    expect(loadConfig().reviewProvider).toBe('local')
+  })
+
+  it('keeps an OpenAI-compatible server and context lengths', async () => {
+    await writeConfigRaw(
+      JSON.stringify({
+        localServerKind: 'openai-compatible',
+        openaiCompatible: { baseUrl: 'http://localhost:8080', model: 'qwen3-8b', contextLength: 8192 },
+        ollama: { baseUrl: 'http://localhost:11434', model: 'm', contextLength: 16384 },
+      }),
+    )
+    const config = loadConfig()
+    expect(config.localServerKind).toBe('openai-compatible')
+    expect(config.openaiCompatible).toEqual({ baseUrl: 'http://localhost:8080', model: 'qwen3-8b', contextLength: 8192 })
+    expect(config.ollama.contextLength).toBe(16384)
+  })
+
+  it('rejects a context length that is not a positive integer, naming the key', async () => {
+    await writeConfigRaw(JSON.stringify({ openaiCompatible: { baseUrl: 'http://localhost:1234', model: '', contextLength: 0 } }))
+    expect(() => loadConfig()).toThrow(/openaiCompatible/)
   })
 
   it('parses a config without localModelServers to an empty list', async () => {

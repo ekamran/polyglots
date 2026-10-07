@@ -17,12 +17,24 @@ export interface DraftResult {
 // What the user picks. Distinct from the engine's identity below: a choice is
 // a stable name in config and on the command line, while an identity has to say
 // which model produced a draft, because the draft cache keys on it.
-export type DraftEngineChoice = 'deepl' | 'openai' | 'qwen'
+//
+// `local` was called `qwen` until 0.23, after the first model it ran, although
+// any Ollama model could be configured. The old name is still read wherever a
+// person can type it or have saved it (normalizeDraftEngine), and is never
+// written.
+export type DraftEngineChoice = 'deepl' | 'openai' | 'local'
+
+// Which protocol a local model server speaks. Stated in config rather than
+// guessed per run: Ollama answers /v1/models too, and a run must not change
+// protocol because a probe answered differently today.
+export type LocalServerKind = 'ollama' | 'openai-compatible'
 
 // How an engine identifies the drafts it produced. A local runner names the
 // model it loaded: two models behind one name would serve one model's drafts
-// as the other's, which is the defect the review side had with --model.
-export type DraftEngineName = 'deepl' | 'openai' | `ollama:${string}`
+// as the other's, which is the defect the review side had with --model. An
+// OpenAI-compatible server is named as well, because its model id is whatever
+// that server calls it (see localModelId).
+export type DraftEngineName = 'deepl' | 'openai' | `ollama:${string}` | `openai-compatible:${string}`
 
 export interface DraftEngine {
   readonly name: DraftEngineName
@@ -41,6 +53,10 @@ export interface ReviewInput {
   automatedChecks?: string[]
   // A setting WordPress code reads, decided by the translator comment.
   control?: boolean
+  // The glossary terms the source contains, with their approved translations.
+  // Set only for a reviewer without tools (a local model), which cannot look
+  // them up; the agents' prompt never renders it.
+  glossary?: Array<{ term: string; translations: string[] }>
 }
 
 export interface ReviewResult {
@@ -172,20 +188,46 @@ export interface ConsistencyEntry {
  */
 export type ReviewProvider = 'claude' | 'antigravity'
 
+/**
+ * What adjudicates a review: an agent CLI, or a local model.
+ *
+ * Kept apart from ReviewProvider, which is the set of CLIs polyglots spawns
+ * and which discovery, doctor and the menu's `p` iterate. `local` is
+ * experimental and opt-in only (`config set reviewProvider local`), so nothing
+ * that cycles or auto-selects providers ever sees it.
+ */
+export type ReviewChoice = ReviewProvider | 'local'
+
+/** One local model server's settings. */
+export interface LocalServerSettings {
+  baseUrl: string
+  model: string
+  // The context window, in tokens, when the person knows it. For Ollama it is
+  // also sent as num_ctx, which makes it true rather than advisory; other
+  // servers fix their context when the model is loaded.
+  contextLength?: number
+}
+
 export interface PolyglotsConfig {
   defaultLocale: Locale
   defaultDraftEngine: DraftEngineChoice
   // Which agent CLI judges translations. `antigravity` needs the polyglots MCP
   // server registered with it first; docs/antigravity.md has the setup.
-  reviewProvider: ReviewProvider
+  // `local` is the experimental local-model reviewer (docs/local-models.md).
+  reviewProvider: ReviewChoice
   // The reviewer's own login on translate.wordpress.org. Only used to build the
   // link in the requester message, which points at their translations in the
   // project they just reviewed. Empty means no link is built: an unfiltered
   // page would show everybody's work and the message would be claiming it.
   wporgUsername: string
   // Where the local runner lives and which model to load. Only read when the
-  // chosen engine is `qwen`.
-  ollama: { baseUrl: string; model: string }
+  // chosen engine or reviewer is `local` and localServerKind is `ollama`.
+  ollama: LocalServerSettings
+  // Which of the two local server settings the `local` engine and reviewer use.
+  localServerKind: LocalServerKind
+  // An LM Studio, llama.cpp server or vLLM. The model is empty until chosen,
+  // since there is no default model an arbitrary server can be assumed to hold.
+  openaiCompatible: LocalServerSettings
   batchSize: number
   consistencyTtlDays: number
   // Per-locale names the built-in lists cannot cover (places, people,

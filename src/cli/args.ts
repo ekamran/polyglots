@@ -3,7 +3,8 @@ import { resolveLocale, suggestLocales } from '../wporg/locales.js'
 import { resolve } from 'node:path'
 import type { CsvDelimiter } from '../commands/glossary-export.js'
 import { isReviewProvider, PROVIDERS } from '../agent/providers.js'
-import type { Locale, ReviewProvider, Secrets } from '../types.js'
+import { normalizeDraftEngine } from '../draft/index.js'
+import type { DraftEngineChoice, Locale, ReviewChoice, Secrets } from '../types.js'
 
 export class UsageError extends Error {
   readonly exitCode = 2
@@ -76,20 +77,24 @@ export function parseSecretName(raw: string): keyof Secrets {
   throw new UsageError(`Unknown key "${raw}"; expected one of ${SECRET_NAMES.join(', ')}`)
 }
 
-export const DRAFT_ENGINES = ['deepl', 'openai', 'qwen'] as const
+export const DRAFT_ENGINES: readonly DraftEngineChoice[] = ['deepl', 'openai', 'local']
 
-export type DraftEngineChoice = (typeof DRAFT_ENGINES)[number]
+export type { DraftEngineChoice }
 
+// `qwen` is still accepted, as what `local` was called until 0.23: scripts and
+// shell history have it, and refusing it would break them for a rename.
 export function parseDraftEngine(raw: string): DraftEngineChoice {
-  if (raw === 'deepl' || raw === 'openai' || raw === 'qwen') return raw
+  const engine = normalizeDraftEngine(raw)
+  if (engine) return engine
   throw new UsageError(`--draft-engine must be one of ${DRAFT_ENGINES.join(', ')}, got "${raw}"`)
 }
 
 // Named for the setting rather than a flag: there is no --review-provider, so
-// the only way in is `polyglots config set reviewProvider`, or the menu.
-export function parseReviewProvider(raw: string): ReviewProvider {
-  if (isReviewProvider(raw)) return raw
-  throw new UsageError(`reviewProvider must be one of ${PROVIDERS.join(', ')}, got "${raw}"`)
+// the only way in is `polyglots config set reviewProvider`, or the menu. The
+// menu never offers `local`, which makes this the one door to it.
+export function parseReviewProvider(raw: string): ReviewChoice {
+  if (isReviewProvider(raw) || raw === 'local') return raw
+  throw new UsageError(`reviewProvider must be one of ${PROVIDERS.join(', ')} or local (experimental), got "${raw}"`)
 }
 
 export function parseCsvDelimiter(raw: string): CsvDelimiter {
@@ -97,12 +102,12 @@ export function parseCsvDelimiter(raw: string): CsvDelimiter {
   throw new UsageError(`--delimiter must be ";" or ",", got "${raw}"`)
 }
 
-// `qwen` is deliberately absent: a local runner needs no secret, and mapping it
-// to one would make the precheck demand a key that can never exist.
+// `local` maps to nothing: a local runner needs no secret, and mapping it to
+// one would make the precheck demand a key that can never exist.
 const ENGINE_SECRET: Record<DraftEngineChoice, keyof Secrets | undefined> = {
   deepl: 'DEEPL_API_KEY',
   openai: 'OPENAI_API_KEY',
-  qwen: undefined,
+  local: undefined,
 }
 
 export function secretForEngine(engine: DraftEngineChoice): keyof Secrets | undefined {

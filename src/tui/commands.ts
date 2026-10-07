@@ -1,6 +1,6 @@
 import { createContext, useContext, useState } from 'react'
 import { discoverAgents } from '../agent/discover.js'
-import { checkOllamaModel, discoverModels } from '../draft/discover.js'
+import { checkLocalModel, discoverModels } from '../draft/discover.js'
 import { fetchProjects, resolveProjects } from '../commands/fetch.js'
 import { syncGlossary } from '../commands/glossary-sync.js'
 import { exportTm } from '../commands/tm-export.js'
@@ -31,7 +31,7 @@ export interface TuiCommands {
   saveSecret: typeof saveSecret
   discoverAgents: typeof discoverAgents
   discoverModels: typeof discoverModels
-  checkOllamaModel: typeof checkOllamaModel
+  checkLocalModel: typeof checkLocalModel
 }
 
 export const defaultCommands: TuiCommands = {
@@ -50,7 +50,7 @@ export const defaultCommands: TuiCommands = {
   saveSecret,
   discoverAgents,
   discoverModels,
-  checkOllamaModel,
+  checkLocalModel,
 }
 
 const CommandsContext = createContext<TuiCommands>(defaultCommands)

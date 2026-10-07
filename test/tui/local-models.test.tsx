@@ -28,7 +28,7 @@ const lmStudio: ModelServer = {
   target: { baseUrl: 'http://localhost:1234', kind: 'openai-compatible', label: 'LM Studio', source: 'default' },
   state: 'up',
   kind: 'openai-compatible',
-  selectable: false,
+  selectable: true,
   models: [{ name: 'qwen2.5-7b-instruct' }],
 }
 
@@ -70,20 +70,46 @@ describe('Local models', () => {
     expect(flat(frame)).toContain('Not running: llama.cpp server (http://localhost:8080)')
   })
 
-  it('shows LM Studio models as listing only, out of reach of the cursor', async () => {
+  // Selectable since #5: the model is saved with its kind and server, so a run
+  // asks LM Studio for it in LM Studio's own protocol.
+  it('saves an LM Studio model with its kind and server, and moves the marker to it', async () => {
+    const saveConfig = vi.fn(fakeCommands().saveConfig)
+    const commands = fakeCommands({ discoverModels: vi.fn(async () => [ollama, lmStudio]), saveConfig })
+    const { lastFrame, stdin } = render(<App commands={commands} />)
+    await openLocalModels(stdin, lastFrame)
+    await waitForText(lastFrame, 'qwen2.5-7b-instruct')
+    expect(flat(lastFrame())).not.toContain('listing only')
+    for (let i = 0; i < 2; i++) {
+      stdin.write(keys.down)
+      await tick()
+    }
+    expect(lineOf(lastFrame(), 'qwen2.5-7b-instruct')).toContain('❯')
+    stdin.write(keys.enter)
+    await waitForText(lastFrame, /qwen2\.5-7b-instruct.*\(current\)/)
+    expect(saveConfig).toHaveBeenCalledWith({
+      localServerKind: 'openai-compatible',
+      openaiCompatible: { baseUrl: 'http://localhost:1234', model: 'qwen2.5-7b-instruct' },
+    })
+    expect(loadConfig().localServerKind).toBe('openai-compatible')
+    expect(lineOf(lastFrame(), 'qwen3.8:27b-mlx')).not.toContain('(current)')
+  })
+
+  it('switches back to Ollama when an Ollama model is chosen', async () => {
     const commands = fakeCommands({ discoverModels: vi.fn(async () => [ollama, lmStudio]) })
     const { lastFrame, stdin } = render(<App commands={commands} />)
     await openLocalModels(stdin, lastFrame)
     await waitForText(lastFrame, 'qwen2.5-7b-instruct')
-    expect(flat(lastFrame())).toContain('listing only: not usable as a draft engine yet')
-    for (let i = 0; i < 5; i++) {
-      stdin.write(keys.down)
-      await tick()
-    }
-    expect(lineOf(lastFrame(), 'qwen2.5-7b-instruct')).not.toContain('❯')
-    expect(lineOf(lastFrame(), 'llama3.2:latest')).toContain('❯')
+    stdin.write(keys.down)
+    await tick()
+    stdin.write(keys.down)
+    await tick()
+    stdin.write(keys.enter)
+    await waitForText(lastFrame, /qwen2\.5-7b-instruct.*\(current\)/)
+    stdin.write(keys.up)
+    await tick()
     stdin.write(keys.enter)
     await waitForText(lastFrame, /llama3\.2:latest.*\(current\)/)
+    expect(loadConfig().localServerKind).toBe('ollama')
     expect(loadConfig().ollama.model).toBe('llama3.2:latest')
   })
 
@@ -97,8 +123,38 @@ describe('Local models', () => {
     await tick()
     stdin.write(keys.enter)
     await waitForText(lastFrame, /llama3\.2:latest.*\(current\)/)
-    expect(saveConfig).toHaveBeenCalledWith({ ollama: { baseUrl: 'http://localhost:11434', model: 'llama3.2:latest' } })
+    expect(saveConfig).toHaveBeenCalledWith({
+      localServerKind: 'ollama',
+      ollama: { baseUrl: 'http://localhost:11434', model: 'llama3.2:latest' },
+    })
     expect(lineOf(lastFrame(), 'qwen3.8:27b-mlx')).not.toContain('(current)')
+  })
+
+  // A context length belongs to the model and server it was set for; carried
+  // to another, it would be sent as num_ctx to a model it was never meant for.
+  it('drops the context length when the model changes', async () => {
+    fakeCommands().saveConfig({ ollama: { baseUrl: 'http://localhost:11434', model: 'qwen3.8:27b-mlx', contextLength: 16384 } })
+    const saveConfig = vi.fn(fakeCommands().saveConfig)
+    const commands = fakeCommands({ discoverModels: vi.fn(async () => [ollama]), saveConfig })
+    const { lastFrame, stdin } = render(<App commands={commands} />)
+    await openLocalModels(stdin, lastFrame)
+    await waitForText(lastFrame, 'llama3.2:latest')
+    stdin.write(keys.down)
+    await tick()
+    stdin.write(keys.enter)
+    await waitForText(lastFrame, /llama3\.2:latest.*\(current\)/)
+    expect(loadConfig().ollama).toEqual({ baseUrl: 'http://localhost:11434', model: 'llama3.2:latest' })
+  })
+
+  it('keeps the context length when the current model is chosen again', async () => {
+    fakeCommands().saveConfig({ ollama: { baseUrl: 'http://localhost:11434', model: 'qwen3.8:27b-mlx', contextLength: 16384 } })
+    const commands = fakeCommands({ discoverModels: vi.fn(async () => [ollama]) })
+    const { lastFrame, stdin } = render(<App commands={commands} />)
+    await openLocalModels(stdin, lastFrame)
+    await waitForText(lastFrame, 'llama3.2:latest')
+    stdin.write(keys.enter)
+    await tick(10)
+    expect(loadConfig().ollama.contextLength).toBe(16384)
   })
 
   it('keeps the marker where it was when saving fails', async () => {

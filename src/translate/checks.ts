@@ -1,5 +1,5 @@
 import { repairMechanically } from '../audit/repair.js'
-import { buildRuleContext, runRules, type RuleContext } from '../audit/rules/index.js'
+import { buildRuleContext, glossaryMatches, runRules, type GlossaryMatch, type RuleContext } from '../audit/rules/index.js'
 import { applyFixPatterns } from '../rules/custom.js'
 import { CUSTOM_RULE } from '../rules/names.js'
 import type { AuditEntry, Finding, GlossaryEntry, Locale, ReviewResult, TranslationUnit } from '../types.js'
@@ -31,6 +31,12 @@ export interface DraftChecker {
   prepare(unit: TranslationUnit, drafts: string[]): { drafts: string[]; checks: string[] }
   /** The AI's answer with fix patterns applied, fuzzy if an error-level check still fails. */
   finalize(unit: TranslationUnit, result: ReviewResult): ReviewResult
+  /**
+   * The glossary terms the source contains, by the same matcher the glossary
+   * rule and review's prompt use. Handed to a reviewer that cannot look them
+   * up, so it and the rule never disagree about which terms apply.
+   */
+  terms(unit: TranslationUnit): GlossaryMatch[]
 }
 
 export interface DraftCheckerOptions {
@@ -78,6 +84,9 @@ export function createDraftChecker(opts: DraftCheckerOptions): DraftChecker {
     prepare(unit, drafts) {
       const fixed = fix(unit, drafts)
       return { drafts: fixed, checks: findings(unit, fixed).map((f) => `${f.rule}: ${f.message}`) }
+    },
+    terms(unit) {
+      return glossaryMatches(unit.msgid, ctx)
     },
     finalize(unit, result) {
       const text = fix(unit, result.text)

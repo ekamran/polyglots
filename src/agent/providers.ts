@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { ReviewProvider } from '../types.js'
+import type { ReviewChoice, ReviewProvider } from '../types.js'
 
 // The only tools a review is allowed to reach for. Both providers restrict to
 // these, by different means: Claude takes a flag, antigravity takes allow-rules
@@ -410,7 +410,9 @@ export function resolveAgentBin(
  * own default applies. Undefined rather than the default name, so a run with
  * no override passes exactly what it passed before.
  */
-export function agentBinOverride(provider: ReviewProvider, env: NodeJS.ProcessEnv): string | undefined {
+export function agentBinOverride(provider: ReviewChoice, env: NodeJS.ProcessEnv): string | undefined {
+  // A local model is not spawned, so there is no binary to override.
+  if (provider === 'local') return undefined
   const { bin, source } = resolveAgentBin(provider, env)
   return source === 'default' ? undefined : bin
 }
@@ -479,7 +481,9 @@ export function schemaArgument(spec: ProviderSpec, jsonSchema: unknown): string 
  * the tool schemas at the start of each one. The agent grows more thorough as
  * it is given less to do.
  */
-export function batchAdvice(provider: ReviewProvider | undefined, batchSize: number): string | undefined {
+export function batchAdvice(provider: ReviewChoice | undefined, batchSize: number): string | undefined {
+  // A local model's limit is its context, not tool round trips, and that
+  // advice lives with the local reviewer (localBatchAdvice).
   if ((provider ?? DEFAULT_PROVIDER) !== 'antigravity') return undefined
   if (batchSize >= ANTIGRAVITY_MIN_BATCH) return undefined
   return `antigravity asks its tools one at a time, so a batch of ${batchSize} costs more round trips per entry than a batch of ${ANTIGRAVITY_MIN_BATCH}, not fewer. Raise the batch size rather than lowering it.`

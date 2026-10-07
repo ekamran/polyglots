@@ -3,6 +3,8 @@ import { basename, dirname, extname, join } from 'node:path'
 import type Database from 'better-sqlite3'
 import { groupFor, OTHER_GROUP } from '../review/message.js'
 import { configuredModel, type AgentRunOptions } from '../agent/run.js'
+import { createLocalChat, localModelId, resolveLocalTarget, type LocalChat } from '../draft/local-chat.js'
+import { auditPromptVariant, createLocalAdjudicator } from '../review/local.js'
 import {
   auditEntries,
   DEFAULT_BATCH_SIZE,
@@ -36,9 +38,12 @@ import { loadConfig } from '../config.js'
 import { languageOf } from '../wporg/locales.js'
 import { tmKey } from '../audit/rules/index.js'
 import { allGlossary, findMemory, openDb } from '../storage/index.js'
-import type { AuditEntry, Locale, ReviewEvent, ReviewSummary } from '../types.js'
+import type { AuditEntry, Locale, ReviewChoice, ReviewEvent, ReviewSummary } from '../types.js'
 
-export interface ReviewOptions extends Partial<AgentRunOptions> {
+export interface ReviewOptions extends Partial<Omit<AgentRunOptions, 'provider'>> {
+  // An agent CLI, or the experimental local reviewer. Defaults to the
+  // configured one.
+  provider?: ReviewChoice
   file: string
   locale: Locale
   outDir?: string
@@ -53,6 +58,8 @@ export interface ReviewOptions extends Partial<AgentRunOptions> {
   db?: Database.Database
   jobsDb?: Database.Database
   adjudicate?: Adjudicator
+  // Stands in for the local model's transport, for tests.
+  localChat?: LocalChat
   onProgress?: (event: ReviewEvent) => void
 }
 
@@ -178,13 +185,23 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
   // Read once, at the top: a run must not change agent part way because the
   // setting moved underneath it, and every verdict it caches is keyed by this.
   const provider = opts.provider ?? loadConfig().reviewProvider
+  // A local model has no CLI and no MCP. It gets its own adjudicator, its own
+  // prompt variant in every key, and an engine id that names the server and
+  // model (`local:ollama:<model>`), so its verdicts can never be served as an
+  // agent's or the other way round. Resolved here, before the run row exists,
+  // so a target with no model is refused rather than recorded as a failure.
+  const local = provider === 'local' && !opts.noAi ? resolveLocalTarget(loadConfig(), opts.model) : undefined
+  const agent = provider === 'local' ? undefined : provider
   // What the engine id records. An explicit --model settles it; otherwise ask
   // the provider what it is configured to run, because antigravity chooses its
   // own from its own settings file and a verdict Flash formed must not be
   // served as Pro's. Undefined for claude, and for an antigravity whose
   // settings cannot be read, which records the bare provider name exactly as
   // every row written before this did.
-  const engineModel = opts.model ?? configuredModel(provider)
+  const engine = local
+    ? engineId(localModelId(local), 'local')
+    : engineId(opts.model ?? (agent ? configuredModel(agent) : undefined), provider)
+  const adjudicate = local ? (opts.adjudicate ?? createLocalAdjudicator(opts.localChat ?? createLocalChat(local), engine)) : opts.adjudicate
   const glossary = readGlossary(opts.locale, opts.db)
   if (glossary.length === 0) {
     throw new Error(
@@ -263,7 +280,7 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
       // --no-ai reaches no model, so nothing in this run was judged by one.
       // History cannot be backfilled, and a per-engine quality breakdown built
       // on it later would be reading rule findings as Claude's opinions.
-      engine: opts.noAi ? 'rules' : engineId(engineModel, provider),
+      engine: opts.noAi ? 'rules' : engine,
     })
     recordEntries(
       jobs,
@@ -278,8 +295,9 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
       reviewable: reviewable.length,
     })
 
+    // Nothing reads it on --no-ai or for a local model, which has no MCP.
     const mcpConfigPath =
-      opts.mcpConfigPath ?? (opts.noAi ? '' : await writeMcpConfig({ env: { [MCP_ENV.locale]: opts.locale } }))
+      opts.mcpConfigPath ?? (opts.noAi || local ? '' : await writeMcpConfig({ env: { [MCP_ENV.locale]: opts.locale } }))
 
     const marker: ReviewMarker = {
       done: 0,
@@ -340,8 +358,9 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
       properNouns,
       mcpConfigPath,
       batchSize,
-      engine: engineId(engineModel, provider),
+      engine,
       configHash: config,
+      ...(local ? { promptVariant: auditPromptVariant(opts.locale) } : {}),
       ...(opts.noAi === undefined ? {} : { noAi: opts.noAi }),
       ...(store ? { store } : {}),
       ...(opts.control ? { control: opts.control } : {}),
@@ -354,10 +373,12 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
         // no verdict was ever cached for them.
         marker.done = Math.min(marker.done, info.lastGood)
       },
-      ...(opts.adjudicate ? { adjudicate: opts.adjudicate } : {}),
-      ...(opts.bin ? { bin: opts.bin } : {}),
-      provider,
-      ...(opts.model ? { model: opts.model } : {}),
+      ...(adjudicate ? { adjudicate } : {}),
+      // The agent options mean nothing to a local model, and `provider` must
+      // never reach runAgent as `local`: the audit would spawn the default CLI.
+      ...(agent && opts.bin ? { bin: opts.bin } : {}),
+      ...(agent ? { provider: agent } : {}),
+      ...(agent && opts.model ? { model: opts.model } : {}),
       onRules: (r) =>
         emit({
           type: 'rules-done',

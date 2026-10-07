@@ -301,3 +301,17 @@ describe('the plural expression in the per-entry keys', () => {
     )
   })
 })
+
+// Local review asks a different prompt from the agents' one, and that prompt is
+// deliberately not in the configuration hash, which would prune every agent
+// verdict when a local run started. So the variant is per entry instead.
+describe('auditSrcHash and the prompt variant', () => {
+  it('keys exactly as before when there is no variant', () => {
+    expect(auditSrcHash(entry(), context())).toBe(auditSrcHash(entry(), { ...context(), promptVariant: undefined }))
+  })
+
+  it('separates a verdict formed under another prompt', () => {
+    expect(auditSrcHash(entry(), context({ promptVariant: 'a' }))).not.toBe(auditSrcHash(entry(), context()))
+    expect(auditSrcHash(entry(), context({ promptVariant: 'a' }))).not.toBe(auditSrcHash(entry(), context({ promptVariant: 'b' })))
+  })
+})

@@ -135,3 +135,35 @@ describe('createQwenEngine', () => {
     await expect(engine.translate([unit()], 'tr', 2)).rejects.toThrow(/qwen3\.8:27b-mlx/)
   })
 })
+
+describe('createLocalTargetEngine on an OpenAI-compatible server', () => {
+  it('drafts through the SSE transport and names the server and model', async () => {
+    const { createLocalTargetEngine } = await import('../../src/draft/qwen.js')
+    const content = JSON.stringify({ items: [{ id: 1, drafts: ['Değişiklikleri kaydet'] }] })
+    const sse = `data: ${JSON.stringify({ choices: [{ delta: { content }, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`
+    const urls: string[] = []
+    const fetch = (async (url: string | URL | Request) => {
+      urls.push(String(url))
+      return new Response(sse, { status: 200 })
+    }) as typeof globalThis.fetch
+    const engine = createLocalTargetEngine(
+      { kind: 'openai-compatible', baseUrl: 'http://localhost:1234/v1', model: 'qwen/qwen3-8b' },
+      { fetch },
+    )
+    expect(engine.name).toBe('openai-compatible:localhost:1234/qwen/qwen3-8b')
+    expect(await engine.translate([unit()], 'tr', 2)).toEqual([{ key: 'Save Changes', drafts: ['Değişiklikleri kaydet'] }])
+    expect(urls).toEqual(['http://localhost:1234/v1/chat/completions'])
+  })
+
+  it('names the model once when the reply was cut off', async () => {
+    const { createLocalEngine } = await import('../../src/draft/qwen.js')
+    const { LocalReplyTruncatedError } = await import('../../src/draft/local-chat.js')
+    const engine = createLocalEngine({
+      name: 'ollama:m',
+      chat: async () => {
+        throw new LocalReplyTruncatedError()
+      },
+    })
+    await expect(engine.translate([unit()], 'tr', 2)).rejects.toThrow(/^ollama:m: the reply was cut off/)
+  })
+})

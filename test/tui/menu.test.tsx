@@ -308,4 +308,36 @@ describe('nextProvider', () => {
     expect(nextProvider('claude', ['claude'])).toBe('claude')
     expect(nextProvider('claude', [])).toBe('claude')
   })
+
+  // The experimental local reviewer is reached only by `config set`, so p
+  // leaves it for an agent and never comes back to it.
+  it('moves from local to an agent, and never to local', () => {
+    expect(nextProvider('local')).toBe('claude')
+    expect(nextProvider('local', ['antigravity'])).toBe('antigravity')
+    expect(nextProvider('antigravity')).not.toBe('local')
+  })
+})
+
+describe('the local reviewer on the menu', () => {
+  it('is marked experimental, and p moves away from it', async () => {
+    const saved: Partial<PolyglotsConfig>[] = []
+    const commands = fakeCommands({
+      loadConfig: () => ({ ...DEFAULT_CONFIG, reviewProvider: 'local' }),
+      saveConfig: (patch: Partial<PolyglotsConfig>) => {
+        saved.push(patch)
+        return { ...DEFAULT_CONFIG, ...patch }
+      },
+    })
+    const { lastFrame, stdin } = render(<App commands={commands} cwd={cwd} />)
+    await tick()
+    expect(lastFrame() ?? '').toContain('Provider: local (experimental)')
+    stdin.write('p')
+    await tick()
+    expect(saved).toEqual([{ reviewProvider: 'claude' }])
+    stdin.write('p')
+    await tick()
+    stdin.write('p')
+    await tick()
+    expect(saved.map((p) => p.reviewProvider)).not.toContain('local')
+  })
 })

@@ -3,7 +3,7 @@ import { useApp } from 'ink'
 import { CommandsProvider, defaultCommands, errorMessage, type TuiCommands } from './commands.js'
 import type { AgentStatus } from '../agent/discover.js'
 import { DEFAULT_PROVIDER } from '../agent/providers.js'
-import type { ReviewProvider } from '../types.js'
+import type { ReviewChoice } from '../types.js'
 import { ActivityProvider, createActivity, type Activity } from './hooks/activity.js'
 import { Agents } from './screens/Agents.js'
 import { ConfigureKeys } from './screens/ConfigureKeys.js'
@@ -35,7 +35,7 @@ export function App({ commands = defaultCommands, cwd = process.cwd(), activity,
   // Held here rather than read by the menu, so the menu stays a screen that can
   // be rendered without touching the user's config, and so the injected
   // commands are what a test drives.
-  const [provider, setProvider] = useState<ReviewProvider>(() => {
+  const [provider, setProvider] = useState<ReviewChoice>(() => {
     try {
       return commands.loadConfig().reviewProvider
     } catch {
@@ -75,7 +75,7 @@ export function App({ commands = defaultCommands, cwd = process.cwd(), activity,
   // The display only moves once the setting is written. A run reads the saved
   // config, so showing a provider that failed to save would name an agent no
   // review is going to use.
-  const switchProvider = (next: ReviewProvider) => {
+  const switchProvider = (next: ReviewChoice) => {
     try {
       commands.saveConfig({ reviewProvider: next })
       setProvider(next)

@@ -6,7 +6,8 @@ import type { TranslateEvent, TranslateSummary } from '../../commands/translate.
 import { normalizeLocale } from '../../tmx/parse.js'
 import { resolveLocale } from '../../wporg/locales.js'
 import type { DraftEngineChoice } from '../../types.js'
-import type { ModelCheck } from '../../draft/discover.js'
+import { kindLabel, type ModelCheck } from '../../draft/discover.js'
+import { resolveLocalTarget, type LocalTarget } from '../../draft/local-chat.js'
 import { useCommands, useConfig } from '../commands.js'
 import { poEntryCount } from '../../po/count.js'
 import { FilePicker } from '../components/FilePicker.js'
@@ -14,7 +15,8 @@ import { BACK_HINT, DONE_HINT, Hint } from '../components/Hint.js'
 import { Progress } from '../components/Progress.js'
 import { useTask } from '../hooks/useTask.js'
 import { createRunControl, type RunControl } from '../../run-control.js'
-import { agentBinOverride, batchAdvice } from '../../agent/providers.js'
+import { agentBinOverride } from '../../agent/providers.js'
+import { initialBatchSize, providerLabel, screenBatchAdvice } from '../local.js'
 import { batchSizeChoices } from '../batch-size.js'
 
 export interface TranslateProps {
@@ -28,7 +30,7 @@ type Engine = DraftEngineChoice
 
 const PO_EXTENSIONS = ['.po']
 const MODES: Mode[] = ['pending', 'all']
-const ENGINES: Engine[] = ['deepl', 'openai', 'qwen']
+const ENGINES: Engine[] = ['deepl', 'openai', 'local']
 const FIELD_MODE = 0
 const FIELD_ENGINE = 1
 const FIELD_LOCALE = 2
@@ -49,7 +51,7 @@ export function Translate({ cwd, onBack }: TranslateProps) {
   const [mode, setMode] = useState<Mode>('pending')
   const [engine, setEngine] = useState<Engine>(config.defaultDraftEngine)
   const [locale, setLocale] = useState(config.defaultLocale)
-  const [batchSize, setBatchSize] = useState(config.batchSize)
+  const [batchSize, setBatchSize] = useState(initialBatchSize(config))
   const [focus, setFocus] = useState(FIELD_MODE)
   const [events, setEvents] = useState<TranslateEvent[]>([])
   // Held in a ref so a keypress reaches the run in flight without re-rendering
@@ -57,6 +59,15 @@ export function Translate({ cwd, onBack }: TranslateProps) {
   const control = useRef<RunControl | undefined>(undefined)
   const task = useTask<TranslateSummary>()
   const [modelCheck, setModelCheck] = useState<ModelCheck | undefined>(undefined)
+  // The local target a run would draft with, or why there is none: an
+  // OpenAI-compatible server with no model chosen, which the run refuses.
+  const local = ((): { target: LocalTarget } | { error: string } => {
+    try {
+      return { target: resolveLocalTarget(config) }
+    } catch (err) {
+      return { error: (err as Error).message }
+    }
+  })()
 
   // Asked while the options are being chosen rather than after Start, so a
   // model that was never pulled is seen before a run is spent finding out.
@@ -65,9 +76,10 @@ export function Translate({ cwd, onBack }: TranslateProps) {
   // authoritative one. A rejected check shows nothing, for the same reason.
   useEffect(() => {
     setModelCheck(undefined)
-    if (engine !== 'qwen') return
+    if (engine !== 'local' || !('target' in local)) return
     let wanted = true
-    commands.checkOllamaModel(config.ollama).then(
+    const { kind, baseUrl, model } = local.target
+    commands.checkLocalModel({ kind, baseUrl, model }).then(
       (result) => wanted && setModelCheck(result),
       () => {},
     )
@@ -145,7 +157,7 @@ export function Translate({ cwd, onBack }: TranslateProps) {
       const step = key.leftArrow ? -1 : 1
       if (focus === FIELD_MODE) setMode((m) => next(MODES, m, step))
       if (focus === FIELD_ENGINE) setEngine((e) => next(ENGINES, e, step))
-      if (focus === FIELD_BATCH) setBatchSize((n) => next(batchSizeChoices(config.batchSize), n, step))
+      if (focus === FIELD_BATCH) setBatchSize((n) => next(batchSizeChoices(initialBatchSize(config)), n, step))
     } else if (key.return && focus !== FIELD_LOCALE) {
       if (focus === FIELD_START) {
         const normalized = resolveLocale(locale)?.id ?? normalizeLocale(locale)
@@ -173,7 +185,7 @@ export function Translate({ cwd, onBack }: TranslateProps) {
           subscription is being spent is never a guess. Not switchable here:
           the choice belongs to the menu, and changing it mid-file would split
           one submission's verdicts across two agents. */}
-      {stage !== 'pick' && <Text dimColor>Provider: {config.reviewProvider}</Text>}
+      {stage !== 'pick' && <Text dimColor>Provider: {providerLabel(config.reviewProvider)}</Text>}
 
       {stage === 'pick' && (
         <>
@@ -204,12 +216,13 @@ export function Translate({ cwd, onBack }: TranslateProps) {
           <Text>
             {marker(FIELD_ENGINE)}Draft engine:  {engine}
           </Text>
-          {engine === 'qwen' && (
+          {engine === 'local' && 'target' in local && (
             <Text dimColor>
-              {'   '}Model: {config.ollama.model} at {config.ollama.baseUrl}
+              {'   '}Model: {local.target.model} at {local.target.baseUrl} ({kindLabel(local.target.kind)})
             </Text>
           )}
-          {engine === 'qwen' && modelCheck && modelCheck.state !== 'installed' && modelCheck.message && (
+          {engine === 'local' && 'error' in local && <Text color="yellow">   {local.error}</Text>}
+          {engine === 'local' && modelCheck && modelCheck.state !== 'installed' && modelCheck.message && (
             <Text color="yellow">   {modelCheck.message}</Text>
           )}
           <Box>
@@ -221,8 +234,8 @@ export function Translate({ cwd, onBack }: TranslateProps) {
           </Text>
           {/* The drafts are reviewed by the same agent a review run uses, so
               the same advice about a batch too small to be worth it applies. */}
-          {batchAdvice(config.reviewProvider, batchSize) && (
-            <Text color="yellow">{batchAdvice(config.reviewProvider, batchSize)}</Text>
+          {screenBatchAdvice(config, batchSize, locale) && (
+            <Text color="yellow">{screenBatchAdvice(config, batchSize, locale)}</Text>
           )}
           <Text>{marker(FIELD_START)}Start translation</Text>
           <Hint>↑↓ move · ←→ change · enter select · esc back to menu</Hint>
