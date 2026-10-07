@@ -126,7 +126,7 @@ describe('reviewBatch', () => {
     expect(argv).not.toContain('--model')
   })
 
-  it('strips CLAUDECODE and CLAUDE_CODE_* from the child env but forwards everything else', async () => {
+  it('strips the nested-session markers from the child env but forwards everything else', async () => {
     await setup()
     const envOut = join(dir, 'env.json')
     process.env.FAKE_CLAUDE_ENV_OUT = envOut
@@ -144,8 +144,8 @@ describe('reviewBatch', () => {
   })
 
   it('childEnv drops only the nested-session markers', () => {
-    const env = childEnv({ CLAUDECODE: '1', CLAUDE_CODE_X: '1', CLAUDE_PID: '5', HOME: '/h', PATH: '/p' })
-    expect(env).toEqual({ CLAUDE_PID: '5', HOME: '/h', PATH: '/p' })
+    const env = childEnv({ CLAUDECODE: '1', CLAUDE_CODE_ENTRYPOINT: 'cli', CLAUDE_CODE_X: '1', CLAUDE_PID: '5', HOME: '/h', PATH: '/p' })
+    expect(env).toEqual({ CLAUDE_CODE_X: '1', HOME: '/h', PATH: '/p' })
   })
 
   it('falls back to parsing the result string when structured_output is absent', async () => {

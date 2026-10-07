@@ -28,12 +28,50 @@ export function buildAgentArgs(jsonSchema: unknown, opts: AgentRunOptions): stri
   return spec.buildArgs(schemaArgument(spec, jsonSchema), opts)
 }
 
-// A nested agent started from inside a Claude Code session sees CLAUDECODE=1
-// and CLAUDE_CODE_* markers; strip them so it behaves like a fresh CLI.
+// A claude started from inside a Claude Code session inherits the variables
+// that session exported to describe itself: that it is nested, how it was
+// entered, its session id, the IDE port and the messaging socket it listens
+// on. A child holding them thinks it belongs to the parent, so they are
+// stripped and the child starts as a fresh CLI.
+//
+// This used to drop every name under the CLAUDE_CODE_ prefix, on the theory
+// that the prefix meant "set by the parent". It does not. The same prefix
+// carries what a user sets on purpose to make claude work at all:
+// CLAUDE_CODE_USE_BEDROCK and CLAUDE_CODE_USE_VERTEX route requests to a cloud
+// provider, CLAUDE_CODE_OAUTH_TOKEN is the headless credential from
+// setup-token, and limits such as CLAUDE_CODE_MAX_OUTPUT_TOKENS tune it.
+// Stripping those sent Bedrock and Vertex users to the first-party API and left
+// token users with no credentials, so every batch failed with an auth error
+// that pointed away from polyglots. The list below is the markers only, read
+// off a live session's environment. A marker missing from it costs a child that
+// can tell it is nested; a config variable wrongly on it costs a run that
+// cannot authenticate, so the list errs towards being short.
+//
+// The prefix was never the whole story in the other direction either. claude
+// exports CLAUDE_PID, AI_AGENT and CLAUDE_EFFORT to its children from the same
+// place it sets CLAUDE_CODE_CHILD_SESSION, and none of them carries the
+// prefix, so all three used to reach the reviewer: the parent's pid, a claim
+// that an agent invoked it, and the effort the parent turn happened to run at.
+const SESSION_MARKERS: ReadonlySet<string> = new Set([
+  'CLAUDECODE',
+  'CLAUDE_CODE_ENTRYPOINT',
+  'CLAUDE_CODE_SSE_PORT',
+  'CLAUDE_CODE_SESSION_ID',
+  'CLAUDE_CODE_CHILD_SESSION',
+  'CLAUDE_CODE_SESSION_ATTENDED',
+  'CLAUDE_CODE_BRIDGE_SESSION_ID',
+  'CLAUDE_CODE_MESSAGING_SOCKET',
+  'CLAUDE_CODE_MESSAGING_TOKEN',
+  'CLAUDE_CODE_EXECPATH',
+  'CLAUDE_PID',
+  'AI_AGENT',
+  'CLAUDE_EFFORT',
+])
+
 export function childEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = {}
   for (const [k, v] of Object.entries(env)) {
-    if (k === 'CLAUDECODE' || k.startsWith('CLAUDE_CODE_')) continue
+    if (SESSION_MARKERS.has(k)) continue
     out[k] = v
   }
   return out
