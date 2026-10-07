@@ -7,7 +7,7 @@
     "node": ">=24"
   },
   "scripts": {
-    "snapshot": "../app/node_modules/.bin/tsx scripts/snapshot.ts",
+    "snapshot": "../app/node_modules/.bin/tsc -p scripts/tsconfig.json && ../app/node_modules/.bin/tsx scripts/snapshot.ts",
     "predev": "npm run snapshot",
     "dev": "astro dev",
     "prebuild": "npm run snapshot",
