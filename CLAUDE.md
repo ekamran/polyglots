@@ -10,7 +10,7 @@ the things that are expensive to rediscover, not the things the code already say
 - `website/`: the Astro site served at ada.tools/polyglots, with its own
   `package.json`. `deploy.sh` at the root builds and syncs it.
 - `docs/`: public user documentation; the website builds its pages from it.
-- `notes/`: internal working notes. Not published, not on the site.
+- `notes/`: internal working notes, git-ignored. Present only in the maintainer's checkout.
 
 Paths below are relative to `app/` unless they say otherwise. There is no
 `package.json` at the root, and no npm workspaces: the app stays a

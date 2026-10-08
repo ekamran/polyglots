@@ -23,7 +23,6 @@ it. Correctness and clear wording matter more than features.
 - `app/`: the CLI and interactive mode, the package published to npm.
 - `website/`: the Astro site at ada.tools/polyglots, built from `docs/`.
 - `docs/`: public documentation.
-- `notes/`: internal design notes.
 
 There is no `package.json` at the root. Run app commands inside `app/` and
 site commands inside `website/`.
