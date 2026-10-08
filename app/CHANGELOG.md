@@ -24,6 +24,8 @@ Entries say what changed. For why and how, read the commit.
 - The stats page remembers its language, range, theme and view across reloads and restarts.
 - A second polyglots serving stats uses the page another one already serves.
 - `polyglots stats --no-open` serves the dashboard without opening a browser.
+- Review and translate run screens list the most recent entries as each batch lands, with their outcome and rule hits.
+- TUI screens taller than the window scroll to keep the cursor and a run's keys in view.
 
 ### Changed
 
@@ -34,10 +36,20 @@ Entries say what changed. For why and how, read the commit.
 - `polyglots stats` serves a live dashboard on localhost and opens it; `--out`, or running off a terminal, writes a standalone HTML copy.
 - The stats page has Overview, Reviews, Translation, Projects and Method views, a year of activity, time ranges, a share image, and human names for every flag.
 - Messages that pointed at `docs/` in the repo link to the documentation at ada.tools/polyglots.
+- Messages name "your .po editor" rather than Poedit; the TMX export names OmegaT beside Poedit.
+- TUI letter keys ignore ctrl and meta, so ctrl+c no longer also copies a finished review's report.
+- Aborted, Cancelled and Stopped lines carry the warning glyph; a zero approvable count is no longer green.
 
 ### Fixed
 
 - `review` printed the problems file's path twice.
+- The TUI's key hints match the keys every screen binds; Export TM's footer showed keys it does not have.
+- Emoji and other wide characters no longer shift box borders, and truncated cells keep their colour.
+- Boxes and the live progress line never run wider than the terminal, including under `tee`.
+- The TUI no longer waits more than a second on a stalled stream when it exits.
+- The stats page keeps focus, sort, filter and open lists on the right table after a refresh.
+- The Locale Rules trial reads the glossary without writing to polyglots.db.
+- The User-Agent sent to translate.wordpress.org points at the real repository.
 
 ## [0.25.0] - 2026-10-07
 
