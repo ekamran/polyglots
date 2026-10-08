@@ -1,7 +1,7 @@
 import type Database from 'better-sqlite3'
 import { controlSpec } from '../audit/control.js'
 import { createDraftChecker } from '../translate/checks.js'
-import { configuredProperNouns } from './review.js'
+import { configuredProperNouns, shortMsgid } from './review.js'
 import { intlTag } from '../wporg/locales.js'
 import { chunk } from '../batch.js'
 import type { RunControl } from '../run-control.js'
@@ -51,9 +51,31 @@ import type {
   TranslationUnit,
 } from '../types.js'
 
+/**
+ * One entry as it lands, for the run screen's list of recent entries.
+ *
+ * `memory` and `drafted` are written as they stand; `fuzzy` is written for a
+ * human to confirm, and `from` says whether the memory offered more than one
+ * approved wording or the reviewer doubted the engine's draft. `skipped` is a
+ * batch that failed and left the entry as it was. `msgid` is shortened for
+ * display, as in review's ReviewEntry.
+ */
+export type TranslateEntryOutcome = 'memory' | 'drafted' | 'fuzzy' | 'skipped'
+
+export interface TranslateEntry {
+  key: string
+  msgid: string
+  outcome: TranslateEntryOutcome
+  from?: 'memory' | 'engine'
+}
+
 export type TranslateEvent =
   | { type: 'start'; file: string; total: number; pending: number }
   | { type: 'tm-hit'; count: number }
+  // What the memory filled (right after tm-hit, without `index`) or what one
+  // batch drafted or skipped (just before its batch-done or batch-skipped).
+  // Once per batch, never per entry, and ignored by the CLI reporter.
+  | { type: 'entries'; index?: number; entries: TranslateEntry[] }
   // `at` on the batch boundaries is what the remaining-time estimate is built
   // from; see the review events, which carry it for the same reason.
   | { type: 'batch-start'; index: number; of: number; size: number; at: number }
@@ -530,6 +552,19 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
     const savedHits = hits.length > 0 && (await persist(po, hits, opts.dryRun))
     summary.fromTm = hits.length
     emit({ type: 'tm-hit', count: hits.length })
+    if (hits.length > 0) {
+      const sourceOf = new Map(units.map((u) => [u.key, u.msgid]))
+      emit({
+        type: 'entries',
+        entries: hits.map(
+          (h): TranslateEntry => ({
+            key: h.key,
+            msgid: shortMsgid(sourceOf.get(h.key) ?? h.key),
+            ...(h.fuzzy ? { outcome: 'fuzzy', from: 'memory' } : { outcome: 'memory' }),
+          }),
+        ),
+      })
+    }
     if (savedHits) emit({ type: 'saved' })
 
     const batches = chunk(rest, batchSize)
@@ -612,6 +647,11 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
 
         if (results === undefined) {
           summary.skipped += batch.length
+          emit({
+            type: 'entries',
+            index,
+            entries: batch.map((u): TranslateEntry => ({ key: u.key, msgid: shortMsgid(u.msgid), outcome: 'skipped' })),
+          })
           emit({ type: 'batch-skipped', index, size: batch.length, reason: errorMessage(lastError), at: Date.now() })
           if (++consecutiveSkips >= MAX_CONSECUTIVE_SKIPS) {
             summary.stopped = `${consecutiveSkips} batches failed in a row: ${errorMessage(lastError)}`
@@ -625,6 +665,17 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
         const fuzzy = results.filter((r) => r.fuzzy).length
         summary.translated += results.length
         summary.fuzzy += fuzzy
+        emit({
+          type: 'entries',
+          index,
+          entries: results.map(
+            (r): TranslateEntry => ({
+              key: r.key,
+              msgid: shortMsgid(unitOf.get(r.key)?.msgid ?? r.key),
+              ...(r.fuzzy ? { outcome: 'fuzzy', from: 'engine' } : { outcome: 'drafted' }),
+            }),
+          ),
+        })
         emit({ type: 'batch-done', index, translated: results.length, fuzzy, at: Date.now() })
         if (saved) emit({ type: 'saved' })
       }

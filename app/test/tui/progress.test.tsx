@@ -7,7 +7,7 @@ import { barDone, barTotal, ReviewProgress, reduceReviewProgress } from '../../s
 import { flat, render, tick } from './helpers.js'
 import { openInDefaultApp } from '../../src/tui/open-file.js'
 
-// The real one launches a GUI application. A test run must not open PoEdit on
+// The real one launches a GUI application. A test run must not open a .po editor on
 // whoever is running it.
 vi.mock('../../src/tui/open-file.js', () => ({
   openInDefaultApp: vi.fn(() => true),
@@ -131,7 +131,7 @@ describe('Progress', () => {
     expect(frame).toContain('placeholder %s missing in draft')
     expect(frame).toContain('Batch 2 skipped (2 entries): claude exited with code 1')
     expect(frame).toContain('Done. 2 translated, 1 fuzzy, 2 from TM, 2 skipped.')
-    expect(frame).toContain(`Open ${FILE} in PoEdit to review.`)
+    expect(frame).toContain(`Open ${FILE} in your .po editor to review.`)
   })
 
   it('shows the stop reason when the run was halted', async () => {

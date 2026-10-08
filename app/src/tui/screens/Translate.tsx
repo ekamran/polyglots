@@ -12,6 +12,7 @@ import { poEntryCount } from '../../po/count.js'
 import { FilePicker } from '../components/FilePicker.js'
 import { BACK_HINT, DONE_HINT, Hint } from '../components/Hint.js'
 import { Progress } from '../components/Progress.js'
+import { appendEvent } from '../components/RecentEntries.js'
 import { useTask } from '../hooks/useTask.js'
 import { createRunControl, type RunControl } from '../../run-control.js'
 import { agentBinOverride } from '../../agent/providers.js'
@@ -123,7 +124,8 @@ export function Translate({ cwd, onBack }: TranslateProps) {
         draftEngine: engine,
         batchSize,
         ...(bin === undefined ? {} : { bin }),
-        onProgress: (e) => setEvents((prev) => [...prev, e]),
+        // Bounded: a long run's per-entry events would otherwise all stay in memory.
+        onProgress: (e) => setEvents((prev) => appendEvent(prev, e)),
       }).finally(unsubscribe),
     )
   }
