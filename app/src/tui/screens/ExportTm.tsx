@@ -114,7 +114,7 @@ export function ExportTm({ onBack }: ExportTmProps) {
 
       {stage === 'format' && (
         <>
-          <Text>{format === 'tmx' ? '❯ ' : '  '}TMX, every approved wording (PoEdit and other CAT tools)</Text>
+          <Text>{format === 'tmx' ? '❯ ' : '  '}TMX, every approved wording (Poedit, OmegaT and other CAT tools)</Text>
           <Text>{format === 'po' ? '❯ ' : '  '}.po, one wording per source (the most recent)</Text>
           <Hint>↑↓ choose · enter continue · esc back to menu</Hint>
         </>

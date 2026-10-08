@@ -1,8 +1,10 @@
 import { VERSION } from '../version.js'
 
 // The version actually running, rather than the 0.1 this was written at: a
-// server operator reading their logs should be able to tell builds apart.
-export const USER_AGENT = `polyglots/${VERSION} (+https://github.com/emre/polyglots)`
+// server operator reading their logs should be able to tell builds apart. The
+// link is the one place that operator can find who to contact, so it names the
+// real repository rather than an account that does not hold it.
+export const USER_AGENT = `polyglots/${VERSION} (+https://github.com/emreerkan/polyglots)`
 const TIMEOUT_MS = 20_000
 
 export async function fetchHtml(url: string): Promise<string> {

@@ -3,8 +3,9 @@
 polyglots reviews and translates WordPress `.po` files. It is written for the
 people who look after a locale on translate.wordpress.org: it checks the
 strings contributors submit, repairs what it can, and drafts the strings
-nobody has translated yet. Every result is a `.po` file you open in Poedit and
-read before anything goes back to GlotPress. polyglots never uploads anything
+nobody has translated yet. Every result is a `.po` file you read in whatever
+editor you use for them (Poedit, Lokalize, Virtaal, a text editor) before
+anything goes back to GlotPress. polyglots never uploads anything
 to translate.wordpress.org; see [what leaves your machine](#what-leaves-your-machine).
 
 ## Install
@@ -47,7 +48,8 @@ draft with a model on your own machine, see [local models](local-models.md).
 
 ## Set your locale
 
-polyglots uses `tr` (Turkish) until you tell it otherwise. Set yours once:
+polyglots has no default locale. Set yours once (`de` here stands for
+yours):
 
 ```
 polyglots config set defaultLocale de
@@ -56,7 +58,13 @@ polyglots config set defaultLocale de
 Any WordPress locale works: `de`, `de_DE`, `pt-br`, `nl_NL_formal`. `review`,
 `translate`, `fetch`, the `glossary` and `tm` commands and `config add-name`
 also take `--locale` for a single run; the `rules` commands take the locale as
-an argument.
+an argument. A command that needs a locale and has none stops and says so.
+
+`review` and `translate` can also go without one: a file exported from
+GlotPress names its language in its header, and when every file given names
+the same one, and translate.wordpress.org has a single translation set for it,
+that is the locale used, and the run says so. A language with several sets,
+such as German with its formal variant, needs the locale named.
 
 ## Download the glossary
 

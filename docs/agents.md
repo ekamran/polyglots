@@ -9,7 +9,8 @@ polyglots is a command-line tool for the people who look after a WordPress
 locale on translate.wordpress.org. `review` checks a contributor's submitted
 strings and writes out only the entries that need work, already repaired.
 `translate` fills in untranslated strings with a machine draft that an AI
-agent then reviews. Results are `.po` files for a person to read in Poedit.
+agent then reviews. Results are `.po` files for a person to read in their own
+`.po` editor.
 polyglots never uploads anything to translate.wordpress.org. It does send
 text off the machine: a review sends each batch of strings to the agent's
 model provider, a translation sends source strings to DeepL or OpenAI, and
@@ -30,9 +31,11 @@ Work in this order. Steps 1 to 5 spend nothing; step 6 is the first that does.
 2. **Check the reviewer.** `polyglots doctor` reports whether the agent that
    reviews (claude or antigravity) is installed, signed in and set up. It
    sends no prompt. Add `--json` to parse it.
-3. **Know the locale.** `polyglots config get defaultLocale`. If the file is
-   for another locale, pass `--locale` on every command rather than changing
-   the setting.
+3. **Know the locale.** `polyglots config get defaultLocale` prints it, or an
+   empty line when none is set. polyglots has no default. If none is set, or
+   the file is for another locale, pass `--locale` on every command rather
+   than changing the setting. Ask the person which locale when the file name
+   or its `Language` header does not make it plain.
 4. **Make sure the glossary is there.** A review refuses to run without it.
    `polyglots glossary sync --locale <locale>` downloads it; it is free.
 5. **Run the rules first.** `polyglots review <file> --no-ai` runs only the

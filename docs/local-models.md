@@ -37,7 +37,7 @@ The `local` engine and the local reviewer share one target: the server
 
 ```
 polyglots config set localServerKind ollama              # or openai-compatible
-polyglots config set ollama.model qwen3.8:27b-mlx
+polyglots config set ollama.model qwen3:8b
 polyglots config set ollama.baseUrl http://localhost:11434
 polyglots config set openaiCompatible.baseUrl http://localhost:1234
 polyglots config set openaiCompatible.model qwen/qwen3-8b
@@ -60,8 +60,13 @@ again.
 
 ```
 ollama serve
-ollama pull qwen3.8:27b-mlx
+ollama pull qwen3:8b
+polyglots config set ollama.model qwen3:8b
 ```
+
+Pick a model your machine can hold; the tag above is only an example. The
+built-in default, `qwen3.8:27b-mlx`, is an MLX build, which Ollama runs on
+Apple silicon only, so on any other machine set the model you pulled.
 
 **Set the context length.** Ollama runs a model at its own default context
 unless told otherwise, and on many installs that is about 4,096 tokens. A

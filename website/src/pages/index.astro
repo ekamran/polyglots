@@ -24,7 +24,7 @@ const doc = (slug: string) => `${base}docs/${slug}/`;
         <p class="lede">
           A command-line tool for WordPress locale teams. It checks every string a contributor submits, repairs what it can,
           and hands you a file of only the entries that still need you. Untranslated strings get a machine draft reviewed
-          by an AI agent. Everything ends as a <code>.po</code> file you read in Poedit; nothing is uploaded to translate.wordpress.org.
+          by an AI agent. Everything ends as a <code>.po</code> file you read in your own editor; nothing is uploaded to translate.wordpress.org.
         </p>
         <Install id="hero" />
         <p class="more"><a href={doc('getting-started')}>Get started <Icon name="arrow" /></a></p>
@@ -36,7 +36,7 @@ const doc = (slug: string) => `${base}docs/${slug}/`;
   <section class="wrap band" aria-labelledby="round-trip">
     <p class="eyebrow">The round trip</p>
     <h2 id="round-trip">Fetch, translate, review, and see how it went</h2>
-    <p class="lede">Four commands cover a locale manager’s week. Each output below is the CLI’s own, rendered from its source when this page was built.</p>
+    <p class="lede">Four commands cover a locale team’s week. Each output below is the CLI’s own, rendered from its source when this page was built.</p>
 
     <ol class="phases">
       <li class="phase">
@@ -104,7 +104,7 @@ const doc = (slug: string) => `${base}docs/${slug}/`;
       </div>
       <div class="card">
         <h3>Your language’s conventions</h3>
-        <p>Title case, apostrophes, ampersands and number formats only matter in some languages, so they run where a locale’s rules turn them on. Turkish ships a maintained pack; any team can write its own, with its common mistakes. <a href={doc('locale-rules')}>Locale rules</a></p>
+        <p>Title case, apostrophes, ampersands and number formats only matter in some languages, so they run where a locale’s rules turn them on. Turkish ships a maintained pack and Swedish a starting one; any team can write its own, with its common mistakes. <a href={doc('locale-rules')}>Locale rules</a></p>
       </div>
       <div class="card">
         <h3>An agent for the rest</h3>
@@ -164,7 +164,7 @@ const doc = (slug: string) => `${base}docs/${slug}/`;
     <p class="eyebrow">Help translate polyglots</p>
     <h2 id="translate-it">The stats page speaks your language too</h2>
     <p class="lede">
-      The page <code>polyglots stats</code> writes ships in English and Turkish. Its strings are an ordinary gettext template: translate <a href="https://github.com/emreerkan/polyglots/blob/main/app/i18n/stats/stats.pot"><code>stats.pot</code></a> in Poedit and send the <code>.po</code> as a pull request, or attach it to an <a href="https://github.com/emreerkan/polyglots/issues">issue</a>. A locale rules pack for your language is just as welcome.
+      The page <code>polyglots stats</code> writes ships in English and Turkish. Its strings are an ordinary gettext template: translate <a href="https://github.com/emreerkan/polyglots/blob/main/app/i18n/stats/stats.pot"><code>stats.pot</code></a> in any <code>.po</code> editor and send the <code>.po</code> as a pull request, or attach it to an <a href="https://github.com/emreerkan/polyglots/issues">issue</a>. A locale rules pack for your language is just as welcome.
     </p>
   </section>
 
