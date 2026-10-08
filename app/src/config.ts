@@ -108,6 +108,10 @@ const configSchema = z.object({
   // Defaulted, so a config from before the limit existed parses. Whole
   // seconds and positive: zero would abandon every reply before it began.
   localIdleTimeout: z.number().int().positive().default(DEFAULT_LOCAL_IDLE_TIMEOUT_SECONDS),
+  // Optional and never defaulted: absent means the question was never
+  // answered, which the wizard needs to tell apart from an answered no.
+  // Either way nothing is sent unless it is true (src/usage).
+  usageStats: z.boolean().optional(),
 })
 
 const SECRET_KEYS: ReadonlyArray<keyof Secrets> = ['DEEPL_API_KEY', 'OPENAI_API_KEY']

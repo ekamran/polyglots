@@ -34,6 +34,7 @@ import { Split } from './screens/Split.js'
 import { Stats } from './screens/Stats.js'
 import { SyncGlossary } from './screens/SyncGlossary.js'
 import { Translate } from './screens/Translate.js'
+import { UsageStats } from './screens/UsageStats.js'
 import { Wizard } from './screens/Wizard.js'
 
 export interface AppProps {
@@ -363,6 +364,8 @@ function Shell({ cwd = process.cwd(), onExit }: AppProps) {
         return <About onBack={back} />
       case 'interface':
         return <Interface onBack={back} />
+      case 'usage-stats':
+        return <UsageStats onBack={back} />
       case 'setup':
         return (
           <Wizard

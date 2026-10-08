@@ -274,6 +274,10 @@ export interface PolyglotsConfig {
   // between two, before the reply is abandoned as cut off. Read by runs only,
   // never by a hash: it decides when to give up, not what is asked.
   localIdleTimeout: number
+  // Opt-in anonymous usage totals (src/usage). Absent until the person has
+  // answered, which counts as no: nothing is sent and no install id exists.
+  // DO_NOT_TRACK turns it off whatever this says.
+  usageStats?: boolean
 }
 
 export interface Secrets {
