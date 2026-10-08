@@ -12,7 +12,7 @@ const quote = (text: string) =>
 export function renderPot(phrases: Record<string, string>, notes: Partial<Record<string, string>>): string {
   const header = [
     '# Strings of the polyglots stats page (polyglots stats).',
-    '# Translate into i18n/stats/<WordPress locale>.po, for example tr_TR.po, and',
+    '# Translate into i18n/stats/<WordPress locale>.po, for example de_DE.po, and',
     '# set the Language header. The build embeds every .po in this folder;',
     '# fuzzy, empty and outdated strings are left out and show in English.',
     'msgid ""',
