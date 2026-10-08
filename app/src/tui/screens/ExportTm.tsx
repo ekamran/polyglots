@@ -7,8 +7,9 @@ import { useCommands, useConfig } from '../commands.js'
 import { FilePicker } from '../components/FilePicker.js'
 import { DONE_HINT, Hint } from '../components/Hint.js'
 import { useBackKeys } from '../hooks/useBackKeys.js'
+import { useKeys } from '../hooks/useKeys.js'
 import { useTask } from '../hooks/useTask.js'
-import { TextInput, useInput } from '../input.js'
+import { TextInput } from '../input.js'
 
 export interface ExportTmProps {
   onBack: () => void
@@ -62,27 +63,24 @@ export function ExportTm({ onBack }: ExportTmProps) {
   useBackKeys(picking ? () => setPicking(false) : onBack, {
     enabled: !running,
     allowQ: !editing,
-    onEnter: failed ? task.reset : done ? onBack : undefined,
   })
+  useKeys({ retry: { again: failed ? task.reset : undefined }, finished: { close: done ? onBack : undefined } })
 
-  useInput(
-    (input, key) => {
-      if (key.upArrow || key.downArrow || input === ' ') setFormat((f) => (f === 'tmx' ? 'po' : 'tmx'))
-      else if (key.return) {
-        setName(defaultTmName(format))
-        setStage('target')
-      }
+  useKeys(
+    {
+      exportFormat: {
+        format: () => setFormat((f) => (f === 'tmx' ? 'po' : 'tmx')),
+        next: () => {
+          setName(defaultTmName(format))
+          setStage('target')
+        },
+      },
     },
     { isActive: stage === 'format' },
   )
 
   // Tab, as on the statistics screen: the name field types any printable key.
-  useInput(
-    (_input, key) => {
-      if (key.tab) setPicking(true)
-    },
-    { isActive: editing },
-  )
+  useKeys({ target: { folder: () => setPicking(true) } }, { isActive: editing })
 
   const submit = () => {
     const file = target(dir, name, format)

@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Box, Text } from 'ink'
 import { TOKENS } from '../../ui/tokens.js'
-import { TextInput, useInput } from '../input.js'
+import { useKeys } from '../hooks/useKeys.js'
+import { TextInput } from '../input.js'
 import { GLOBAL_KEYS, SCREEN_KEYS, type KeyHelp } from '../keys.js'
 import { findNode, HOME, walk, type ScreenId } from '../menu.js'
 import { useGlyphs } from '../theme.js'
@@ -43,9 +44,7 @@ export function helpRows(screen: ScreenId, room: number): { keys: KeyHelp[]; glo
 }
 
 export function HelpOverlay({ screen, rows, onClose }: { screen: ScreenId; rows: number; onClose: () => void }) {
-  useInput((input, key) => {
-    if (key.escape || input === '?' || input === 'q' || key.return) onClose()
-  })
+  useKeys({ helpOverlay: { close: onClose } })
   const node = findNode(screen)
   const { keys, globals, trimmed } = helpRows(screen, rows)
   return (
@@ -125,10 +124,11 @@ export function Palette({ onPick, onClose, blocked = false }: { onPick: (id: Scr
   const [at, setAt] = useState(0)
   const matches = rankPalette(query, paletteEntries(glyphs.next))
   const chosen = Math.min(at, Math.max(0, matches.length - 1))
-  useInput((_input, key) => {
-    if (key.escape) onClose()
-    else if (key.upArrow) setAt(Math.max(0, chosen - 1))
-    else if (key.downArrow) setAt(Math.min(matches.length - 1, chosen + 1))
+  useKeys({
+    palette: {
+      close: onClose,
+      move: (_input, key) => (key.upArrow ? setAt(Math.max(0, chosen - 1)) : setAt(Math.min(matches.length - 1, chosen + 1))),
+    },
   })
   return (
     <Box flexDirection="column" borderStyle="round" paddingX={1} flexShrink={0}>
@@ -159,10 +159,7 @@ export function Palette({ onPick, onClose, blocked = false }: { onPick: (id: Scr
 }
 
 export function QuitPrompt({ onQuit, onCancel }: { onQuit: () => void; onCancel: () => void }) {
-  useInput((input, key) => {
-    if (input === 'y' || input === 'Y') onQuit()
-    else if (input === 'n' || input === 'N' || key.escape) onCancel()
-  })
+  useKeys({ quitPrompt: { quit: onQuit, stay: onCancel } })
   return (
     <Box flexDirection="column" borderStyle="round" paddingX={1} flexShrink={0} {...(TOKENS.warn.ink.color ? { borderColor: TOKENS.warn.ink.color } : {})}>
       <Text {...TOKENS.heading.ink}>A run is still going.</Text>

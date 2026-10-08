@@ -9,7 +9,7 @@ import { openInDefaultApp } from '../open-file.js'
 import { renderBar } from './Progress.js'
 import { estimateRemainingMs, formatDuration, formatFinishTime } from '../../cli/progress.js'
 import { useElapsed } from '../hooks/useElapsed.js'
-import { useInput } from '../input.js'
+import { useKeys } from '../hooks/useKeys.js'
 
 export interface ReviewProgressState {
   started: boolean
@@ -249,9 +249,11 @@ export function ReviewProgress({ events, wporgUsername = '' }: { events: ReviewE
   // Both only once the run is over. During it the keys belong to pause, resume
   // and stop, and a c or an o that silently did nothing would still have to be
   // explained to whoever pressed it.
-  useInput((input) => {
-    if (input === 'c' && report !== undefined) setCopied(copyToClipboard(report) ? 'yes' : 'no')
-    if (input === 'o' && repairedFile !== undefined) setOpened(openInDefaultApp(repairedFile))
+  useKeys({
+    reviewResult: {
+      open: repairedFile === undefined ? undefined : () => setOpened(openInDefaultApp(repairedFile)),
+      copy: report === undefined ? undefined : () => setCopied(copyToClipboard(report) ? 'yes' : 'no'),
+    },
   })
 
   if (!state.started) return <Text dimColor>Starting…</Text>

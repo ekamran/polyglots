@@ -15,7 +15,7 @@ import type { LocalServerKind, PolyglotsConfig } from '../../types.js'
 import { errorMessage, useCommands, useConfig } from '../commands.js'
 import { Hint } from '../components/Hint.js'
 import { useBackKeys } from '../hooks/useBackKeys.js'
-import { useInput } from '../input.js'
+import { useKeys } from '../hooks/useKeys.js'
 
 export interface LocalModelsProps {
   onBack: () => void
@@ -147,14 +147,13 @@ export function LocalModels({ onBack }: LocalModelsProps) {
   }
 
   useBackKeys(onBack)
-  useInput((input, key) => {
-    if (input === 'r' && !checking) {
-      check(true)
-      return
-    }
-    if (key.upArrow) setCursor((c) => Math.max(0, c - 1))
-    else if (key.downArrow) setCursor((c) => Math.min(Math.max(0, choices.length - 1), c + 1))
-    else if (key.return && choices[cursor]) choose(choices[cursor]!)
+  useKeys({
+    localModels: {
+      recheck: checking ? undefined : () => check(true),
+      move: (_input, key) =>
+        key.upArrow ? setCursor((c) => Math.max(0, c - 1)) : setCursor((c) => Math.min(Math.max(0, choices.length - 1), c + 1)),
+      choose: () => choices[cursor] && choose(choices[cursor]!),
+    },
   })
 
   const up = (servers ?? []).filter((s) => s.state === 'up')

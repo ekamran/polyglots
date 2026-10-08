@@ -18,7 +18,8 @@ import { createRunControl, type RunControl } from '../../run-control.js'
 import { agentBinOverride } from '../../agent/providers.js'
 import { initialBatchSize, providerLabel, screenBatchAdvice } from '../local.js'
 import { batchSizeChoices } from '../batch-size.js'
-import { TextInput, useInput } from '../input.js'
+import { useKeys } from '../hooks/useKeys.js'
+import { TextInput } from '../input.js'
 
 export interface TranslateProps {
   cwd: string
@@ -93,9 +94,6 @@ export function Translate({ cwd, onBack }: TranslateProps) {
   const stage = finished ? 'done' : phase
   const typing = stage === 'options' && focus === FIELD_LOCALE
 
-  const isBack = (input: string, key: { escape: boolean; ctrl: boolean; meta: boolean }) =>
-    key.escape || (!typing && input === 'q' && !key.ctrl && !key.meta)
-
   // Takes the locale rather than reading state, because the keypress that
   // starts a run normalises it in the same handler and would not see it yet.
   const start = (chosenLocale: string) => {
@@ -132,48 +130,50 @@ export function Translate({ cwd, onBack }: TranslateProps) {
 
   // Stays subscribed during the run: Ink only reads stdin (and so only sees Ctrl+C)
   // while some useInput is active.
-  useInput((input, key) => {
-    if (stage === 'running') {
-      const run = control.current
-      if (!run) return
-      // Pausing parks the run after the batch in flight, so the call already paid
-      // for still finishes and saves.
-      if (input === 'p') run.pause()
-      else if (input === 'r') run.resume()
-      else if (input === 'q') run.stop()
-      return
-    }
-    if (isBack(input, key)) {
-      onBack()
-      return
-    }
-    if (stage === 'done' && key.return) {
-      onBack()
-      return
-    }
-    if (stage !== 'options') return
-
-    if (key.upArrow || (key.tab && key.shift)) setFocus((f) => Math.max(0, f - 1))
-    else if (key.downArrow || key.tab) setFocus((f) => Math.min(FIELD_COUNT - 1, f + 1))
-    else if (key.leftArrow || key.rightArrow || (input === ' ' && !typing)) {
-      const step = key.leftArrow ? -1 : 1
-      if (focus === FIELD_MODE) setMode((m) => next(MODES, m, step))
-      if (focus === FIELD_ENGINE) setEngine((e) => next(ENGINES, e, step))
-      if (focus === FIELD_BATCH) setBatchSize((n) => next(batchSizeChoices(initialBatchSize(config)), n, step))
-    } else if (key.return && focus !== FIELD_LOCALE) {
-      if (focus === FIELD_START) {
-        const normalized = resolveLocale(locale)?.id ?? normalizeLocale(locale)
-        if (normalized.length > 0) {
-          setLocale(normalized)
-          // No second question, on either mode. Choosing `all` is the choice,
-          // and the screen where it is made says what it does; re-translating
-          // entries that already have a translation is the point of the mode
-          // rather than a mistake to catch on the way out. Review starts on the
-          // keypress too.
-          start(normalized)
-        }
-      } else setFocus((f) => f + 1)
-    }
+  const running = stage === 'running'
+  const options = stage === 'options'
+  useKeys({
+    // Pausing parks the run after the batch in flight, so the call already paid
+    // for still finishes and saves.
+    run: {
+      pause: running ? () => control.current?.pause() : undefined,
+      resume: running ? () => control.current?.resume() : undefined,
+      stop: running ? () => control.current?.stop() : undefined,
+    },
+    back: { esc: running ? undefined : onBack, q: running || typing ? undefined : onBack },
+    finished: { close: stage === 'done' ? onBack : undefined },
+    runForm: {
+      move: options
+        ? (_input, key) =>
+            key.upArrow || (key.tab && key.shift) ? setFocus((f) => Math.max(0, f - 1)) : setFocus((f) => Math.min(FIELD_COUNT - 1, f + 1))
+        : undefined,
+      change: options
+        ? (input, key) => {
+            if (input === ' ' && typing) return false
+            const step = key.leftArrow ? -1 : 1
+            if (focus === FIELD_MODE) setMode((m) => next(MODES, m, step))
+            if (focus === FIELD_ENGINE) setEngine((e) => next(ENGINES, e, step))
+            if (focus === FIELD_BATCH) setBatchSize((n) => next(batchSizeChoices(initialBatchSize(config)), n, step))
+          }
+        : undefined,
+      select:
+        options && focus !== FIELD_LOCALE
+          ? () => {
+              if (focus === FIELD_START) {
+                const normalized = resolveLocale(locale)?.id ?? normalizeLocale(locale)
+                if (normalized.length > 0) {
+                  setLocale(normalized)
+                  // No second question, on either mode. Choosing `all` is the choice,
+                  // and the screen where it is made says what it does; re-translating
+                  // entries that already have a translation is the point of the mode
+                  // rather than a mistake to catch on the way out. Review starts on the
+                  // keypress too.
+                  start(normalized)
+                }
+              } else setFocus((f) => f + 1)
+            }
+          : undefined,
+    },
   })
 
   const name = basename(file)

@@ -2,7 +2,7 @@ import { Box, Text } from 'ink'
 import type { AgentStatus } from '../../agent/discover.js'
 import { Hint } from '../components/Hint.js'
 import { useBackKeys } from '../hooks/useBackKeys.js'
-import { useInput } from '../input.js'
+import { useKeys } from '../hooks/useKeys.js'
 
 export interface AgentsProps {
   agents?: AgentStatus[]
@@ -36,9 +36,7 @@ function setup(status: AgentStatus): string {
  */
 export function Agents({ agents, checking, error, onRecheck, onBack }: AgentsProps) {
   useBackKeys(onBack)
-  useInput((input) => {
-    if (input === 'r' && !checking) onRecheck()
-  })
+  useKeys({ agents: { recheck: checking ? undefined : onRecheck } })
   return (
     <Box flexDirection="column">
       <Text bold>AI agents</Text>

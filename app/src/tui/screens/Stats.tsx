@@ -7,11 +7,12 @@ import { errorMessage, useCommands } from '../commands.js'
 import { FilePicker } from '../components/FilePicker.js'
 import { DONE_HINT, Hint } from '../components/Hint.js'
 import { useBackKeys } from '../hooks/useBackKeys.js'
+import { useKeys } from '../hooks/useKeys.js'
 import { useTask } from '../hooks/useTask.js'
 import { useServices, useStatsError, useStatsUrl } from '../services.js'
 import { portInUseWarning } from '../../stats/server.js'
 import { openInDefaultApp } from '../open-file.js'
-import { TextInput, useInput } from '../input.js'
+import { TextInput } from '../input.js'
 
 export interface StatsExportProps {
   cwd: string
@@ -45,29 +46,17 @@ export function StatsExport({ cwd, onBack }: StatsExportProps) {
   useBackKeys(picking ? () => setPicking(false) : onBack, {
     enabled: !running,
     allowQ: !editing,
-    onEnter: failed ? task.reset : done ? onBack : undefined,
   })
+  useKeys({ retry: { again: failed ? task.reset : undefined }, finished: { close: done ? onBack : undefined } })
 
   // Tab rather than a letter: the name field has focus here, and ink-text-input
   // types any printable key into it. A letter opened the picker and left itself
   // behind in the file name, which is how `polyglots-stats.htmlf` happened.
   // Tab is one of the few keys that field deliberately ignores, and it is
   // already how the review screen moves between its own controls.
-  useInput(
-    (_input, key) => {
-      if (key.tab) setPicking(true)
-    },
-    { isActive: editing },
-  )
+  useKeys({ target: { folder: () => setPicking(true) } }, { isActive: editing })
 
-  useInput(
-    (input) => {
-      if (input === 'o' && task.state.status === 'done') {
-        setOpened(openInDefaultApp(task.state.result.file))
-      }
-    },
-    { isActive: task.state.status === 'done' },
-  )
+  useKeys({ statsExport: { open: done ? () => setOpened(openInDefaultApp(done.result.file)) : undefined } }, { isActive: done !== undefined })
 
   const submit = () => {
     const file = statsTarget(dir, name)
@@ -178,18 +167,16 @@ export function Stats({ cwd, onBack }: StatsProps) {
   useEffect(() => (url ? undefined : start()), [])
 
   useBackKeys(onBack, { enabled: !exporting })
-  useInput(
-    (input) => {
-      if (input === 'w') setExporting(true)
-      else if (input === 'o' && url) {
+  useKeys(
+    {
+      stats: {
+        write: () => setExporting(true),
         // The URL stays on screen either way; this only says whether a
         // browser could be asked, which over SSH it cannot.
-        void commands.openInBrowser(url).then(setOpened)
-      } else if (input === 'x' && serving.state === 'up') {
-        void services.stopStats().then(() => setServing({ state: 'stopped' }))
-      } else if (input === 's' && (serving.state === 'stopped' || serving.state === 'failed')) {
-        start()
-      }
+        open: url ? () => void commands.openInBrowser(url).then(setOpened) : undefined,
+        stop: serving.state === 'up' ? () => void services.stopStats().then(() => setServing({ state: 'stopped' })) : undefined,
+        serve: serving.state === 'stopped' || serving.state === 'failed' ? () => void start() : undefined,
+      },
     },
     { isActive: !exporting },
   )

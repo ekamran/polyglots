@@ -6,6 +6,7 @@ import { resolveLocale } from '../../wporg/locales.js'
 import { useCommands, useConfig } from '../commands.js'
 import { DONE_HINT, Hint } from '../components/Hint.js'
 import { useBackKeys } from '../hooks/useBackKeys.js'
+import { useKeys } from '../hooks/useKeys.js'
 import { useTask } from '../hooks/useTask.js'
 import { TextInput } from '../input.js'
 
@@ -24,7 +25,8 @@ export function SyncGlossary({ onBack }: SyncGlossaryProps) {
   const failed = task.state.status === 'error'
   const finished = !editing && !running
 
-  useBackKeys(onBack, { enabled: !running, allowQ: !editing, onEnter: failed ? task.reset : finished ? onBack : undefined })
+  useBackKeys(onBack, { enabled: !running, allowQ: !editing })
+  useKeys({ retry: { again: failed ? task.reset : undefined }, finished: { close: finished ? onBack : undefined } })
 
   const submit = (value: string) => {
     const normalized = resolveLocale(value)?.id ?? normalizeLocale(value)

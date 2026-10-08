@@ -11,7 +11,7 @@ import type {
 } from '../../commands/translate.js'
 import type { Token } from '../../ui/tokens.js'
 import { RecentEntries, recentEntries, RECENT_LIMIT, type PanelRow } from './RecentEntries.js'
-import { useInput } from '../input.js'
+import { useKeys } from '../hooks/useKeys.js'
 
 export interface ProgressState {
   started: boolean
@@ -199,9 +199,7 @@ export function Progress({ events }: { events: TranslateEvent[] }) {
   // Only once the run is over: during it the keys belong to pause, resume and
   // stop, and opening the file mid-run would show a catalogue still being
   // rewritten after every batch.
-  useInput((input) => {
-    if (input === 'o' && translatedFile !== undefined) setOpened(openInDefaultApp(translatedFile))
-  })
+  useKeys({ translateResult: { open: translatedFile === undefined ? undefined : () => setOpened(openInDefaultApp(translatedFile)) } })
 
   if (!state.started) return <Text dimColor>Starting…</Text>
 

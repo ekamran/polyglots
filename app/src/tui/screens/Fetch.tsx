@@ -21,7 +21,8 @@ import { batchSizeChoices } from '../batch-size.js'
 import { useCommands, useConfig } from '../commands.js'
 import { DONE_HINT, Hint } from '../components/Hint.js'
 import { useTask } from '../hooks/useTask.js'
-import { useInput, useTypingWhile } from '../input.js'
+import { useKeys } from '../hooks/useKeys.js'
+import { useTypingWhile } from '../input.js'
 
 export interface FetchProps {
   onBack: () => void
@@ -213,81 +214,85 @@ export function Fetch({ onBack }: FetchProps) {
 
   useTypingWhile(shown === 'list')
 
-  useInput((input, key) => {
-    if (shown === 'running') {
-      const run = control.current
-      if (!run) return
-      if (input === 'p') run.pause()
-      else if (input === 'r') run.resume()
-      else if (input === 'q') run.stop()
-      return
-    }
-
-    if (shown === 'list') {
-      // Only escape leaves: q is a letter that slugs contain.
-      if (key.escape) return onBack()
-      if (key.return || (key.ctrl && input === 'd')) {
-        const line = current.trim()
-        if (line !== '' && !(key.ctrl && input === 'd')) {
-          setLines((prev) => [...prev, line])
-          setCurrent('')
-          return
-        }
-        const all = line === '' ? lines : [...lines, line]
-        if (parseProjectLines(all.join('\n')).length > 0) {
-          setLines(all)
-          setCurrent('')
-          setStage('get')
-        }
-        return
-      }
-      if (key.backspace || key.delete) {
-        if (current.length > 0) setCurrent((c) => c.slice(0, -1))
-        else if (lines.length > 0) {
-          setCurrent(lines[lines.length - 1]!)
-          setLines((prev) => prev.slice(0, -1))
-        }
-        return
-      }
-      if (input && !key.ctrl && !key.meta) type(input)
-      return
-    }
-
-    if (key.escape || (input === 'q' && !key.ctrl && !key.meta)) return onBack()
-    if (shown === 'done' && key.return) return onBack()
-
-    if (shown === 'get') {
-      if (key.upArrow || key.downArrow || key.leftArrow || key.rightArrow || input === ' ') {
-        setStatus((s) => (s === 'waiting' ? 'untranslated' : 'waiting'))
-      } else if (key.return) resolve(status)
-      return
-    }
-
-    if (shown === 'resolved') {
-      if (!key.return) return
-      if (ready.length === 0) return onBack()
-      setFocus(0)
-      setStage('options')
-      return
-    }
-
-    if (shown !== 'options') return
-    const field = fields[focus]!
-    if (key.upArrow || (key.tab && key.shift)) setFocus((f) => Math.max(0, f - 1))
-    else if (key.downArrow || key.tab) setFocus((f) => Math.min(fields.length - 1, f + 1))
-    else if (key.leftArrow || key.rightArrow || input === ' ') {
-      const step = key.leftArrow ? -1 : 1
-      // Parallel stops at its ends instead of wrapping: wrapping from eight to
-      // one on a held key would quietly turn a fast batch into a slow one.
-      if (field === 'parallel') setParallel((n) => Math.min(MAX_PARALLEL, Math.max(1, n + step)))
-      if (field === 'batch') setBatchSize((n) => next(batchSizeChoices(initialBatchSize(config)), n, step))
-      if (field === 'engine') setEngine((e) => next(ENGINES, e, step))
-      if (field === 'fresh') setFresh((v) => !v)
-      if (field === 'noAi') setNoAi((v) => !v)
-    } else if (key.return) {
-      if (field === 'start') start()
-      else setFocus((f) => f + 1)
-    }
+  // Moves on from the list once it names at least one project.
+  const endList = (all: string[]) => {
+    if (parseProjectLines(all.join('\n')).length === 0) return
+    setLines(all)
+    setCurrent('')
+    setStage('get')
+  }
+  const listing = shown === 'list'
+  const field = fields[focus]!
+  useKeys({
+    run: {
+      pause: shown === 'running' ? () => control.current?.pause() : undefined,
+      resume: shown === 'running' ? () => control.current?.resume() : undefined,
+      stop: shown === 'running' ? () => control.current?.stop() : undefined,
+    },
+    // Only escape leaves the list: q is a letter that slugs contain.
+    back: { esc: shown === 'running' ? undefined : onBack, q: shown === 'running' || listing ? undefined : onBack },
+    fetchList: {
+      add: listing
+        ? () => {
+            const line = current.trim()
+            if (line === '') return endList(lines)
+            setLines((prev) => [...prev, line])
+            setCurrent('')
+          }
+        : undefined,
+      done: listing
+        ? () => {
+            const line = current.trim()
+            endList(line === '' ? lines : [...lines, line])
+          }
+        : undefined,
+      erase: listing
+        ? () => {
+            if (current.length > 0) setCurrent((c) => c.slice(0, -1))
+            else if (lines.length > 0) {
+              setCurrent(lines[lines.length - 1]!)
+              setLines((prev) => prev.slice(0, -1))
+            }
+          }
+        : undefined,
+      type: listing ? type : undefined,
+    },
+    finished: { close: shown === 'done' ? onBack : undefined },
+    fetchGet: {
+      choose: shown === 'get' ? () => setStatus((s) => (s === 'waiting' ? 'untranslated' : 'waiting')) : undefined,
+      check: shown === 'get' ? () => resolve(status) : undefined,
+    },
+    fetchResolved: {
+      next:
+        shown === 'resolved'
+          ? () => {
+              if (ready.length === 0) return onBack()
+              setFocus(0)
+              setStage('options')
+            }
+          : undefined,
+    },
+    runForm: {
+      move:
+        shown === 'options'
+          ? (_input, key) =>
+              key.upArrow || (key.tab && key.shift) ? setFocus((f) => Math.max(0, f - 1)) : setFocus((f) => Math.min(fields.length - 1, f + 1))
+          : undefined,
+      change:
+        shown === 'options'
+          ? (_input, key) => {
+              const step = key.leftArrow ? -1 : 1
+              // Parallel stops at its ends instead of wrapping: wrapping from eight to
+              // one on a held key would quietly turn a fast batch into a slow one.
+              if (field === 'parallel') setParallel((n) => Math.min(MAX_PARALLEL, Math.max(1, n + step)))
+              if (field === 'batch') setBatchSize((n) => next(batchSizeChoices(initialBatchSize(config)), n, step))
+              if (field === 'engine') setEngine((e) => next(ENGINES, e, step))
+              if (field === 'fresh') setFresh((v) => !v)
+              if (field === 'noAi') setNoAi((v) => !v)
+            }
+          : undefined,
+      select: shown === 'options' ? () => (field === 'start' ? start() : setFocus((f) => f + 1)) : undefined,
+    },
   })
 
   const marker = (field: Field) => (fields[focus] === field ? '❯ ' : '  ')
