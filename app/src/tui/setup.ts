@@ -1,11 +1,11 @@
 import { existsSync, readFileSync } from 'node:fs'
-import Database from 'better-sqlite3'
 import { usableProviders, type AgentStatus } from '../agent/discover.js'
 import { loadLocaleRules } from '../rules/load.js'
 import { configFile, dbFile } from '../paths.js'
 import { allGlossary } from '../storage/glossary.js'
 import type { GlossaryEntry, Locale, PolyglotsConfig, Secrets } from '../types.js'
 import { SETUP_STEPS, type SetupStep, type TuiState } from './state.js'
+import { readOnly } from '../storage/read-only.js'
 
 // The five setup steps and whether each is done, worked out in one place so
 // the header's x/5 and the wizard can never disagree.
@@ -86,49 +86,26 @@ export function localeConfigured(): boolean {
 }
 
 /**
- * Glossary rows for a locale, read without writing.
- *
- * Not openDb(): that sets WAL and runs migrations, which is a write to the
- * one file polyglots cannot regenerate, and this runs at every launch, maybe
- * beside a review that is writing to it. A read-only handle on a WAL
- * database still creates the side files when they are missing: a 0-byte
- * -wal and a 32 KB -shm, which the next writer's close removes. immutable=1
- * would avoid them, but promises SQLite the file cannot change, which is
- * false while a review is writing and can serve a torn read. Undefined when
- * there is no database or it cannot be read, which the status shows as not
- * synced.
+ * Glossary rows for a locale, counted without writing (see readOnly).
+ * Undefined when there is no database or it cannot be read, which the status
+ * shows as not synced.
  */
 export function glossaryCount(locale: Locale, path: string = dbFile()): number | undefined {
-  let db: Database.Database | undefined
-  try {
-    db = new Database(path, { readonly: true, fileMustExist: true })
-    const row = db.prepare('SELECT COUNT(*) AS n FROM glossary WHERE locale = ?').get(locale) as { n: number }
-    return row.n
-  } catch {
-    return undefined
-  } finally {
-    db?.close()
-  }
+  return readOnly(
+    path,
+    (db) => (db.prepare('SELECT COUNT(*) AS n FROM glossary WHERE locale = ?').get(locale) as { n: number }).n,
+    undefined,
+  )
 }
 
 /**
- * A locale's glossary rows, read the same way as glossaryCount and for the
- * same reason: the Locale Rules trial reads them so the glossary rule fires in
- * a trial too, and a screen that only reads has no business switching the
- * journal mode or running migrations on polyglots.db. Empty when there is no
- * database or it cannot be read, which leaves the trial without the glossary
- * rule rather than without a trial.
+ * A locale's glossary rows, read the same way, for the Locale Rules trial so
+ * the glossary rule fires in a trial too. Empty when there is no database or
+ * it cannot be read, which leaves the trial without the glossary rule rather
+ * than without a trial.
  */
 export function glossaryRows(locale: Locale, path: string = dbFile()): GlossaryEntry[] {
-  let db: Database.Database | undefined
-  try {
-    db = new Database(path, { readonly: true, fileMustExist: true })
-    return allGlossary(db, locale)
-  } catch {
-    return []
-  } finally {
-    db?.close()
-  }
+  return readOnly(path, (db) => allGlossary(db, locale), [])
 }
 
 /** Whether the locale has a rules file. An invalid one still counts: it exists, and its screen says what is wrong. */

@@ -1,11 +1,10 @@
 import { basename } from 'node:path'
-import { existsSync } from 'node:fs'
-import Database from 'better-sqlite3'
 import { dbFile, jobsDbFile } from '../paths.js'
 import { loadPo } from '../po/po-file.js'
 import type { Locale, PolyglotsConfig } from '../types.js'
 import { WPORG_LOCALES, resolveLocale } from '../wporg/locales.js'
 import { UsageError, parseLocaleArg } from './args.js'
+import { readOnly } from '../storage/read-only.js'
 
 // polyglots once fell back to tr when no locale was set, because it was
 // written by and for one Turkish reviewer. For anyone else that fallback was
@@ -30,18 +29,7 @@ const SET_IT = 'or set one for every run: polyglots config set defaultLocale <co
  * either counts as no evidence, since this only decides whether to add a hint.
  */
 export function hasEarlierTurkishWork(paths: { jobs: string; memory: string } = { jobs: jobsDbFile(), memory: dbFile() }): boolean {
-  const any = (path: string, sql: string): boolean => {
-    if (!existsSync(path)) return false
-    let db: Database.Database | undefined
-    try {
-      db = new Database(path, { readonly: true, fileMustExist: true })
-      return db.prepare(sql).get() !== undefined
-    } catch {
-      return false
-    } finally {
-      db?.close()
-    }
-  }
+  const any = (path: string, sql: string): boolean => readOnly(path, (db) => db.prepare(sql).get() !== undefined, false)
   return (
     any(paths.jobs, "SELECT 1 FROM run WHERE locale = 'tr' LIMIT 1") ||
     any(paths.memory, "SELECT 1 FROM glossary WHERE locale = 'tr' LIMIT 1")
