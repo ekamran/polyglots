@@ -22,6 +22,7 @@ import { initialBatchSize, providerLabel, screenBatchAdvice } from '../local.js'
 import { batchSizeChoices } from '../batch-size.js'
 import { useKeys } from '../hooks/useKeys.js'
 import { TextInput } from '../input.js'
+import { useFooterStage } from '../footer-stage.js'
 
 export interface TranslateProps {
   cwd: string
@@ -97,6 +98,7 @@ export function Translate({ cwd, onBack }: TranslateProps) {
   const finished = phase === 'running' && task.state.status !== 'running'
   const stage = finished ? 'done' : phase
   const typing = stage === 'options' && focus === FIELD_LOCALE
+  useFooterStage(stage)
 
   // Takes the locale rather than reading state, because the keypress that
   // starts a run normalises it in the same handler and would not see it yet.

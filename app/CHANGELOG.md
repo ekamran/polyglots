@@ -25,7 +25,7 @@ Entries say what changed. For why and how, read the commit.
 - A second polyglots serving stats uses the page another one already serves.
 - `polyglots stats --no-open` serves the dashboard without opening a browser.
 - Review and translate run screens list the most recent entries as each batch lands, with their outcome and rule hits.
-- TUI screens taller than the window scroll to keep the cursor and a run's keys in view.
+- TUI screens taller than the window scroll to keep the cursor and a run's keys in view; page up and page down scroll a screen with no cursor.
 - `review` and `translate` take the locale from the file's Language header when nothing else names one.
 
 ### Changed
@@ -47,6 +47,7 @@ Entries say what changed. For why and how, read the commit.
 
 - `review` printed the problems file's path twice.
 - The TUI's key hints match the keys every screen binds; Export TM's footer showed keys it does not have.
+- The review, translate and fetch footers list the keys of the stage they are in, not the options form's during a run.
 - Emoji and other wide characters no longer shift box borders, and truncated cells keep their colour.
 - Boxes and the live progress line never run wider than the terminal, including under `tee`.
 - The TUI no longer waits more than a second on a stalled stream when it exits.

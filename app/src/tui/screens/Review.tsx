@@ -19,6 +19,7 @@ import { createRunControl, type RunControl } from '../../run-control.js'
 import { batchSizeChoices } from '../batch-size.js'
 import { useKeys } from '../hooks/useKeys.js'
 import { TextInput } from '../input.js'
+import { useFooterStage } from '../footer-stage.js'
 
 export interface ReviewProps {
   cwd: string
@@ -61,6 +62,7 @@ export function Review({ cwd, onBack }: ReviewProps) {
   const finished = phase === 'running' && task.state.status !== 'running'
   const stage = finished ? 'done' : phase
   const typing = stage === 'options' && focus === FIELD_LOCALE
+  useFooterStage(stage)
 
   const start = (chosenLocale: string) => {
     setEvents([])

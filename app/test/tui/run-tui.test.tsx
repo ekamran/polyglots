@@ -384,6 +384,30 @@ describe('runTui', () => {
     expect(exit).toHaveBeenCalledWith(130)
   })
 
+  it('shows the run keys in the footer while a translate runs', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => (release = resolve))
+    const commands = fakeCommands({
+      translateFile: vi.fn(async (opts: TranslateOptions) => {
+        opts.onProgress?.({ type: 'start', file: opts.file, total: 4, pending: 2 })
+        await gate
+        return { file: opts.file, total: 4, pending: 2, fromTm: 0, translated: 2, fuzzy: 0, skipped: 0 }
+      }),
+    })
+    const { stdin, exit, done, lastFrame } = start(commands)
+    await openTranslateAndStart(stdin, lastFrame)
+    await waitForText(lastFrame, /0\/2/)
+    const footer = lastFrame()!.split('\n').at(-1)!
+    expect(footer).toMatch(/p pause/)
+    expect(footer).not.toMatch(/move between fields/)
+    release()
+    stdin.write(CTRL_C)
+    await tick()
+    stdin.write(CTRL_C)
+    await done
+    void exit
+  })
+
   it('keeps the run going when the quit prompt is declined', async () => {
     let release!: () => void
     const gate = new Promise<void>((resolve) => (release = resolve))

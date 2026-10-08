@@ -9,6 +9,7 @@ import { TOKENS } from '../ui/tokens.js'
 import { Footer, Header } from './components/Chrome.js'
 import { HelpOverlay, Palette, QuitPrompt } from './components/Overlays.js'
 import { Viewport, type PageBy } from './components/Viewport.js'
+import { FooterStageProvider } from './footer-stage.js'
 import { ActivityProvider, createActivity, useBusy, type Activity } from './hooks/activity.js'
 import { useGlobalKeys } from './hooks/useKeys.js'
 import { InputGate, TypingProvider, useTyping, type Key } from './input.js'
@@ -255,6 +256,7 @@ function Shell({ cwd = process.cwd(), onExit }: AppProps) {
   // one set now would pop up unbidden when the terminal is enlarged.
   const framed = overlay === undefined && layout.fits
   const pageBody = useRef<PageBy | undefined>(undefined)
+  const [footerStage, setFooterStage] = useState<string | undefined>(undefined)
   // Printable, so they belong to a text field when one has focus. Ctrl+K is
   // not something a field types, so it opens the palette from inside one.
   const unlessTyping = (act: () => void) => (_input: string, key: Key) => {
@@ -401,9 +403,11 @@ function Shell({ cwd = process.cwd(), onExit }: AppProps) {
         <Box display={hidden ? 'none' : 'flex'} flexDirection="column" flexGrow={1}>
           <InputGate open={!hidden}>
             {/* Keyed by screen, so the next screen starts at its top. */}
-            <Viewport key={screen} pageRef={pageBody}>
-              {view}
-            </Viewport>
+            <FooterStageProvider value={setFooterStage}>
+              <Viewport key={screen} pageRef={pageBody}>
+                {view}
+              </Viewport>
+            </FooterStageProvider>
           </InputGate>
         </Box>
         {!layout.fits && (
@@ -435,7 +439,7 @@ function Shell({ cwd = process.cwd(), onExit }: AppProps) {
         {overlay === 'quit' && <QuitPrompt onQuit={quit} onCancel={() => setOverlay(undefined)} />}
       </Box>
       {layout.fits ? (
-        <Footer keys={footerKeys(screen, statsUrl !== undefined)} busy={busy} />
+        <Footer keys={footerKeys(screen, statsUrl !== undefined, footerStage)} busy={busy} />
       ) : null}
     </Box>
     </Box>

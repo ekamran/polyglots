@@ -286,7 +286,14 @@ export const GLOBAL_KEYS: KeyHelp[] = [KEYS.global.help, KEYS.global.palette, KE
 export interface ScreenKeys {
   shown: KeyEntry[]
   more?: KeyEntry[]
+  // What the footer leads with in each stage of a screen that has stages,
+  // drawn from shown and more: a run screen's form keys do nothing while
+  // the run goes, and its run keys nothing once it is done.
+  stages?: Partial<Record<FooterStage, KeyEntry[]>>
 }
+
+/** The stages a screen reports to the frame for its footer. */
+export type FooterStage = 'pick' | 'options' | 'running' | 'done'
 
 const { menu, runForm, run, finished, retry, picker, fields } = KEYS
 const MENU = [menu.move, menu.open, menu.hotkey]
@@ -300,8 +307,21 @@ export const SCREENS: Record<ScreenId, ScreenKeys> = {
   },
   tools: { shown: MENU },
   config: { shown: MENU },
-  translate: { shown: [...FORM, ...RUN, KEYS.translateResult.open], more: [picker.sort, finished.close] },
-  review: { shown: [...FORM, ...RUN, KEYS.reviewResult.open, KEYS.reviewResult.copy], more: [picker.sort, finished.close] },
+  translate: {
+    shown: [...FORM, ...RUN, KEYS.translateResult.open],
+    more: [picker.sort, finished.close],
+    stages: { pick: [picker.sort], options: FORM, running: RUN, done: [KEYS.translateResult.open, finished.close] },
+  },
+  review: {
+    shown: [...FORM, ...RUN, KEYS.reviewResult.open, KEYS.reviewResult.copy],
+    more: [picker.sort, finished.close],
+    stages: {
+      pick: [picker.sort],
+      options: FORM,
+      running: RUN,
+      done: [KEYS.reviewResult.open, KEYS.reviewResult.copy, finished.close],
+    },
+  },
   fetch: {
     shown: [KEYS.fetchList.add, KEYS.fetchList.done, ...RUN],
     more: [
@@ -314,6 +334,7 @@ export const SCREENS: Record<ScreenId, ScreenKeys> = {
       finished.close,
       KEYS.needsLocale.setup,
     ],
+    stages: { options: FORM, running: RUN, done: [finished.close] },
   },
   stats: {
     shown: [KEYS.stats.open, KEYS.stats.write, KEYS.stats.stop],
@@ -366,7 +387,7 @@ export const SCREEN_KEYS = Object.fromEntries(
 
 // What the footer has room for: the screen's first few keys, then the
 // globals that matter most. The `?` overlay has the rest.
-export function footerKeys(screen: ScreenId, serving = false): KeyHelp[] {
+export function footerKeys(screen: ScreenId, serving = false, stage?: string): KeyHelp[] {
   // While the stats server runs, x stops it from any screen; the stats screen
   // lists x among its own keys already.
   const stats = serving && screen !== 'stats' ? [{ keys: 'x', does: 'stop stats' }] : []
@@ -382,6 +403,7 @@ export function footerKeys(screen: ScreenId, serving = false): KeyHelp[] {
       { keys: 'q', does: 'quit' },
     ]
   }
-  const own = SCREENS[screen].shown.slice(0, 3).map(help)
+  const { shown, stages } = SCREENS[screen]
+  const own = (stages?.[stage as FooterStage] ?? shown).slice(0, 3).map(help)
   return [...stats, ...own, { keys: '?', does: 'help' }, ...(own.some((k) => k.keys === 'esc') ? [] : [{ keys: 'esc', does: 'back' }])]
 }

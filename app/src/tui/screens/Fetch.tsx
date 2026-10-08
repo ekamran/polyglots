@@ -24,6 +24,7 @@ import { DONE_HINT, Hint } from '../components/Hint.js'
 import { useTask } from '../hooks/useTask.js'
 import { useKeys } from '../hooks/useKeys.js'
 import { useTypingWhile } from '../input.js'
+import { useFooterStage } from '../footer-stage.js'
 
 export interface FetchProps {
   // Opens setup at the locale step; see NeedsLocale.
@@ -111,6 +112,7 @@ function FetchInLocale({ onBack, locale }: FetchProps & { locale: Locale }) {
   const fields = review ? REVIEW_FIELDS : TRANSLATE_FIELDS
   const ready = resolutions.filter((r): r is Ready => r.state === 'ready')
   const shown = stage === 'running' && task.state.status !== 'running' ? 'done' : stage
+  useFooterStage(shown === 'options' || shown === 'running' || shown === 'done' ? shown : undefined)
 
   const resolve = (chosen: FetchStatus) => {
     setStage('resolving')

@@ -258,3 +258,30 @@ describe('dispatchKeys', () => {
     expect(calls).toEqual([])
   })
 })
+
+// A run screen passes through stages, and its footer lists the keys of the
+// stage it is in: "move between fields" while a review runs pointed at keys
+// that did nothing.
+describe('footer keys by stage', () => {
+  const footer = (screen: ScreenId, stage?: string) => footerKeys(screen, false, stage).map((k) => k.does)
+
+  it.each(['review', 'translate'] as const)('%s lists the run keys while it runs, and the result keys when done', (screen) => {
+    expect(footer(screen, 'options')).toContain('move between fields')
+    expect(footer(screen, 'running')).toEqual(expect.arrayContaining(['pause after the current batch', 'stop after the current batch']))
+    expect(footer(screen, 'running')).not.toContain('move between fields')
+    expect(footer(screen, 'done')).toContain('back to the menu once it is done')
+    expect(footer(screen, 'pick')).not.toContain('move between fields')
+  })
+
+  it('lists the run keys while fetch runs', () => {
+    expect(footer('fetch', 'running')).toContain('pause after the current batch')
+    expect(footer('fetch', 'running')).not.toContain('continue')
+  })
+
+  it('keeps every stage within what the screen lists', () => {
+    for (const [screen, { shown, more = [], stages = {} }] of Object.entries(SCREENS)) {
+      const listed = new Set<KeyEntry>([...shown, ...more])
+      for (const entries of Object.values(stages)) for (const e of entries ?? []) expect(listed.has(e), `${screen}: ${e.does}`).toBe(true)
+    }
+  })
+})
