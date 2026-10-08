@@ -152,7 +152,7 @@ function createCli(deps: CliDeps): Cli {
   const env = deps.env ?? process.env
   return {
     streams,
-    ui: { out: createPainter(streams.stdout, env), err: createPainter(streams.stderr, env) },
+    ui: { out: createPainter(streams.stdout, env, streams.stderr), err: createPainter(streams.stderr, env, streams.stdout) },
     translate: deps.translate ?? translateFile,
     importTmx: deps.importTmx ?? importTmx,
     syncGlossary: deps.syncGlossary ?? syncGlossary,
@@ -304,7 +304,7 @@ async function runTranslate(cli: Cli, patterns: string[], flags: TranslateFlags)
   if (mustConfirm) {
     const n = await countTranslated(files)
     if (!(await confirm(cli.streams, `This will re-translate ${n} already-translated entries. Continue? [y/N] `))) {
-      cli.err('Aborted.')
+      cli.err(warnLine(cli.ui.err, 'Aborted.'))
       return EXIT_ERROR
     }
   }
@@ -346,7 +346,7 @@ async function runTranslate(cli: Cli, patterns: string[], flags: TranslateFlags)
     report.finish()
     for (const line of translateSummary(cli.ui.out, summary, dryRun)) cli.out(line)
     if (summary.stopped) {
-      cli.err(`Stopped: ${summary.stopped}`)
+      cli.err(warnLine(cli.ui.err, `Stopped: ${summary.stopped}`))
       cli.err(hintLine(cli.ui.err, 'Already-written entries are kept; re-run the same command to resume.'))
       return EXIT_STOPPED
     }
@@ -359,8 +359,9 @@ async function runTranslate(cli: Cli, patterns: string[], flags: TranslateFlags)
 // absent finding is not a passed language check.
 function warnUniversalOnly(cli: Cli, locale: Locale): void {
   const notice = supportNotice(locale)
-  // The glyph says what "Note: " said, and the TUI keeps the prefix.
-  if (notice) cli.err(warnLine(cli.ui.err, notice.replace(/^Note: /, '')))
+  // The notice is bare text and the glyph marks it. It used to carry a "Note: "
+  // prefix that this, its only caller, stripped again with a regex.
+  if (notice) cli.err(warnLine(cli.ui.err, notice))
 }
 
 /**
@@ -611,7 +612,7 @@ async function configSetKey(cli: Cli, rawName: string, value: string | undefined
   const name = parseSecretName(rawName)
   const entered = value ?? (await readSecretFromStdin(cli.streams, name))
   if (entered === undefined) {
-    cli.err('Cancelled.')
+    cli.err(warnLine(cli.ui.err, 'Cancelled.'))
     return EXIT_ERROR
   }
   const secret = entered.trim()

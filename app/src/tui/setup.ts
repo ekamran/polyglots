@@ -3,7 +3,8 @@ import Database from 'better-sqlite3'
 import { usableProviders, type AgentStatus } from '../agent/discover.js'
 import { loadLocaleRules } from '../rules/load.js'
 import { configFile, dbFile } from '../paths.js'
-import type { Locale, PolyglotsConfig, Secrets } from '../types.js'
+import { allGlossary } from '../storage/glossary.js'
+import type { GlossaryEntry, Locale, PolyglotsConfig, Secrets } from '../types.js'
 import { SETUP_STEPS, type SetupStep, type TuiState } from './state.js'
 
 // The five setup steps and whether each is done, worked out in one place so
@@ -103,6 +104,26 @@ export function glossaryCount(locale: Locale, path: string = dbFile()): number |
     return row.n
   } catch {
     return undefined
+  } finally {
+    db?.close()
+  }
+}
+
+/**
+ * A locale's glossary rows, read the same way as glossaryCount and for the
+ * same reason: the Locale Rules trial reads them so the glossary rule fires in
+ * a trial too, and a screen that only reads has no business switching the
+ * journal mode or running migrations on polyglots.db. Empty when there is no
+ * database or it cannot be read, which leaves the trial without the glossary
+ * rule rather than without a trial.
+ */
+export function glossaryRows(locale: Locale, path: string = dbFile()): GlossaryEntry[] {
+  let db: Database.Database | undefined
+  try {
+    db = new Database(path, { readonly: true, fileMustExist: true })
+    return allGlossary(db, locale)
+  } catch {
+    return []
   } finally {
     db?.close()
   }

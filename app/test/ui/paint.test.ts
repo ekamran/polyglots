@@ -44,6 +44,18 @@ describe('createPainter', () => {
     expect(off.paint('error', 'x')).toBe('x')
   })
 
+  it('sizes a piped stream to the terminal beside it, as under tee', () => {
+    // review x.po | tee log: stdout is a pipe, but what it carries is still
+    // read on the terminal stderr is drawn on.
+    expect(createPainter(pipe, {}, { isTTY: true, columns: 60 }).width).toBe(60)
+    expect(createPainter({ isTTY: true, columns: 100 }, {}, { isTTY: true, columns: 60 }).width).toBe(100)
+  })
+
+  it('falls back to COLUMNS when neither stream is a terminal', () => {
+    expect(createPainter(pipe, { COLUMNS: '72' }, pipe).width).toBe(72)
+    expect(createPainter(pipe, { COLUMNS: 'wide' }, pipe).width).toBe(80)
+  })
+
   it('takes the width from the stream, and 80 when it has none', () => {
     expect(createPainter({ isTTY: true, columns: 120 }, {}).width).toBe(120)
     expect(createPainter(pipe, {}).width).toBe(80)

@@ -37,9 +37,20 @@ export function asciiOnly(env: NodeJS.ProcessEnv): boolean {
 
 const DEFAULT_WIDTH = 80
 
-export function createPainter(stream: PaintStream, env: NodeJS.ProcessEnv = process.env): Painter {
+const columnsOf = (stream: PaintStream | undefined): number | undefined =>
+  typeof stream?.columns === 'number' && stream.columns > 0 ? stream.columns : undefined
+
+// Colour and width answer different questions about a piped stream. Colour
+// asks whether the bytes will be interpreted by a terminal, and a pipe says no.
+// Width asks how wide the screen is that a person reads them on, and under
+// `review x.po | tee log` that is still the terminal stderr is drawn on: a box
+// sized to a fixed 80 there wrapped into a mess on a narrower window. So width
+// falls back to the sibling stream, then to COLUMNS, and only then to 80.
+export function createPainter(stream: PaintStream, env: NodeJS.ProcessEnv = process.env, sibling?: PaintStream): Painter {
   const color = colorEnabled(stream, env)
-  const width = typeof stream.columns === 'number' && stream.columns > 0 ? stream.columns : DEFAULT_WIDTH
+  const fromEnv = Number(env.COLUMNS)
+  const width =
+    columnsOf(stream) ?? columnsOf(sibling) ?? (Number.isInteger(fromEnv) && fromEnv > 0 ? fromEnv : DEFAULT_WIDTH)
   return {
     color,
     glyphs: asciiOnly(env) ? ASCII_GLYPHS : UNICODE_GLYPHS,

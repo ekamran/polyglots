@@ -22,8 +22,10 @@ describe('localeSupport', () => {
 })
 
 describe('supportNotice', () => {
+  // Bare text, so each surface marks it its own way (the CLI with a warning
+  // glyph) instead of every caller stripping a prefix it did not want.
   it('speaks up for a universal-only locale', () => {
-    expect(supportNotice('de')).toBe('Note: no locale rules for de; only the universal checks run. Add some with: polyglots rules edit de')
+    expect(supportNotice('de')).toBe('No locale rules for de; only the universal checks run. Add some with: polyglots rules edit de')
   })
 
   it('stays quiet for Turkish and Swedish', () => {

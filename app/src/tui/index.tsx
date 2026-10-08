@@ -21,6 +21,8 @@ export interface RunTuiOptions {
   // server's close than the two seconds a person gets.
   activity?: Activity
   closeTimeoutMs?: number
+  // For tests: how long a line written on the way out may take to drain.
+  writeTimeoutMs?: number
   // For tests: sends the signal on once it has been recorded, which for real
   // ends the process.
   raise?: (signal: NodeJS.Signals) => void
@@ -46,6 +48,7 @@ export async function runTui(opts: RunTuiOptions = {}): Promise<void> {
   const activity = opts.activity ?? createActivity()
   const services = createServices()
   const stderr = opts.stderr ?? process.stderr
+  const writeOut = (stream: NodeJS.WritableStream, text: string) => writeBounded(stream, text, opts.writeTimeoutMs)
   const instance = render(<App commands={commands} cwd={cwd} activity={activity} services={services} />, renderOptions)
   // A signal never reaches the quit prompt or the exit code below, so a run
   // stopped by one is recorded as it happens; see stopOnSignal.
@@ -111,12 +114,26 @@ export async function runTui(opts: RunTuiOptions = {}): Promise<void> {
   if (closed === 'timeout') exit(0)
 }
 
+const WRITE_TIMEOUT_MS = 1000
+
 // Resolves once the stream has taken the text. On a pipe the write is
 // asynchronous, and exiting straight after it can cut off the very line
 // that was written to survive the exit.
-function writeOut(stream: NodeJS.WritableStream, text: string): Promise<void> {
+//
+// Or once the wait has gone on long enough. A pipe whose reader has stopped
+// reading (a pager left open, a stalled ssh session) never calls back, and
+// every caller here is on the way to exit: waiting on it would keep the
+// process alive with the UI already gone, which in the busy paths means a run
+// still writing files with nothing on screen. The line is worth a second, not
+// the exit. The timer is unref'd so it never holds the process itself.
+function writeBounded(stream: NodeJS.WritableStream, text: string, timeoutMs = WRITE_TIMEOUT_MS): Promise<void> {
   return new Promise((resolve) => {
-    stream.write(text, () => resolve())
+    const timer = setTimeout(resolve, timeoutMs)
+    timer.unref?.()
+    stream.write(text, () => {
+      clearTimeout(timer)
+      resolve()
+    })
   })
 }
 

@@ -14,10 +14,11 @@ import { MultilineInput } from '../components/MultilineInput.js'
 import { copyRules } from '../../cli/rules.js'
 import { packLine } from '../../rules/support.js'
 import { tryRules, type TryResult } from '../../rules/try.js'
-import { allGlossary, openDb } from '../../storage/index.js'
+import { glossaryRows } from '../setup.js'
 import type { GlossaryEntry } from '../../types.js'
 import { useKeys } from '../hooks/useKeys.js'
 import { TextInput } from '../input.js'
+import { ScrollTarget } from '../components/Viewport.js'
 
 export interface LocaleRulesProps {
   onBack: () => void
@@ -213,18 +214,7 @@ export function LocaleRules({ onBack }: LocaleRulesProps) {
     if (next === 'try') {
       setTrial(undefined)
       // The locale's glossary, read once, so the glossary rule fires in a trial too.
-      if (glossary === undefined) {
-        try {
-          const db = openDb()
-          try {
-            setGlossary(allGlossary(db, id))
-          } finally {
-            db.close()
-          }
-        } catch {
-          setGlossary([])
-        }
-      }
+      if (glossary === undefined) setGlossary(glossaryRows(id))
     }
     setStage(next)
   }
@@ -340,10 +330,12 @@ export function LocaleRules({ onBack }: LocaleRulesProps) {
       {draft && stage === 'rules' && (
         <>
           {BUILT_IN_RULES.map((rule, i) => (
-            <Text key={rule}>
-              {marker(i === ruleCursor)}[{activeRules().has(rule) ? 'x' : ' '}] {rule.padEnd(14)}
-              <Text dimColor>{UNIVERSAL_RULES.includes(rule) ? 'universal' : 'opt-in'}</Text>
-            </Text>
+            <ScrollTarget key={rule} active={i === ruleCursor}>
+              <Text>
+                {marker(i === ruleCursor)}[{activeRules().has(rule) ? 'x' : ' '}] {rule.padEnd(14)}
+                <Text dimColor>{UNIVERSAL_RULES.includes(rule) ? 'universal' : 'opt-in'}</Text>
+              </Text>
+            </ScrollTarget>
           ))}
           {/* The ids are what rules.json holds, so the list keeps them; the
               plain name and what the rule checks sit under it, for the one

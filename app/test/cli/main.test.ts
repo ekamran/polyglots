@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 import { main, type CliDeps } from '../../src/cli.js'
+import { displayWidth } from '../../src/ui/layout.js'
 import type { TranslateOptions, TranslateSummary } from '../../src/commands/translate.js'
 import type { AgentStatus, DiscoverOptions } from '../../src/agent/discover.js'
 import type { DiscoverModelsOptions, ModelCheck, ModelServer } from '../../src/draft/discover.js'
@@ -126,6 +127,20 @@ describe('per-stream colour', () => {
   })
 })
 
+describe('per-stream width', () => {
+  it('sizes a piped summary to the terminal stderr is on, as under tee', async () => {
+    const h = harness()
+    const stderr = h.stderr as Sink & { columns?: number }
+    stderr.columns = 30
+    const translate = fakeTranslate()
+    const code = await h.run(['translate', file, '--draft-engine', 'deepl'], { translate: translate.fn, tty: true })
+    expect(code).toBe(0)
+    const boxLines = h.stdout.text.split('\n').filter((l) => /^[╭│╰]/.test(l))
+    expect(boxLines.length).toBeGreaterThan(0)
+    for (const l of boxLines) expect(displayWidth(l)).toBeLessThanOrEqual(30)
+  })
+})
+
 describe('translate summary output', () => {
   it('prints a header on stderr naming the file, locale and reviewer', async () => {
     const h = harness()
@@ -146,7 +161,7 @@ describe('translate summary output', () => {
     expect(h.stdout.text).toMatch(/fuzzy\s+1  check before upload/)
     expect(h.stdout.text).toMatch(/from TM\s+1/)
     expect(h.stdout.text).toMatch(/skipped\s+0/)
-    expect(h.stdout.text).toContain(`› Open ${file} in PoEdit to review.`)
+    expect(h.stdout.text).toContain(`› Open ${file} in your .po editor to review.`)
     expect(h.stderr.text).toContain('▰▰▰▰▰▰▰▰▰▰ 7/7  batch 1/1  fuzzy 1')
   })
 
@@ -176,7 +191,7 @@ describe('translate summary output', () => {
     expect(h.stdout.text).toContain('• Dry run')
     expect(h.stdout.text).toMatch(/translated\s+6/)
     expect(h.stdout.text).toContain('› Nothing was written.')
-    expect(h.stdout.text).not.toContain('PoEdit')
+    expect(h.stdout.text).not.toContain('.po editor')
   })
 
   // --mode all exists to translate an entry again. Without a word for it, a
@@ -200,7 +215,7 @@ describe('translate summary output', () => {
     expect(translate.calls.map((c) => c.file)).toEqual([file, second])
     const lines = h.stdout.text.trim().split('\n').filter((l) => l.startsWith('›'))
     expect(h.stdout.text.match(/✓ Done/g)).toHaveLength(2)
-    expect(lines).toEqual([`› Open ${file} in PoEdit to review.`, `› Open ${second} in PoEdit to review.`])
+    expect(lines).toEqual([`› Open ${file} in your .po editor to review.`, `› Open ${second} in your .po editor to review.`])
   })
 
   it('reports a file that throws, continues with the next file and exits 1 at the end', async () => {
@@ -213,8 +228,8 @@ describe('translate summary output', () => {
     expect(translate.calls.map((c) => c.file)).toEqual([file, second])
     expect(h.stderr.text).toContain(`✗ ${file}: bad po syntax`)
     expect(h.stdout.text.match(/✓ Done/g)).toHaveLength(1)
-    expect(h.stdout.text).toContain(`› Open ${second} in PoEdit to review.`)
-    expect(h.stdout.text).not.toContain(`Open ${file} in PoEdit`)
+    expect(h.stdout.text).toContain(`› Open ${second} in your .po editor to review.`)
+    expect(h.stdout.text).not.toContain(`Open ${file} in your .po editor`)
   })
 
   it('exits 3 with a Stopped summary on a quota stop and does not touch later files', async () => {
@@ -229,7 +244,7 @@ describe('translate summary output', () => {
     expect(h.stdout.text).toContain('! Stopped')
     expect(h.stdout.text).toMatch(/translated\s+2/)
     expect(h.stdout.text).toContain('› Re-run the same command to resume.')
-    expect(h.stderr.text).toContain('Stopped: DeepL quota exceeded')
+    expect(h.stderr.text).toContain('! Stopped: DeepL quota exceeded')
   })
 })
 
@@ -248,7 +263,7 @@ describe('translate --all confirmation', () => {
     const translate = fakeTranslate()
     const code = await h.run(['translate', file, '--all'], { translate: translate.fn, stdin: stdinWith('n\n', true), tty: true })
     expect(code).toBe(1)
-    expect(h.stderr.text).toContain('Aborted.')
+    expect(stripVTControlCharacters(h.stderr.text)).toContain('! Aborted.')
     expect(translate.calls).toHaveLength(0)
     expect(h.stdout.text).toBe('')
   })
@@ -258,7 +273,7 @@ describe('translate --all confirmation', () => {
     const translate = fakeTranslate()
     const code = await h.run(['translate', file, '--all'], { translate: translate.fn, stdin: stdinWith(undefined, true), tty: true })
     expect(code).toBe(1)
-    expect(h.stderr.text).toContain('Aborted.')
+    expect(stripVTControlCharacters(h.stderr.text)).toContain('! Aborted.')
     expect(translate.calls).toHaveLength(0)
   })
 
@@ -911,7 +926,7 @@ describe('config set-key prompt', () => {
     const h = harness()
     const code = await h.run(['config', 'set-key', 'DEEPL_API_KEY'], { stdin: stdinWith('\x03', true) })
     expect(code).toBe(1)
-    expect(h.stderr.text).toContain('Cancelled.')
+    expect(h.stderr.text).toContain('! Cancelled.')
     expect(h.stdout.text).toBe('')
   })
 
@@ -919,7 +934,7 @@ describe('config set-key prompt', () => {
     const h = harness()
     const code = await h.run(['config', 'set-key', 'DEEPL_API_KEY'], { stdin: stdinWith(undefined, true) })
     expect(code).toBe(1)
-    expect(h.stderr.text).toContain('Cancelled.')
+    expect(h.stderr.text).toContain('! Cancelled.')
   })
 
   it('reads a piped value without echoing it', async () => {
@@ -1361,7 +1376,7 @@ describe('local models', () => {
 // nobody could tell an absent finding from a passed check. Told once, before
 // the run, and never a refusal.
 describe('universal-only notice', () => {
-  const NOTICE = '! no locale rules for de; only the universal checks run. Add some with: polyglots rules edit de'
+  const NOTICE = '! No locale rules for de; only the universal checks run. Add some with: polyglots rules edit de'
 
   it('is printed to stderr before a review of a locale with no rules of its own', async () => {
     const h = harness()

@@ -8,6 +8,7 @@ import type { PolyglotsConfig, ReviewChoice, Secrets } from '../types.js'
 import { TOKENS } from '../ui/tokens.js'
 import { Footer, Header } from './components/Chrome.js'
 import { HelpOverlay, Palette, QuitPrompt } from './components/Overlays.js'
+import { Viewport } from './components/Viewport.js'
 import { ActivityProvider, createActivity, useBusy, type Activity } from './hooks/activity.js'
 import { useGlobalKeys } from './hooks/useKeys.js'
 import { InputGate, TypingProvider, useTyping, type Key } from './input.js'
@@ -382,14 +383,10 @@ function Shell({ cwd = process.cwd(), onExit }: AppProps) {
         />
       ) : null}
       <Box flexDirection="column" flexGrow={1} marginTop={layout.fits ? 1 : 0} overflow="hidden">
-        <Box display={hidden ? 'none' : 'flex'} flexDirection="column">
+        <Box display={hidden ? 'none' : 'flex'} flexDirection="column" flexGrow={1}>
           <InputGate open={!hidden}>
-            {/* Not shrinkable: a screen taller than the body is clipped at
-                the bottom, where Ink would otherwise squeeze its lines into
-                each other. */}
-            <Box key={screen} flexDirection="column" flexShrink={0}>
-              {view}
-            </Box>
+            {/* Keyed by screen, so the next screen starts at its top. */}
+            <Viewport key={screen}>{view}</Viewport>
           </InputGate>
         </Box>
         {!layout.fits && (

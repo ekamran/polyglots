@@ -359,6 +359,28 @@ describe('runTui', () => {
     release()
   })
 
+  // A stderr pipe whose reader has stopped reading never calls back, and the
+  // exit waited on it forever with the UI already gone and a run still
+  // writing files.
+  it('exits after a quit during a run even when stderr never drains', async () => {
+    const commands = fakeCommands({
+      translateFile: vi.fn(async (opts: TranslateOptions) => {
+        opts.onProgress?.({ type: 'start', file: opts.file, total: 4, pending: 2 })
+        return new Promise<never>(() => {})
+      }),
+    })
+    const stalled = new FakeStdout()
+    stalled.write = () => true
+    const { stdin, exit, done, lastFrame } = start(commands, { stderr: stalled.asStream(), writeTimeoutMs: 20 })
+    await openTranslateAndStart(stdin, lastFrame)
+    await waitForText(lastFrame, /0\/2/)
+    stdin.write(CTRL_C)
+    await waitForText(lastFrame, 'A run is still going')
+    stdin.write('y')
+    await done
+    expect(exit).toHaveBeenCalledWith(130)
+  })
+
   it('keeps the run going when the quit prompt is declined', async () => {
     let release!: () => void
     const gate = new Promise<void>((resolve) => (release = resolve))

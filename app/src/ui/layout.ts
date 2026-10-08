@@ -1,39 +1,20 @@
 import { stripVTControlCharacters } from 'node:util'
+import sliceAnsi from 'slice-ansi'
+import stringWidth from 'string-width'
 import type { Painter } from './paint.js'
 
-// Marks (combining accents), zero-width joiners and variation selectors take
-// no column of their own: a decomposed "é" is one column, not two.
-const ZERO_WIDTH = /[\p{Mark}\u200B-\u200D\uFE0E\uFE0F]/u
-
-// East Asian Wide and Fullwidth ranges plus the emoji blocks. Not the whole
-// Unicode table, which would be a dependency's worth of data, but every range
-// a WordPress project name or file path is realistically going to contain.
-function isWide(cp: number): boolean {
-  return (
-    (cp >= 0x1100 && cp <= 0x115f) ||
-    (cp >= 0x2e80 && cp <= 0xa4cf && cp !== 0x303f) ||
-    (cp >= 0xac00 && cp <= 0xd7a3) ||
-    (cp >= 0xf900 && cp <= 0xfaff) ||
-    (cp >= 0xfe30 && cp <= 0xfe4f) ||
-    (cp >= 0xff00 && cp <= 0xff60) ||
-    (cp >= 0xffe0 && cp <= 0xffe6) ||
-    (cp >= 0x1f300 && cp <= 0x1faff) ||
-    (cp >= 0x20000 && cp <= 0x3fffd)
-  )
-}
-
-function charWidth(ch: string): number {
-  if (ZERO_WIDTH.test(ch)) return 0
-  const cp = ch.codePointAt(0)!
-  if (cp < 0x20 || (cp >= 0x7f && cp < 0xa0)) return 0
-  return isWide(cp) ? 2 : 1
-}
+// Measured by grapheme cluster with string-width, the measure Ink uses, so the
+// CLI and the TUI agree on how wide a line is. The hand-rolled table this
+// replaced summed code points against a list of wide ranges, which got a ZWJ
+// family as three emoji wide, added a skin tone modifier as two more columns,
+// and counted emoji outside its ranges (a check mark button, a sun with a
+// variation selector) as one. Each of those shifted a box's right border.
+// Escape codes are stripped first with node's own function, which also knows
+// OSC 8 hyperlinks.
 
 /** Columns a string takes on a terminal, escape codes excluded. */
 export function displayWidth(text: string): number {
-  let width = 0
-  for (const ch of stripVTControlCharacters(text)) width += charWidth(ch)
-  return width
+  return stringWidth(stripVTControlCharacters(text))
 }
 
 export function padTo(text: string, width: number, align: 'left' | 'right' = 'left'): string {
@@ -41,22 +22,19 @@ export function padTo(text: string, width: number, align: 'left' | 'right' = 'le
   return align === 'right' ? gap + text : text + gap
 }
 
-// Cutting through an escape sequence would leave the terminal coloured for
-// the rest of the output, so a line that must be cut loses its colour. That
-// only happens on a terminal too narrow for the line, where legibility of the
-// characters matters more than their colour.
+// Cut by columns with slice-ansi, which keeps the escape codes of the part
+// that survives and closes any it cuts through, so a truncated cell stays the
+// colour it was instead of falling back to plain text. It also never splits a
+// grapheme cluster: a family emoji is kept whole or dropped whole.
+//
+// The result is never wider than asked for. An ellipsis that does not fit (the
+// ASCII "..." in two columns) is itself cut down, rather than returned whole
+// and pushing the line past the edge it was cut to fit.
 export function truncate(text: string, width: number, ellipsis = '…'): string {
+  if (width <= 0) return ''
   if (displayWidth(text) <= width) return text
-  const room = width - displayWidth(ellipsis)
-  let out = ''
-  let used = 0
-  for (const ch of stripVTControlCharacters(text)) {
-    const w = charWidth(ch)
-    if (used + w > room) break
-    out += ch
-    used += w
-  }
-  return out + ellipsis
+  const mark = displayWidth(ellipsis) <= width ? ellipsis : sliceAnsi(ellipsis, 0, width)
+  return sliceAnsi(text, 0, width - displayWidth(mark)) + mark
 }
 
 export interface TableOptions {
@@ -82,12 +60,19 @@ export function table(rows: string[][], opts: TableOptions = {}): string[] {
   })
 }
 
+// Below this many columns inside the frame, the frame costs more than it
+// shows: at eight columns wide a box holds two characters of each line and
+// six of border. The lines are then printed bare, each cut to the terminal,
+// so the numbers stay readable instead of every cell becoming an ellipsis.
+const MIN_FRAMED_INNER = 8
+
 export function box(p: Painter, title: string, lines: string[]): string[] {
   const { tl, tr, bl, br, h, v } = p.glyphs.box
   // Two spaces of padding inside each side, one border column each side.
-  const maxInner = Math.max(1, p.width - 6)
+  const maxInner = p.width - 6
+  if (maxInner < MIN_FRAMED_INNER) return [title, ...lines].map((l) => truncate(l, p.width, p.glyphs.ellipsis))
   const body = lines.map((l) => truncate(l, maxInner, p.glyphs.ellipsis))
-  const titleText = truncate(title, Math.max(1, p.width - 6), p.glyphs.ellipsis)
+  const titleText = truncate(title, maxInner, p.glyphs.ellipsis)
   const inner = Math.min(maxInner, Math.max(displayWidth(titleText) + 2, ...body.map((l) => displayWidth(l))))
   const span = inner + 4
   const top = `${tl}${h} ${titleText} ${h.repeat(Math.max(0, span - displayWidth(titleText) - 3))}${tr}`
