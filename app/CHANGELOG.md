@@ -23,7 +23,7 @@ Entries say what changed. For why and how, read the commit.
 ### Changed
 
 - Interactive menu keys: Tools is `o`, API keys is `k`. Ctrl+C asks before stopping a run in progress.
-- Quitting the interactive mode during a run records it as stopped, not abandoned, so stats no longer counts it as a failure.
+- Quitting the interactive mode during a run, or sending it SIGINT or SIGTERM, records the run as stopped, not abandoned, so stats no longer counts it as a failure.
 - `polyglots stats` serves a live dashboard on localhost and opens it; `--out`, or running off a terminal, writes a standalone HTML copy.
 - The stats page has Overview, Reviews, Translation, Projects and Method views, a year of activity, time ranges, a share image, and human names for every flag.
 - Messages that pointed at `docs/` in the repo link to the documentation at ada.tools/polyglots.

@@ -20,6 +20,9 @@ export interface RunTuiOptions {
   // server's close than the two seconds a person gets.
   activity?: Activity
   closeTimeoutMs?: number
+  // For tests: sends the signal on once it has been recorded, which for real
+  // ends the process.
+  raise?: (signal: NodeJS.Signals) => void
 }
 
 export async function runTui(opts: RunTuiOptions = {}): Promise<void> {
@@ -43,9 +46,11 @@ export async function runTui(opts: RunTuiOptions = {}): Promise<void> {
   const services = createServices()
   const stderr = opts.stderr ?? process.stderr
   const instance = render(<App commands={commands} cwd={cwd} activity={activity} services={services} />, renderOptions)
+  const unwatchSignals = recordStopOnSignal(activity, commands ?? defaultCommands, opts.raise)
   try {
     await instance.waitUntilExit()
   } catch (err) {
+    unwatchSignals()
     const trace = `\n${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`
     // A render crash with a run still going would leave that run writing
     // files from a process with no UI, so this is the same hard exit as a
@@ -64,6 +69,8 @@ export async function runTui(opts: RunTuiOptions = {}): Promise<void> {
     }
     throw err
   }
+
+  unwatchSignals()
 
   // Before anything else: a listening server would keep Node alive after the
   // UI is gone, with nothing on screen to say why the shell has not come back.
@@ -94,6 +101,41 @@ export async function runTui(opts: RunTuiOptions = {}): Promise<void> {
   // The server did not close in time, so its socket would hold the process
   // open past the restored terminal. Nothing else is left to finish.
   if (closed === 'timeout') exit(0)
+}
+
+// A signal never reaches the quit prompt or the exit code below: Ink's
+// signal-exit hook unmounts, then sends the signal on, and the process dies
+// with the run's row still at running, which the reaper later files as
+// abandoned and stats counts as a fault. SIGINT and SIGTERM are someone
+// choosing to stop it, so the run is recorded as stopped first. SIGHUP, the
+// terminal going away, is nobody's choice and is left to the reaper.
+//
+// While a listener of ours is attached, signal-exit stands aside rather than
+// end the process, so this one detaches itself and sends the signal again,
+// which hands the exit back to signal-exit exactly as it was.
+const STOP_SIGNALS = ['SIGINT', 'SIGTERM'] as const
+
+function recordStopOnSignal(
+  activity: Activity,
+  commands: TuiCommands,
+  raise: (signal: NodeJS.Signals) => void = (signal) => process.kill(process.pid, signal),
+): () => void {
+  const unwatch = () => {
+    for (const signal of STOP_SIGNALS) process.off(signal, onSignal)
+  }
+  function onSignal(signal: NodeJS.Signals) {
+    unwatch()
+    if (activity.busy) {
+      try {
+        commands.stopOwnRuns()
+      } catch {
+        // The reaper still ends the row, as abandoned. A signal is no place to hang.
+      }
+    }
+    raise(signal)
+  }
+  for (const signal of STOP_SIGNALS) process.on(signal, onSignal)
+  return unwatch
 }
 
 // Resolves once the stream has taken the text. On a pipe the write is

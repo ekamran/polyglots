@@ -286,6 +286,52 @@ describe('runTui', () => {
     })
   })
 
+  // A signal does not pass through the quit prompt: Ink tears the screen
+  // down and the process dies before runTui's exit code runs. SIGINT and
+  // SIGTERM are someone choosing to stop it, so the run is recorded as
+  // stopped first; SIGHUP is the terminal going away, left to the reaper.
+  describe('a signal while a run is in flight', () => {
+    async function signal(sig: NodeJS.Signals, busy: boolean) {
+      const activity = createActivity()
+      const end = busy ? activity.begin() : () => {}
+      const stopOwnRuns = vi.fn(() => 1)
+      const raise = vi.fn()
+      const before = process.listenerCount(sig)
+      const { stdin, done, lastFrame } = start(fakeCommands({ stopOwnRuns }), { activity, raise })
+      await waitForText(lastFrame, 'Translate a .po file')
+      process.emit(sig, sig)
+      const atSignal = { stops: stopOwnRuns.mock.calls.length, raised: raise.mock.calls.map((c) => c[0]) }
+      end()
+      // Twice: the first may only open the quit prompt if the frame still
+      // thinks a run is going; the second always quits.
+      stdin.write(CTRL_C)
+      await tick()
+      stdin.write(CTRL_C)
+      await done
+      return { ...atSignal, leftover: process.listenerCount(sig) - before }
+    }
+
+    it.each(['SIGINT', 'SIGTERM'] as const)('records %s as stopped, then lets the signal through', async (sig) => {
+      expect(await signal(sig, true)).toEqual({ stops: 1, raised: [sig], leftover: 0 })
+    })
+
+    // Not sent here: with no listener of ours, signal-exit ends the process,
+    // which in a test is the worker. Not listening is the behaviour.
+    it('leaves SIGHUP alone, so a closed terminal is still abandoned', async () => {
+      const before = process.listenerCount('SIGHUP')
+      const { stdin, done, lastFrame } = start()
+      await waitForText(lastFrame, 'Translate a .po file')
+      const during = process.listenerCount('SIGHUP')
+      stdin.write('q')
+      await done
+      expect(during).toBe(before)
+    })
+
+    it('records nothing when no run is going', async () => {
+      expect(await signal('SIGTERM', false)).toEqual({ stops: 0, raised: ['SIGTERM'], leftover: 0 })
+    })
+  })
+
   it('records a quit during a run as stopped before exiting', async () => {
     let release!: () => void
     const gate = new Promise<void>((resolve) => (release = resolve))
