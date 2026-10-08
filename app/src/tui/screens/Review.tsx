@@ -11,6 +11,7 @@ import { poEntryCount } from '../../po/count.js'
 import { FilePicker } from '../components/FilePicker.js'
 import { BACK_HINT, DONE_HINT, Hint } from '../components/Hint.js'
 import { ReviewProgress } from '../components/ReviewProgress.js'
+import { appendEvent } from '../components/RecentEntries.js'
 import { useTask } from '../hooks/useTask.js'
 import { createRunControl, type RunControl } from '../../run-control.js'
 import { batchSizeChoices } from '../batch-size.js'
@@ -85,7 +86,8 @@ export function Review({ cwd, onBack }: ReviewProps) {
         fresh,
         batchSize,
         ...(bin === undefined ? {} : { bin }),
-        onProgress: (e) => setEvents((prev) => [...prev, e]),
+        // Bounded: a long run's per-entry events would otherwise all stay in memory.
+        onProgress: (e) => setEvents((prev) => appendEvent(prev, e)),
       }).finally(unsubscribe),
     )
   }
