@@ -364,7 +364,7 @@ export function ReviewProgress({ events, wporgUsername = '' }: { events: ReviewE
           {summary.problemsFile ? (
             <>
               <Text>Wrote {summary.problemsFile}.</Text>
-              <Text dimColor>o to open it in PoEdit</Text>
+              <Text dimColor>o to open it in your .po editor</Text>
               {opened && <Text color="green">Opening it now.</Text>}
             </>
           ) : (

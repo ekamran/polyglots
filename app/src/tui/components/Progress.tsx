@@ -244,7 +244,7 @@ export function Progress({ events }: { events: TranslateEvent[] }) {
         <Box flexDirection="column" marginTop={1}>
           {state.summary.stopped && <Text color="red">Stopped: {state.summary.stopped}</Text>}
           <Text bold>{formatSummary(state.summary)}</Text>
-          <Text>Open {state.summary.file} in PoEdit to review.</Text>
+          <Text>Open {state.summary.file} in your .po editor to review.</Text>
           <Text dimColor>o to open it</Text>
           {opened && <Text color="green">Opening it now.</Text>}
         </Box>
