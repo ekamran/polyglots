@@ -13,3 +13,18 @@ app/LICENSE
 
 # Agent worktrees.
 .claude/worktrees/
+
+# Antigravity's CLI writes a per-folder workspace file here when agy runs in
+# the repo. It holds the absolute path of the checkout, and nothing the
+# project needs.
+.antigravitycli/
+
+# macOS folder metadata.
+.DS_Store
+
+# polyglots' own databases. The real ones live under ~/.local/share/polyglots;
+# one appearing in the tree means something ran with POLYGLOTS_HOME pointed
+# here by mistake, which happened once, and it must not be committed.
+*.db
+*.db-wal
+*.db-shm
