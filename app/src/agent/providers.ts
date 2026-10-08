@@ -308,7 +308,8 @@ const antigravity: ProviderSpec = {
     }
     const allow = (permissions as { allow?: unknown }).allow ?? []
     if (!Array.isArray(allow)) return { state: 'unknown', detail: 'permissions.allow is not a list' }
-    const missing = ANTIGRAVITY_RULES.filter((rule) => !allow.includes(rule))
+    const rules = allow.filter((given): given is string => typeof given === 'string')
+    const missing = ANTIGRAVITY_RULES.filter((rule) => !rules.some((given) => antigravityRuleCovers(given, rule)))
     if (missing.length === 0) return { state: 'ok' }
     return { state: 'missing', detail: `missing permission rules: ${missing.join(', ')} (see ${docsUrl('antigravity')})` }
   },
@@ -385,6 +386,39 @@ function printTimeout(budgetMs: number): string {
 export const ANTIGRAVITY_RULES: readonly string[] = MCP_TOOLS.map(
   (tool) => `mcp(${tool.replace(/^mcp__/, '').replace('__', '/')})`,
 )
+
+const MCP_RULE = /^mcp\((.*)\)$/
+
+/**
+ * Whether an allow-rule from antigravity's settings permits `wanted`, one of
+ * ANTIGRAVITY_RULES.
+ *
+ * Comparing strings rejected rules antigravity honours. It matches each token
+ * of a rule's target as an anchored regular expression (notes/antigravity.md),
+ * so mcp(polyglots/(glossary|consistency|tm)_lookup) permits all three tools
+ * and the setup check called it missing. Matching the same way is the only
+ * reading that agrees with antigravity in both directions: anchoring is what
+ * keeps mcp(polyglots/tm) from passing for tm_lookup, and the token count is
+ * what keeps a server-wide mcp(polyglots), which does not work, from passing
+ * at all. Nothing is trimmed or case-folded, because nothing says antigravity
+ * does either, and passing a rule it then ignores is the failure this check is
+ * for. A token that is not a valid expression matches nothing.
+ */
+export function antigravityRuleCovers(given: string, wanted: string): boolean {
+  const target = MCP_RULE.exec(given)?.[1]
+  const need = MCP_RULE.exec(wanted)?.[1]
+  if (target === undefined || need === undefined) return false
+  const tokens = target.split('/')
+  const names = need.split('/')
+  if (tokens.length !== names.length) return false
+  return tokens.every((token, i) => {
+    try {
+      return new RegExp(`^(?:${token})$`).test(names[i]!)
+    } catch {
+      return false
+    }
+  })
+}
 
 /**
  * Which binary a provider runs, and why.
