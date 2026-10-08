@@ -33,7 +33,15 @@ export interface QwenEngineOptions {
 }
 
 export const DEFAULT_QWEN_BASE_URL = 'http://localhost:11434'
-export const DEFAULT_QWEN_MODEL = 'qwen3.8:27b-mlx'
+// Ollama runs MLX builds on Apple silicon only. Everywhere else the MLX tag
+// fails until the person picks another model, so the default there is the
+// plain build of the same model. On a Mac with Apple silicon nothing changes,
+// which keeps its draft cache keys (they name the model) as they were.
+export function defaultQwenModel(platform: string = process.platform, arch: string = process.arch): string {
+  return platform === 'darwin' && arch === 'arm64' ? 'qwen3.8:27b-mlx' : 'qwen3.8:27b'
+}
+
+export const DEFAULT_QWEN_MODEL = defaultQwenModel()
 
 // Measured on a 3,656-entry file of short pattern strings: 15 entries per batch
 // ran at 1.4s each and 30 at 1.5s, but 60 at 4.6s. Past this the cost per entry

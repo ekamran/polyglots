@@ -31,6 +31,7 @@ Entries say what changed. For why and how, read the commit.
 
 ### Changed
 
+- With no model set, the local engine uses `qwen3.8:27b` off Apple silicon, where the MLX build does not run.
 - polyglots no longer assumes tr when no locale is set; set one with `config set defaultLocale` or `--locale`.
 - The setup wizard and Locale Rules no longer prefill tr; Fetch and the memory screens ask for setup without a locale.
 - The interactive mode is never wider than the home grid, and is centred on a wide terminal.

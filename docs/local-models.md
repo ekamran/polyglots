@@ -64,9 +64,10 @@ ollama pull qwen3:8b
 polyglots config set ollama.model qwen3:8b
 ```
 
-Pick a model your machine can hold; the tag above is only an example. The
-built-in default, `qwen3.8:27b-mlx`, is an MLX build, which Ollama runs on
-Apple silicon only, so on any other machine set the model you pulled.
+Pick a model your machine can hold; the tag above is only an example. With
+no model set, polyglots uses `qwen3.8:27b-mlx` on Apple silicon, where Ollama
+runs MLX builds, and `qwen3.8:27b` everywhere else. Both need about the
+memory a 27B model does, so on a smaller machine set the model you pulled.
 
 **Set the context length.** Ollama runs a model at its own default context
 unless told otherwise, and on many installs that is about 4,096 tokens. A
