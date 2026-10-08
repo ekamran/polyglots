@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { loadUsageTotals, parseUsageTotals } from '../src/lib/usage.js'
+import { approx, loadUsageTotals, parseUsageTotals } from '../src/lib/usage.js'
 
 const good = {
   generatedAt: '2026-10-08T12:00:00.000Z',
@@ -46,4 +46,15 @@ test('an address that does not answer gives nothing, quickly', async () => {
   const started = Date.now()
   assert.equal(await loadUsageTotals({ POLYGLOTS_USAGE_TOTALS: 'http://127.0.0.1:9/totals.json' }), undefined)
   assert.ok(Date.now() - started < 6000)
+})
+
+// The totals cannot be verified (nothing identifies who reports them), so
+// the page rounds them down and calls them approximate rather than printing
+// a precise figure it cannot stand behind.
+test('rounds down to two significant figures, so it never claims more than was reported', () => {
+  assert.equal(approx(0), '0')
+  assert.equal(approx(87), '87')
+  assert.equal(approx(1234), '1,200')
+  assert.equal(approx(98_765), '98,000')
+  assert.equal(approx(1_049_999), '1,000,000')
 })

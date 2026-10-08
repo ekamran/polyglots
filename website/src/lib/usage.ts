@@ -27,6 +27,17 @@ const FS = 'node:fs/promises';
 const readText = async (path: string): Promise<string> =>
   ((await import(/* @vite-ignore */ FS)) as { readFile(path: string, encoding: 'utf8'): Promise<string> }).readFile(path, 'utf8');
 
+/**
+ * A total as the page says it: rounded down to two significant figures. The
+ * totals cannot be verified, since nothing identifies who reports them, so the
+ * page gives an approximate figure that never claims more than was reported.
+ */
+export function approx(v: number): string {
+  if (v < 100) return v.toLocaleString('en-US');
+  const step = 10 ** (Math.floor(Math.log10(v)) - 1);
+  return (Math.floor(v / step) * step).toLocaleString('en-US');
+}
+
 const count = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0;
 
 /** The totals the page shows, or undefined when the file is not what it should be. */

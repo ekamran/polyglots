@@ -52,9 +52,15 @@ does not try again for a day.
 ## What is kept
 
 The endpoint keeps only the latest payload per install id and when it
-arrived. It does not store or log IP addresses. The website shows only the
-all-time totals across all installs. The endpoint's code is in the polyglots
-repository, in [usage-server/](../usage-server/).
+arrived. It does not store or log IP addresses. What is sent is decided by
+`app/src/usage/payload.ts` in the polyglots repository, so you can read exactly
+what leaves your machine.
+
+The website shows all-time totals across installs, rounded down and described
+as approximate. An install is counted only from its second report, a week
+after its first, so a newly opted-in install appears on the site after about
+a week. Nothing identifies who sends a report, which is what keeps it
+anonymous, and it also means the totals cannot be verified.
 
 ## Turning it off
 

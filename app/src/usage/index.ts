@@ -12,9 +12,8 @@ import { buildUsagePayload, type UsagePayload } from './payload.js'
 export { buildUsagePayload, type UsagePayload } from './payload.js'
 
 // Opt-in anonymous usage totals, issue #19. Off unless config.json says
-// `usageStats: true` and DO_NOT_TRACK does not say otherwise. The endpoint's
-// code is in usage-server/ at the repository root, so what is kept can be read
-// as easily as what is sent.
+// `usageStats: true` and DO_NOT_TRACK does not say otherwise. What is sent is
+// built in payload.ts, so anyone can read exactly what leaves the machine.
 
 export const DEFAULT_USAGE_URL = 'https://ada.tools/polyglots/api/usage'
 
