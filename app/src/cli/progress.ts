@@ -3,6 +3,7 @@ import type { ReviewEvent } from '../types.js'
 import { UNICODE_GLYPHS, type GlyphSet } from '../ui/glyphs.js'
 import { plainPainter, type Painter } from '../ui/paint.js'
 import { warnLine } from '../ui/messages.js'
+import { truncate } from '../ui/layout.js'
 
 export type BatchPhase = 'drafting' | 'reviewing'
 
@@ -172,6 +173,13 @@ export interface ProgressStream {
 
 const CLEAR_LINE = '\r\x1b[2K'
 
+// The erase-line above reaches only the row the cursor is on, so a live line
+// wider than the terminal wraps and every redraw strands its first rows in
+// the scrollback. A review line with a long file name and the estimate ran to
+// 83 columns, past a default 80-column window. One column is left free
+// because some terminals wrap on a write to the last one.
+const redraw = (line: string, p: Painter): string => `${CLEAR_LINE}${truncate(line, p.width - 1, p.glyphs.ellipsis)}`
+
 export interface ProgressReporter {
   (event: TranslateEvent): void
   finish(): void
@@ -199,7 +207,7 @@ export function createProgressReporter(stream: ProgressStream, p: Painter = plai
     if (!tty || ticker) return
     ticker = setInterval(() => {
       if (!state.phase) return
-      stream.write(`${CLEAR_LINE}${formatProgress(state, Date.now(), p)}`)
+      stream.write(redraw(formatProgress(state, Date.now(), p), p))
       liveLine = true
     }, TICK_MS)
     ticker.unref?.()
@@ -231,7 +239,7 @@ export function createProgressReporter(stream: ProgressStream, p: Painter = plai
     }
     if (notice) stream.write(`${CLEAR_LINE}${notice}\n`)
     if (notice || advancesBar(event)) {
-      stream.write(`${CLEAR_LINE}${line}`)
+      stream.write(redraw(line, p))
       liveLine = true
     }
     if (state.phase) startTicking()
@@ -321,7 +329,7 @@ export function createReviewProgressReporter(stream: ProgressStream, p: Painter 
     if (!tty || ticker) return
     ticker = setInterval(() => {
       if (inFlightSince === undefined) return
-      stream.write(`${CLEAR_LINE}${line()}`)
+      stream.write(redraw(line(), p))
       liveLine = true
     }, 1000)
     ticker.unref?.()
@@ -429,7 +437,7 @@ export function createReviewProgressReporter(stream: ProgressStream, p: Painter 
     }
     if (notice) stream.write(`${CLEAR_LINE}${notice}\n`)
     if (notice || event.type === 'batch-start' || event.type === 'batch-done') {
-      stream.write(`${CLEAR_LINE}${line()}`)
+      stream.write(redraw(line(), p))
       liveLine = true
     }
     if (inFlightSince !== undefined) startTicking()

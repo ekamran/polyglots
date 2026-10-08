@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { stripVTControlCharacters } from 'node:util'
 import { createPainter } from '../../src/ui/paint.js'
+import { displayWidth } from '../../src/ui/layout.js'
 import type { TranslateEvent } from '../../src/commands/translate.js'
 import { applyEvent, createProgressReporter, formatProgress, initialProgress, noticeFor, createReviewProgressReporter, estimateRemainingMs, formatDuration, renderBar } from '../../src/cli/progress.js'
 
@@ -527,5 +528,35 @@ describe('painted progress', () => {
     const painted = formatProgress(state, 0, painter)
     expect(painted).toMatch(/\x1b\[/)
     expect(stripVTControlCharacters(painted)).toBe(formatProgress(state, 0))
+  })
+})
+
+// The live line is redrawn with a carriage return and an erase-line, which
+// only reach the row the cursor is on. A line wider than the terminal wraps,
+// and every redraw then leaves its first rows behind as scrollback garbage.
+describe('the live line on a narrow terminal', () => {
+  const narrow = { ...createPainter({ isTTY: true }, {}), width: 40 }
+  const liveSegments = (text: string) =>
+    text.split('\r\x1b[2K').filter((s) => s !== '' && !s.endsWith('\n'))
+
+  it('never draws the translate line wider than the terminal', () => {
+    const out = { isTTY: true, text: '', write(c: string) { this.text += c; return true } }
+    const report = createProgressReporter(out, narrow)
+    for (const e of events.slice(0, -1)) report(e)
+    report.finish()
+    const live = liveSegments(out.text)
+    expect(live.length).toBeGreaterThan(0)
+    for (const s of live) expect(displayWidth(s)).toBeLessThan(40)
+  })
+
+  it('never draws the review line wider than the terminal', () => {
+    const out = { isTTY: true, text: '', write(c: string) { this.text += c; return true } }
+    const report = createReviewProgressReporter(out, narrow)
+    report({ type: 'start', file: 'a-rather-long-plugin-name-tr_TR.po', total: 2831, reviewable: 2805 })
+    report({ type: 'batch-start', index: 1, of: 114, size: 25, at: 1_700_000_000_000 })
+    report.finish()
+    const live = liveSegments(out.text)
+    expect(live.length).toBeGreaterThan(0)
+    for (const s of live) expect(displayWidth(s)).toBeLessThan(40)
   })
 })
