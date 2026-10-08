@@ -37,10 +37,19 @@ process.env.DEEPL_API_KEY = 'demo'
 // The progress line's "done by" time is wall-clock; pinned so the page does
 // not change with the hour it was built in.
 process.env.TZ = 'UTC'
+// The TUI paints through Ink, whose chalk decides once, when it loads,
+// whether colour is on, from this process's own stdout. That is a terminal
+// when the snapshot is run by hand and a pipe under a release script, so
+// without this the TUI panels would be coloured or plain depending on who
+// built the site. 1 is the sixteen colours the tokens use. The CLI demos are
+// unaffected: main() is handed its env and decides colour from that.
+process.env.FORCE_COLOR = '1'
 
 const { main } = await import('../../app/src/cli.js')
 const { ansiToHtml, ansiToText, Screen } = await import('./ansi.js')
 const { SCENARIOS } = await import('./demos.js')
+const { recordTui } = await import('./tui.js')
+const { TUI_SCENARIOS } = await import('./tui-demos.js')
 type Clock = import('./demos.js').Clock
 
 // Every dependency main() can be handed, listed so that each one a scenario
@@ -228,11 +237,15 @@ async function wordmark(): Promise<string[] | null> {
 try {
   const demos: Record<string, Demo> = {}
   for (const scenario of SCENARIOS) demos[scenario.name] = await record(scenario)
+  const tui: Record<string, Awaited<ReturnType<typeof recordTui>>> = {}
+  for (const scenario of TUI_SCENARIOS) tui[scenario.name] = await recordTui(scenario)
   const version = (JSON.parse(readFileSync(join(appDir, 'package.json'), 'utf8')) as { version: string }).version
-  const snapshot = { version, wordmark: await wordmark(), demos, help: await commandReference() }
+  const snapshot = { version, wordmark: await wordmark(), demos, tui, help: await commandReference() }
   mkdirSync(outDir, { recursive: true })
   writeFileSync(join(outDir, 'snapshot.json'), JSON.stringify(snapshot, null, 1) + '\n')
-  console.log(`Wrote ${Object.keys(demos).length} demos and ${snapshot.help.length} help pages to src/generated/snapshot.json`)
+  console.log(
+    `Wrote ${Object.keys(demos).length} demos, ${Object.keys(tui).length} TUI demos and ${snapshot.help.length} help pages to src/generated/snapshot.json`,
+  )
 } finally {
   rmSync(sandbox, { recursive: true, force: true })
 }

@@ -9,5 +9,5 @@
     "noEmit": true,
     "typeRoots": ["../../app/node_modules/@types"]
   },
-  "include": ["*.ts"]
+  "include": ["*.ts", "../../app/src/tui/**/*.tsx"]
 }

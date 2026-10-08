@@ -2,41 +2,83 @@
 import Base from '../layouts/Base.astro';
 import Install from '../components/Install.astro';
 import Terminal from '../components/Terminal.astro';
-import Wordmark from '../components/Wordmark.astro';
 import Icon from '../components/Icon.astro';
 import { allDocs } from '../lib/docs';
 import { snapshot } from '../lib/snapshot';
+import { loadUsageTotals } from '../lib/usage';
 
 const TAGLINE = 'Review a locale’s submissions in minutes, not evenings.';
 const DESCRIPTION =
-  'polyglots reviews and translates WordPress .po files for translate.wordpress.org locale teams: deterministic checks, an AI agent for judgement, and repairs written into the file. Nothing is uploaded to translate.wordpress.org.';
+  'polyglots reviews and translates WordPress .po files for translate.wordpress.org locale teams, in an app you drive with the arrow keys or from the command line: deterministic checks, an AI agent for judgement, and repairs written into the file. Nothing is uploaded to translate.wordpress.org.';
 
 const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 const docs = await allDocs();
+// Absent until opted-in installs have reported, and whenever it cannot be read.
+const usage = await loadUsageTotals();
+const n = (v: number) => v.toLocaleString('en-US');
 const doc = (slug: string) => `${base}docs/${slug}/`;
 ---
 <Base title={`polyglots · ${TAGLINE}`} description={DESCRIPTION}>
   <section class="hero">
     <div class="wrap hero-grid">
+      <h1 class="hero-head">{TAGLINE}</h1>
+      <div class="hero-shot">
+        <Terminal tui="review" animate title="polyglots" />
+      </div>
       <div class="hero-copy">
-        <Wordmark />
-        <h1>{TAGLINE}</h1>
         <p class="lede">
-          A command-line tool for WordPress locale teams. It checks every string a contributor submits, repairs what it can,
-          and hands you a file of only the entries that still need you. Untranslated strings get a machine draft reviewed
-          by an AI agent. Everything ends as a <code>.po</code> file you read in your own editor; nothing is uploaded to translate.wordpress.org.
+          polyglots is an app for WordPress locale teams. Pick a contributor’s <code>.po</code> file and it checks every
+          string against your glossary and the translations your team already approved, repairs what it can, and hands you
+          back only the entries that still need you, with a message ready for the contributor.
         </p>
         <Install id="hero" />
-        <p class="more"><a href={doc('getting-started')}>Get started <Icon name="arrow" /></a></p>
+        <p class="start-it">Then type <code>polyglots</code> and press enter. The app opens in your terminal window, and a setup wizard walks you through the first run.</p>
+        <p class="more">
+          <a href={doc('getting-started')}>Get started <Icon name="arrow" /></a>
+          <a href={doc('interactive')}>Tour the app <Icon name="arrow" /></a>
+        </p>
       </div>
-      <Terminal demo="review" animate speed={1.6} title="review" />
+    </div>
+  </section>
+
+  <section class="wrap band" aria-labelledby="app">
+    <p class="eyebrow">The app</p>
+    <h2 id="app">Arrow keys and enter, and every key on screen</h2>
+    <p class="lede">
+      You do not need to know the command line. Run <code>polyglots</code> with nothing after it and you get the screen
+      above: a card for each job, your setup at the top, and the keys for the screen you are on at the bottom. Each screen
+      shown here is the app itself, rendered from its source when this page was built.
+    </p>
+    <div class="app-grid">
+      <ul class="points">
+        <li>
+          <h3>Pick a file, not a command</h3>
+          <p>Review and Translate open on a list of the <code>.po</code> files in your folder, newest first, with how many strings each holds. Choose one, check the options, start.</p>
+        </li>
+        <li>
+          <h3>Set up once, in five steps</h3>
+          <p>Your locale, which AI agent reviews, drafting keys, the glossary from translate.wordpress.org, and your locale’s rules. Skip any step; the header shows what is left, and the wizard is always under Configuration.</p>
+        </li>
+        <li>
+          <h3>Watch it work, stop when you like</h3>
+          <p>A run shows its progress, the time left and the last entries it decided. <kbd>p</kbd> pauses, <kbd>q</kbd> stops, and nothing already reviewed is lost: start it again and it carries on.</p>
+        </li>
+        <li>
+          <h3>Help is one key away</h3>
+          <p><kbd>?</kbd> explains the screen you are on, <kbd>ctrl</kbd>+<kbd>k</kbd> jumps to any other, <kbd>esc</kbd> goes back. <a href={doc('interactive')}>The full tour</a></p>
+        </li>
+      </ul>
+      <Terminal tui="setup" title="polyglots · first run" />
     </div>
   </section>
 
   <section class="wrap band" aria-labelledby="round-trip">
-    <p class="eyebrow">The round trip</p>
-    <h2 id="round-trip">Fetch, translate, review, and see how it went</h2>
-    <p class="lede">Four commands cover a locale team’s week. Each output below is the CLI’s own, rendered from its source when this page was built.</p>
+    <p class="eyebrow">On the command line</p>
+    <h2 id="round-trip">The same work as commands, for scripts and automation</h2>
+    <p class="lede">
+      Every screen in the app has a command behind it. Use them to run a week’s fetch and review in one line, from a
+      scheduled job, or from an AI agent. Each output below is the CLI’s own, rendered from its source when this page was built.
+    </p>
 
     <ol class="phases">
       <li class="phase">
@@ -111,6 +153,7 @@ const doc = (slug: string) => `${base}docs/${slug}/`;
         <p>Meaning, fluency and the soft findings go to an AI agent with the rule hints in hand and three lookups: the glossary, your memory and translate.wordpress.org’s consistency data. Claude gets those and nothing else, no shell and no files; Antigravity is held to them by <a href={doc('antigravity')}>its own settings</a>. It decides, and repairs what it rejects.</p>
       </div>
     </div>
+    <p class="no-ai">Prefer no AI? Choose <strong>No AI</strong> in setup: every mechanical check still runs, on your machine, with nothing sent to a model. <a href={doc('getting-started') + '#using-polyglots-without-ai'}>What the rules catch, and what they cannot</a></p>
   </section>
 
   <section class="wrap band" aria-labelledby="engines">
@@ -128,7 +171,7 @@ const doc = (slug: string) => `${base}docs/${slug}/`;
           <tr><td>Drafting</td><td><strong>DeepL</strong> (default)</td><td>Free within DeepL API Free’s allowance (one-time for new accounts); metered on a paid plan.</td></tr>
           <tr><td>Drafting</td><td><strong>OpenAI</strong></td><td>Metered per token.</td></tr>
           <tr><td>Drafting, experimental reviewing</td><td><strong>Local models</strong>: Ollama, LM Studio, llama.cpp, vLLM <a href={doc('local-models')}>setup</a></td><td>Free; runs on your machine.</td></tr>
-          <tr><td>Rules-only review</td><td><code>review --no-ai</code></td><td>Free; no model at all.</td></tr>
+          <tr><td>Rules-only review</td><td><strong>No AI</strong>, chosen in setup, or <code>review --no-ai</code> <a href={doc('getting-started') + '#using-polyglots-without-ai'}>what it checks</a></td><td>Free; no model at all.</td></tr>
         </tbody>
       </table>
     </div>
@@ -148,6 +191,7 @@ const doc = (slug: string) => `${base}docs/${slug}/`;
         <li><strong>Reviewing</strong> sends each batch of strings, with its glossary terms and memory matches, to the agent you review with and its model provider (Anthropic for Claude, Google for Antigravity).</li>
         <li><strong>Drafting</strong> sends source strings to DeepL or OpenAI.</li>
         <li><strong>Lookups</strong> query translate.wordpress.org for the glossary, exports and consistency data.</li>
+        <li><strong>Usage totals</strong>, only if you turn them on: a weekly count of strings reviewed, drafted and repaired, with no names, strings or locale. <a href={doc('usage-statistics')}>What is sent</a></li>
       </ul>
       <p>
         Only with a local model for both drafting and reviewing do the strings stay on your machine. Claude is held to polyglots’ three lookups on every run and cannot open files or run commands; Antigravity’s limits come from its own settings and any other tool servers registered with it.
@@ -174,6 +218,13 @@ const doc = (slug: string) => `${base}docs/${slug}/`;
     <div class="start">
       <div>
         <Install id="footer" />
+        {usage && (
+          <p class="usage">
+            So far, across {n(usage.installs)} {usage.installs === 1 ? 'install' : 'installs'} that share their totals:{' '}
+            <strong>{n(usage.reviewed)}</strong> strings reviewed, <strong>{n(usage.repaired)}</strong> repaired and{' '}
+            <strong>{n(usage.drafted)}</strong> drafted. <a href={doc('usage-statistics')}>How this is counted</a>
+          </p>
+        )}
         <p class="muted small">Version {snapshot.version}. Driving polyglots from an agent? Point it at <a href={`${base}ai/`}>ada.tools/polyglots/ai</a>.</p>
       </div>
       <ul class="doclist">
@@ -186,13 +237,32 @@ const doc = (slug: string) => `${base}docs/${slug}/`;
 
 <style>
   .hero { padding: clamp(2.5rem, 7vw, 5rem) 0 clamp(2rem, 5vw, 4rem); }
-  .hero-grid { display: grid; gap: 2.5rem; align-items: center; }
-  @media (min-width: 1000px) { .hero-grid { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 3.5rem; } }
-  .hero-copy { display: grid; gap: 1.1rem; justify-items: start; min-width: 0; }
-  .hero h1 { font-size: clamp(1.9rem, 4.4vw, 2.9rem); margin: 0.4rem 0 0; max-width: 18ch; }
+  /* On a phone the app comes straight after the headline, so it is in the
+     first screenful there too; beside the copy on a wide screen. */
+  .hero-grid { display: grid; gap: 1.75rem; grid-template-areas: 'head' 'shot' 'copy'; }
+  @media (min-width: 1000px) {
+    .hero-grid {
+      grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+      grid-template-areas: 'head shot' 'copy shot';
+      grid-template-rows: auto 1fr;
+      gap: 1.5rem 3rem;
+    }
+    .hero-shot { align-self: center; }
+  }
+  .hero-head { grid-area: head; align-self: end; }
+  .hero-shot { grid-area: shot; min-width: 0; }
+  .hero-copy { grid-area: copy; display: grid; gap: 1.1rem; justify-items: start; align-content: start; min-width: 0; }
+  .hero h1 { font-size: clamp(1.9rem, 4.4vw, 2.9rem); margin: 0; max-width: 18ch; }
   .hero .lede { margin: 0; }
-  .more { margin: 0; }
+  .start-it { margin: 0; color: var(--fg-2); max-width: 34rem; }
+  .more { margin: 0; display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; }
   .more a { display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 600; text-decoration: none; }
+
+  .app-grid { display: grid; gap: 2.5rem; margin-top: 2rem; align-items: start; }
+  @media (min-width: 1000px) { .app-grid { grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); gap: 3rem; } }
+  .points { list-style: none; margin: 0; padding: 0; display: grid; gap: 1.4rem; }
+  .points h3 { font-size: 1.1rem; margin-bottom: 0.35em; }
+  .points p { margin: 0; color: var(--fg-2); }
 
   .band { padding-top: clamp(3.5rem, 8vw, 6rem); }
   .band > h2 { max-width: 30ch; }
@@ -208,6 +278,7 @@ const doc = (slug: string) => `${base}docs/${slug}/`;
   @media (min-width: 720px) { .cards { grid-template-columns: 1fr 1fr; } }
   .card { border: 1px solid var(--rule); border-radius: var(--radius); padding: 1.4rem 1.5rem 0.6rem; background: var(--bg-2); }
   .card h3 { font-size: 1.1rem; }
+  .no-ai { margin: 1.5rem 0 0; color: var(--fg-2); max-width: 46rem; }
 
   .table-wrap { overflow-x: auto; margin-top: 1.5rem; }
   .engines { width: 100%; border-collapse: collapse; font-size: 0.97rem; min-width: 36rem; }
@@ -227,6 +298,8 @@ const doc = (slug: string) => `${base}docs/${slug}/`;
   .start { display: grid; gap: 2rem; margin-top: 1.5rem; }
   @media (min-width: 900px) { .start { grid-template-columns: 1fr 1fr; gap: 3.5rem; } }
   .small { font-size: 0.9rem; margin-top: 1rem; }
+  .usage { margin: 1.25rem 0 0; color: var(--fg-2); max-width: 34rem; }
+  .usage strong { color: var(--fg); font-variant-numeric: tabular-nums; }
   .doclist { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
   @media (min-width: 560px) { .doclist { grid-template-columns: 1fr 1fr; } }
   .doclist a { text-decoration: none; }

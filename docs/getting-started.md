@@ -22,9 +22,13 @@ Or run it without installing:
 npx polyglots
 ```
 
-Run `polyglots` with no arguments for the interactive menu, or use the
-commands below. Every menu screen has a command behind it, so anything you do
-in the menu can also be scripted.
+Then run `polyglots` with nothing after it. That opens the interactive app,
+which walks you through the setup below in a wizard and does everything else
+with the arrow keys and enter: see [The interactive app](interactive.md).
+
+The rest of this page does the same with commands, which suit scripts and
+scheduled jobs. Every screen in the app has a command behind it, so anything
+you do there can also be scripted.
 
 ## Choose a reviewer
 
@@ -151,6 +155,9 @@ machine in three ways:
 - **Drafting** sends source strings to DeepL or OpenAI.
 - **Lookups** query translate.wordpress.org for the glossary, the exports and
   consistency data.
+- **Usage totals**, only if you turn them on: a weekly count of strings
+  reviewed, drafted and repaired, with no names, strings or locale. See
+  [Usage statistics](usage-statistics.md).
 
 With a [local model](local-models.md) for both drafting and reviewing, the
 strings stay on your machine; only the translate.wordpress.org lookups
@@ -161,8 +168,50 @@ files or run commands. Antigravity's limits come from its own settings and
 from whatever other tool servers you registered with it; see
 [its setup](antigravity.md).
 
+## Using polyglots without AI
+
+polyglots works without any AI model or third-party service. Choose **No AI**
+in the setup wizard, or run:
+
+```
+polyglots config set reviewProvider none
+polyglots config set defaultDraftEngine none
+```
+
+With no review provider, `polyglots review` runs the rules only, exactly as
+`--no-ai` does, and says so when it starts. The app's Review screen holds
+"Skip AI checks" on, and `polyglots doctor` reports the mode rather than a
+missing agent. The only network calls left are to translate.wordpress.org,
+for the glossary and the consistency lookups.
+
+**What the rules check.** Placeholders (printf and `{brace}` forms), HTML
+tags, the number of plural forms, leading and trailing whitespace and line
+breaks, escaping, ampersands and apostrophes, punctuation at the end of a
+string, number formats, title case, untranslated strings, glossary terms,
+your locale's own rules and proper nouns, consistency within the file, and
+consistency with your translation memory. Mechanical faults the rules can
+fix, such as whitespace, are repaired and written to the `-problems.po` file
+beside the submission. Everything else is noted there for you.
+
+**What they cannot judge.** Whether a translation means what the source
+means, reads naturally, suits the context a string appears in, or keeps the
+right tone and register. A wrong word that is spelled correctly, a sentence
+that drops a clause, or a term that is right in general and wrong for this
+string all pass the rules. Findings the rules can only suspect, rather than
+prove, are listed as "guesses" for you to decide; with AI review they would
+be adjudicated for you.
+
+**Translating without a draft engine.** `polyglots translate --draft-engine
+none` fills every entry your translation memory already holds and leaves the
+rest exactly as they were, telling you how many it left untranslated. No
+machine translation is asked for and no AI review runs. If you keep a draft
+engine such as DeepL but set no review provider, its drafts are written as
+fuzzy entries for you to check, since nothing reviewed them.
+
 ## Next
 
+- [The interactive app](interactive.md): the screens and every key.
+- [Using polyglots without AI](#using-polyglots-without-ai): the rules alone.
 - [Configuration](configuration.md): every setting and key.
 - [Locale rules](locale-rules.md): teach the checks your team's conventions.
 - [Command reference](https://ada.tools/polyglots/docs/commands/): every

@@ -32,20 +32,37 @@ for (const [token, style] of Object.entries(TOKENS) as Array<[Token, (typeof TOK
 // gray and grey are one colour under two names in inspect.colors.
 if (colourToken.has('gray')) colourToken.set('grey', colourToken.get('gray')!)
 
+// The TUI paints through Ink, from each token's `ink` side, and there muted
+// is dimColor, not gray. So dim on its own is whichever token Ink dims with,
+// read from TOKENS like the colours are. Dim over a colour is that colour,
+// faded, which is what a terminal shows.
+const dimToken = (Object.entries(TOKENS) as Array<[Token, (typeof TOKENS)[Token]]>).find(([, s]) => s.ink.dimColor === true)?.[0]
+
 interface Style {
   fg?: Token
   bold: boolean
+  dim: boolean
   underline: boolean
+  inverse: boolean
 }
+
+const PLAIN: Style = { bold: false, dim: false, underline: false, inverse: false }
 
 function apply(style: Style, params: number[]): Style {
   const next = { ...style }
   for (const code of params.length === 0 ? [0] : params) {
-    if (code === 0) return { bold: false, underline: false }
+    if (code === 0) return { ...PLAIN }
     if (code === 1) next.bold = true
-    else if (code === 22) next.bold = false
-    else if (code === 4) next.underline = true
+    else if (code === 2) next.dim = true
+    // One code ends both, in every terminal: bold and faint are two ends of
+    // the same intensity setting.
+    else if (code === 22) {
+      next.bold = false
+      next.dim = false
+    } else if (code === 4) next.underline = true
     else if (code === 24) next.underline = false
+    else if (code === 7) next.inverse = true
+    else if (code === 27) next.inverse = false
     else if (code === 39) delete next.fg
     else {
       const name = codeName.get(code)
@@ -56,8 +73,18 @@ function apply(style: Style, params: number[]): Style {
   return next
 }
 
-const classes = (s: Style): string =>
-  [s.fg ? `t-${s.fg}` : '', s.bold ? 't-bold' : '', s.underline ? 't-underline' : ''].filter(Boolean).join(' ')
+const classes = (s: Style): string => {
+  const fg = s.fg ?? (s.dim ? dimToken : undefined)
+  return [
+    fg ? `t-${fg}` : '',
+    s.dim && s.fg ? 't-dim' : '',
+    s.bold ? 't-bold' : '',
+    s.underline ? 't-underline' : '',
+    s.inverse ? 't-inverse' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+}
 
 const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
@@ -67,7 +94,7 @@ const SEQUENCE = /\x1b\[([0-9;]*)m|\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(
 
 export function ansiToHtml(line: string): string {
   let out = ''
-  let style: Style = { bold: false, underline: false }
+  let style: Style = { ...PLAIN }
   let last = 0
   const text = (s: string) => {
     if (!s) return

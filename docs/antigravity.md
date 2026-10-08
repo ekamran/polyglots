@@ -68,7 +68,9 @@ headless, where it can never ask. Add these rules to
 }
 ```
 
-Each tool must be named; a server-wide `mcp(polyglots)` does not work.
+Each tool must be named; a server-wide `mcp(polyglots)` does not work. A pattern such as
+`mcp(polyglots/(glossary|consistency|tm)_lookup)` also works; each part is
+matched as a whole regular expression.
 
 **Allow these three and nothing more.** The text a review reads comes from
 contributors, so the agent reading it must not be able to run commands or

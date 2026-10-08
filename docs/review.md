@@ -88,7 +88,8 @@ polyglots config set wporgUsername your-name
 `--no-ai` runs the deterministic checks and nothing else: no agent, no model,
 no cost. It writes `<name>-problems.po` with the entries the rules found, and
 the soft findings no one has judged are counted as "guesses". It is a quick
-first pass, and the honest way to see what the rules alone catch.
+first pass, and the honest way to see what the rules alone catch. To work this way all the time, choose No AI
+in setup; see [Using polyglots without AI](getting-started.md#using-polyglots-without-ai).
 
 ## Batches, time and cost
 

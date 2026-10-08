@@ -1,27 +1,34 @@
 ---
 import Icon from './Icon.astro';
-import { demos, type Demo } from '../lib/snapshot';
+import { demos, tuiDemos, type Demo, type TuiDemo } from '../lib/snapshot';
 
 // A terminal panel showing a real run, rendered at build time (see
 // scripts/snapshot.ts). The HTML holds the finished run, so a reader without
 // JavaScript, a screen reader, a crawler and an agent fetching the page all get
 // the whole output. scripts/terminal.ts replays it on top when motion is
 // welcome; the static copy stays in the accessibility tree throughout.
-interface Props {
-  demo: keyof typeof demos;
+//
+// With `tui` instead of `demo` it shows the full-screen app (scripts/tui.ts).
+// There is no prompt then, the app owns the whole terminal, and the still is
+// the first frame rather than the last: a recording that ends where it began,
+// on the home screen, so the replay hands back to the same picture.
+type Props = {
   title?: string;
   animate?: boolean;
   /** Playback speed; 1 is the pace the scenario was written at. */
   speed?: number;
-}
-const { demo: name, title, animate = false, speed = 1 } = Astro.props;
-const demo: Demo = demos[name];
-const payload = animate ? JSON.stringify({ command: demo.command, frames: demo.frames.map((f) => [f.hold, f.html.join('\n')]), speed }) : undefined;
+} & ({ demo: keyof typeof demos; tui?: never } | { tui: keyof typeof tuiDemos; demo?: never });
+const { title, animate = false, speed = 1 } = Astro.props;
+const demo: Demo | undefined = Astro.props.demo ? demos[Astro.props.demo] : undefined;
+const tui: TuiDemo | undefined = Astro.props.tui ? tuiDemos[Astro.props.tui] : undefined;
+const frames = (demo ?? tui)!.frames;
+const command = demo?.command ?? '';
+const payload = animate ? JSON.stringify({ command, frames: frames.map((f) => [f.hold, f.html.join('\n')]), speed }) : undefined;
 ---
-<figure class="term" data-terminal={payload}>
+<figure class:list={['term', { tui }]} data-terminal={payload} style={tui ? `--cols: ${tui.columns}` : undefined}>
   <div class="chrome">
     <span class="dots" aria-hidden="true"><span></span><span></span><span></span></span>
-    <figcaption>{title ?? demo.command.split(' ').slice(0, 2).join(' ')}</figcaption>
+    <figcaption>{title ?? command.split(' ').slice(0, 2).join(' ')}</figcaption>
     {animate && (
       <span class="controls" hidden data-controls>
         <button type="button" data-action="pause" aria-label="Pause the demo"><Icon name="pause" /></button>
@@ -30,7 +37,11 @@ const payload = animate ? JSON.stringify({ command: demo.command, frames: demo.f
     )}
   </div>
   <div class="body">
-    <pre class="screen" data-static><span class="prompt">$ </span><span class="cmd">{demo.command}</span>{'\n'}<Fragment set:html={demo.final.join('\n')} /></pre>
+    {demo ? (
+      <pre class="screen" data-static><span class="prompt">$ </span><span class="cmd">{demo.command}</span>{'\n'}<Fragment set:html={demo.final.join('\n')} /></pre>
+    ) : (
+      <pre class="screen" data-static><Fragment set:html={tui!.frames[0]!.html.join('\n')} /></pre>
+    )}
   </div>
 </figure>
 
@@ -67,6 +78,22 @@ const payload = animate ? JSON.stringify({ command: demo.command, frames: demo.f
     font-size: clamp(0.7rem, 1.55vw, 0.84rem); line-height: 1.45;
     white-space: pre; tab-size: 2;
   }
+  /* The full-screen app is a picture of a whole terminal, so it is scaled to
+     fit its panel rather than scrolled: the font is whatever lets every column
+     in (a JetBrains Mono cell is 0.6em wide), up to the size the CLI panels
+     use. Where even that would be unreadable it stops shrinking and the panel
+     scrolls sideways instead, inside itself. The line height is the font's
+     own ascent plus descent, which is what box-drawing and block glyphs are
+     drawn to fill: the card borders and the wordmark join up as they do in a
+     terminal. */
+  .tui .body { container-type: inline-size; }
+  .tui .body :global(pre) {
+    padding: 0.9rem 1rem;
+    font-size: clamp(0.36rem, calc((100cqw - 2rem) / (var(--cols) * 0.6 + 0.5)), 0.9rem);
+    line-height: 1.32;
+  }
+  .term :global(.t-dim) { opacity: 0.6; }
+  .term :global(.t-inverse) { background: var(--term-fg); color: var(--term-bg); }
   /* While the replay runs, the static copy keeps its place (and so the panel's
      height) and stays readable to assistive tech; only its pixels hide. */
   .body[data-playing] :global([data-static]) { opacity: 0; }
