@@ -131,6 +131,23 @@ describe('fetch', () => {
     expect(new Set(calls.map((c) => c.control)).size).toBe(1)
   })
 
+  // Every project's run is this process's, so one signal stops them all as
+  // stopped. Emitted, not sent: the real one ends the worker.
+  it('records a signal during the batch as a stop, then sends it on', async () => {
+    const wporg = fakeWporg()
+    const order: string[] = []
+    await run(['fetch', 'koji', '--get', 'waiting', '--out-dir', home], {
+      ...wporg,
+      stopOwnRuns: () => (order.push('stop'), 1),
+      raiseSignal: (s) => void order.push(`raise ${s}`),
+      reviewFile: async (opts) => {
+        process.emit('SIGTERM', 'SIGTERM')
+        return reviewSummary(opts.file)
+      },
+    })
+    expect(order).toEqual(['stop', 'raise SIGTERM'])
+  })
+
   it('passes review its own options', async () => {
     const wporg = fakeWporg()
     const calls: ReviewOptions[] = []

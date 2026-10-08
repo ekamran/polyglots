@@ -20,6 +20,9 @@ import { createRunControl, type RunState } from './run-control.js'
 import { importTmx } from './commands/tm-import.js'
 import { translateFile, type TranslateSummary } from './commands/translate.js'
 import { DEFAULT_STATS_FILE, serveStats, writeStats } from './commands/stats.js'
+import { openJobsDb } from './jobs/db.js'
+import { stopOwnRuns } from './jobs/runs.js'
+import { stopOnSignal } from './jobs/stop-on-signal.js'
 import { DEFAULT_CONFIG, isHttpUrl, loadConfig, loadSecrets, maskSecret, saveConfig, saveSecret } from './config.js'
 import {
   UsageError,
@@ -94,6 +97,11 @@ export interface CliDeps {
   discoverAgents?: typeof discoverAgents
   discoverModels?: typeof discoverModels
   checkLocalModel?: typeof checkLocalModel
+  // Records this process's running rows as stopped when a signal ends a run,
+  // and sends the signal on; see stopOnSignal. Injected for tests, where a
+  // real signal ends the worker and the real stop opens jobs.db.
+  stopOwnRuns?: () => number
+  raiseSignal?: (signal: NodeJS.Signals) => void
   // Injected so tests decide colour and glyphs themselves, instead of
   // inheriting whatever LANG, TERM or NO_COLOR the machine running them has.
   env?: NodeJS.ProcessEnv
@@ -117,6 +125,8 @@ interface Cli {
   discoverAgents: typeof discoverAgents
   discoverModels: typeof discoverModels
   checkLocalModel: typeof checkLocalModel
+  // Listens for SIGINT and SIGTERM until the returned function is called.
+  stopRunsOnSignal: () => () => void
   config: () => PolyglotsConfig
   // One painter per stream, because the two can disagree: stdout piped into
   // a file while stderr is still on a terminal.
@@ -158,6 +168,13 @@ function createCli(deps: CliDeps): Cli {
     discoverAgents: deps.discoverAgents ?? discoverAgents,
     discoverModels: deps.discoverModels ?? discoverModels,
     checkLocalModel: deps.checkLocalModel ?? checkLocalModel,
+    stopRunsOnSignal: () =>
+      stopOnSignal({
+        // Only installed around a run, so a run is what a signal interrupts.
+        busy: () => true,
+        stop: () => void (deps.stopOwnRuns ?? stopOwnRunsInJobsDb)(),
+        ...(deps.raiseSignal === undefined ? {} : { raise: deps.raiseSignal }),
+      }),
     config: () => (cached ??= loadConfig()),
     out: (line) => streams.stdout.write(`${line}\n`),
     err: (line) => streams.stderr.write(`${line}\n`),
@@ -301,6 +318,7 @@ async function runTranslate(cli: Cli, patterns: string[], flags: TranslateFlags)
     ])) cli.err(line)
     const report = createProgressReporter(cli.streams.stderr, cli.ui.err)
     let summary: TranslateSummary
+    const unwatchSignals = cli.stopRunsOnSignal()
     try {
       summary = await cli.translate({
         file,
@@ -321,6 +339,8 @@ async function runTranslate(cli: Cli, patterns: string[], flags: TranslateFlags)
       cli.err(errorLine(cli.ui.err, `${file}: ${errorMessage(error)}`))
       failed += 1
       continue
+    } finally {
+      unwatchSignals()
     }
     report.finish()
     for (const line of translateSummary(cli.ui.out, summary, dryRun)) cli.out(line)
@@ -866,6 +886,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
             fetchProjects: cli.fetchProjects,
             reviewFile: cli.reviewFile,
             translate: cli.translate,
+            stopRunsOnSignal: cli.stopRunsOnSignal,
             out: cli.out,
             err: cli.err,
             ui: cli.ui,
@@ -918,6 +939,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
         if (state === 'running') report({ type: 'resumed', at: Date.now() })
         if (state === 'stopping') report({ type: 'stopping', at: Date.now() })
       })
+      const unwatchSignals = cli.stopRunsOnSignal()
       const summary = await cli.reviewFile({
         control,
         file: target!,
@@ -929,6 +951,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
         bin: agentBinOverride(config.reviewProvider, process.env),
         onProgress: report,
       }).finally(() => {
+        unwatchSignals()
         unsubscribe()
         unwatchKeys()
         report.finish()
@@ -1131,3 +1154,12 @@ function isEntryPoint(): boolean {
 }
 
 if (isEntryPoint()) process.exitCode = await main(process.argv.slice(2))
+
+function stopOwnRunsInJobsDb(): number {
+  const db = openJobsDb()
+  try {
+    return stopOwnRuns(db)
+  } finally {
+    db.close()
+  }
+}

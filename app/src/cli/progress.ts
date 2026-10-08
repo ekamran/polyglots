@@ -397,9 +397,8 @@ export function createReviewProgressReporter(stream: ProgressStream, p: Painter 
         close(event.at)
         notice = `batch ${event.index} failed (${event.size} entries, flagged as unreviewed): ${event.reason}`
         break
-      case 'written':
-        notice = `wrote ${event.file}`
-        break
+      // Not announced: the summary names the problems file when the run ends,
+      // and a line here printed the same path twice on one screen.
       case 'marker-ignored':
         notice = `Ignoring the unfinished review in ${event.file}: it was written by an earlier version. Reviewing from the top.`
         break

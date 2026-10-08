@@ -68,7 +68,10 @@ export function groupFor(rule: string): string {
  *
  * Rounded to the nearest five once there is enough to round, because the exact
  * figure invites a requester to audit arithmetic against a tally they cannot
- * see, and the point of the sentence is the shape of the problem. Below five it
+ * see, and the point of the sentence is the shape of the problem. The message is
+ * posted in public on the team's o2 site, so it has to show that every string
+ * was checked without reading like an audit of the person who wrote them. The
+ * summary box beside it stays exact; that one is for the reviewer. Below five it
  * prints exactly: rounding a two to the nearest five would report zero of
  * something that demonstrably happened.
  *

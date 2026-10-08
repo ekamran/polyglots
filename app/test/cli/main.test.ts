@@ -1823,3 +1823,57 @@ describe('confirmations', () => {
     expect(h.stdout.text).toBe('✓ batchSize = 7\n')
   })
 })
+
+// Ctrl+C in a review or translate is SIGINT with nothing else listening, so
+// without this the run's row is left at running and later filed as
+// abandoned. Signals are emitted, never sent: the real one ends the worker.
+describe('a signal during a run', () => {
+  function watch() {
+    const order: string[] = []
+    return {
+      order,
+      deps: {
+        stopOwnRuns: () => (order.push('stop'), 1),
+        raiseSignal: (s: NodeJS.Signals) => void order.push(`raise ${s}`),
+      },
+    }
+  }
+
+  it.each(['SIGINT', 'SIGTERM'] as const)('review records %s as a stop, then sends it on', async (sig) => {
+    const h = harness()
+    const w = watch()
+    const before = process.listenerCount(sig)
+    await h.run(['review', file, '--no-ai'], {
+      ...w.deps,
+      reviewFile: async () => {
+        process.emit(sig, sig)
+        return {
+          file, locale: 'tr' as const, total: 1, skipped: 0, reviewed: 1, problems: 0, needsReview: 0, approvable: 1, unreviewed: 0, repaired: 0,
+          written: 0, pending: 0, byRule: {}, byGroup: {},
+        }
+      },
+    })
+    expect(w.order).toEqual(['stop', `raise ${sig}`])
+    expect(process.listenerCount(sig)).toBe(before)
+  })
+
+  it('translate records SIGINT as a stop, then sends it on', async () => {
+    const h = harness()
+    const w = watch()
+    const t = fakeTranslate(() => {
+      process.emit('SIGINT', 'SIGINT')
+      return {}
+    })
+    await h.run(['translate', file], { ...w.deps, translate: t.fn })
+    expect(w.order).toEqual(['stop', 'raise SIGINT'])
+  })
+
+  it('stops listening once the run is over', async () => {
+    const h = harness()
+    const w = watch()
+    const before = process.listenerCount('SIGINT')
+    await h.run(['translate', file], { ...w.deps, translate: fakeTranslate().fn })
+    expect(process.listenerCount('SIGINT')).toBe(before)
+    expect(w.order).toEqual([])
+  })
+})

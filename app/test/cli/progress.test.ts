@@ -327,6 +327,17 @@ describe('createReviewProgressReporter', () => {
     expect(out.text).toMatch(/paused/i)
   })
 
+  // The summary names the problems file once the run ends, so a progress
+  // line saying the same thing printed the path twice on the same screen.
+  it('does not announce the problems file, which the summary names', () => {
+    const out = sink()
+    const report = createReviewProgressReporter(out)
+    report({ type: 'start', file: 'a.po', total: 10, reviewable: 10 })
+    report({ type: 'written', file: '/tmp/a-problems.po' })
+    report.finish()
+    expect(out.text).not.toContain('a-problems.po')
+  })
+
   it('says one entry, not one entries, when that is all a resume inherited', () => {
     const out = sink()
     const report = createReviewProgressReporter(out)

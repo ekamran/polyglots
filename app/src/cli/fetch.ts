@@ -45,6 +45,8 @@ export interface FetchCli {
   fetchProjects: typeof fetchProjects
   reviewFile: typeof reviewFile
   translate: typeof translateFile
+  // Records the batch's runs as stopped if a signal ends it; see stopOnSignal.
+  stopRunsOnSignal: () => () => void
   ui: { out: Painter; err: Painter }
   out(line: string): void
   err(line: string): void
@@ -194,6 +196,7 @@ async function runJobs(
       process.kill(process.pid, 'SIGINT')
     },
   })
+  const unwatchSignals = cli.stopRunsOnSignal()
   const unsubscribe = control.subscribe((state: RunState) => {
     if (state === 'paused') cli.err('Pausing every running project after its current batch. Press p to resume.')
     if (state === 'running') cli.err('Resumed.')
@@ -254,6 +257,7 @@ async function runJobs(
     const username = cli.config().wporgUsername
     for (const outcome of outcomes) ends.set(inputOf.get(outcome.file)!, endOfJob(outcome, username))
   } finally {
+    unwatchSignals()
     unsubscribe()
     unwatchKeys()
   }
