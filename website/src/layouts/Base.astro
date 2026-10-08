@@ -14,6 +14,28 @@ interface Props {
 
 const { title, description, path = '' } = Astro.props;
 const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
+
+// Self-hosted subsets of MesloLGS NF and Fira Code, for terminal panels and
+// code; prose uses the system stack. The pair is a common terminal setup:
+// Meslo draws ASCII, Fira Code everything else, box drawing and block
+// elements included (scripts/subset-font.sh). A terminal forces both into one
+// cell grid and a browser does not, so Fira Code is shrunk to Meslo's cell
+// width (0.6021em against 0.6154em); without it every right border drifts.
+//
+// Declared here rather than in global.css so the URLs carry the site's base,
+// the one place it is set: a root-relative url() in CSS is rewritten by the
+// build but not by the dev server, which then asks for /fonts/ and fails.
+const fontFaces = [
+  ['Polyglots Meslo', 'meslo-regular', 400, ''],
+  ['Polyglots Meslo', 'meslo-bold', 700, ''],
+  ['Polyglots Fira', 'fira-code-regular', 400, 'size-adjust:97.83%;'],
+  ['Polyglots Fira', 'fira-code-bold', 700, 'size-adjust:97.83%;'],
+]
+  .map(
+    ([family, file, weight, extra]) =>
+      `@font-face{font-family:'${family}';src:url('${base}fonts/${file}.woff2') format('woff2');font-weight:${weight};font-style:normal;font-display:swap;${extra}}`,
+  )
+  .join('');
 const canonical = new URL(`${base}${path}`, Astro.site);
 const ogImage = new URL(`${base}og.png`, Astro.site);
 ---
@@ -30,6 +52,7 @@ const ogImage = new URL(`${base}og.png`, Astro.site);
     <link rel="apple-touch-icon" href={`${base}apple-touch-icon.png`} />
     <link rel="preload" href={`${base}fonts/meslo-regular.woff2`} as="font" type="font/woff2" crossorigin />
     <link rel="preload" href={`${base}fonts/fira-code-regular.woff2`} as="font" type="font/woff2" crossorigin />
+    <style is:inline set:html={fontFaces}></style>
     <link rel="alternate" type="text/plain" title="Agent runbook" href={`${base}ai.txt`} />
     <meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#131416" media="(prefers-color-scheme: dark)" />
