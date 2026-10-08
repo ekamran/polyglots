@@ -28,10 +28,20 @@ Entries say what changed. For why and how, read the commit.
 - TUI screens taller than the window scroll to keep the cursor and a run's keys in view; page up and page down scroll a screen with no cursor.
 - `review` and `translate` take the locale from the file's Language header when nothing else names one, except when Antigravity reviews.
 - `config set defaultLocale ""` unsets the locale.
+- No AI: `reviewProvider none` makes review rules-only and counts as done in setup; `doctor` reports it as a mode.
+- `--draft-engine none` fills from translation memory only and reports how many entries it left untranslated.
+- Opt-in anonymous usage statistics, off by default and asked at the end of setup; `DO_NOT_TRACK=1` always turns them off.
+- `usage-stats show` and `usage-stats reset`, the `usageStats` setting, and Configuration › Usage statistics in the app.
+- `localIdleTimeout`: a local server silent this many seconds is given up on as a cut-off reply (default 180).
 
 ### Changed
 
 - With no model set, the local engine uses `qwen3.8:27b` off Apple silicon, where the MLX build does not run.
+- With no review provider, drafts from an engine are written fuzzy and not reviewed.
+- Rules-only and memory-only runs no longer prune cached AI verdicts or drafts.
+- Antigravity's setup check accepts allow-rules written as patterns.
+- A .pot is refused naming its Plural-Forms placeholder, not a missing header.
+- The package ships only dist/, i18n/, README, LICENSE and CHANGELOG; building no longer fetches the locale table.
 - polyglots no longer assumes tr when no locale is set; set one with `config set defaultLocale` or `--locale`.
 - The setup wizard and Locale Rules no longer prefill tr; Fetch and the memory screens ask for setup without a locale.
 - The interactive mode is never wider than the home grid, and is centred on a wide terminal.
@@ -57,6 +67,12 @@ Entries say what changed. For why and how, read the commit.
 - The stats page keeps focus, sort, filter and open lists on the right table after a refresh.
 - The Locale Rules trial reads the glossary without writing to polyglots.db.
 - The User-Agent sent to translate.wordpress.org points at the real repository.
+- `fetch` says when only universal checks run, and checks local models before downloading.
+- `rules copy` rewrites the pack and check lines for the target locale.
+
+### Security
+
+- Upgraded @modelcontextprotocol/sdk, adm-zip, proxy-addr, source-map-js, fast-uri and ip-address.
 
 ## [0.25.0] - 2026-10-07
 
