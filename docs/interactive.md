@@ -59,8 +59,8 @@ and press `enter`.
 
 | Key | Card | What it does |
 |---|---|---|
-| `t` | Translate a .po file | Fills untranslated entries from your translation memory first, then machine drafts, and marks drafts fuzzy for you to check. See [Translating](translate.md). |
 | `r` | Review a submitted .po | Checks a submission with your locale's rules and the review agent, repairs what it can, and writes the problems to a file. See [Reviewing submissions](review.md). |
+| `t` | Translate a .po file | Fills untranslated entries from your translation memory first, then machine drafts, and marks drafts fuzzy for you to check. See [Translating](translate.md). |
 | `f` | Fetch from translate.wordpress.org | Downloads the waiting or untranslated strings for a list of projects, and can review or translate each file as it arrives. |
 | `s` | Review statistics | Serves your statistics page from this machine while the app runs, and can write a copy to keep. |
 | `o` | Tools | Split a large `.po` into parts, import translation memory, export it. |

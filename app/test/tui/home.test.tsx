@@ -47,8 +47,8 @@ afterEach(async () => {
 // assertion about what the user sees and deriving it would make it agree with
 // the code by construction. The length check below is what stops it drifting.
 const EXPECTED_HOME = [
-  't Translate a .po file',
   'r Review a submitted .po',
+  't Translate a .po file',
   'f Fetch from translate.wordpress.org',
   's Review statistics',
   'o Tools',
@@ -67,8 +67,10 @@ describe('Home', () => {
     expect(lastFrame()).toContain('▛▌▛▌▐ ▌▌▛▌▐ ▛▌▜▘▛▘')
     expect(lastFrame()).toContain('╭')
     // Two cards on one line is what makes it a grid.
-    expect(lastFrame()).toMatch(/Translate a \.po file.*Review a submitted \.po/)
-    expect(frame).toMatch(/› t Translate/)
+    // Review first, so it has focus when the app opens: reviewing
+    // submissions is what the app is for.
+    expect(lastFrame()).toMatch(/Review a submitted \.po.*Translate a \.po file/)
+    expect(frame).toMatch(/› r Review/)
   })
 
   // Every screen shares the home grid's width and its left edge, so the eye
@@ -94,7 +96,7 @@ describe('Home', () => {
     const lines = lastFrame().split('\n')
     expect(lines.length).toBeLessThanOrEqual(24)
     expect(Math.max(...lines.map((l) => l.length))).toBeLessThanOrEqual(80)
-    expect(lastFrame()).toMatch(/Translate a \.po file.*Review a submitted \.po/)
+    expect(lastFrame()).toMatch(/Review a submitted \.po.*Translate a \.po file/)
     expect(flat(lastFrame())).toContain('a About')
     expect(flat(lastFrame())).toContain('? help')
   })
@@ -106,7 +108,7 @@ describe('Home', () => {
     for (const item of EXPECTED_HOME) expect(flat(frame)).toContain(item)
     expect(frame).not.toContain('╭')
     expect(frame).not.toContain('▛▌')
-    expect(frame).not.toMatch(/Translate a \.po file.*Review a submitted \.po/)
+    expect(frame).not.toMatch(/Review a submitted \.po.*Translate a \.po file/)
   })
 
   it('asks for a larger terminal below 60x20, and lays out again on resize', async () => {
@@ -131,7 +133,7 @@ describe('Home', () => {
     await tick()
     stdin.write(keys.right)
     await tick()
-    expect(flat(lastFrame())).toMatch(/› r Review/)
+    expect(flat(lastFrame())).toMatch(/› t Translate/)
     stdin.write(keys.down)
     await tick()
     expect(flat(lastFrame())).toMatch(/› s Review statistics/)
@@ -140,8 +142,7 @@ describe('Home', () => {
     expect(flat(lastFrame())).toMatch(/› f Fetch/)
     stdin.write(keys.up)
     await tick()
-    stdin.write(keys.right)
-    await tick()
+    expect(flat(lastFrame())).toMatch(/› r Review/)
     stdin.write(keys.enter)
     await waitForText(lastFrame, 'Review')
     expect(lastFrame()).toContain('plugin.po')
@@ -152,7 +153,7 @@ describe('Home', () => {
     await tick()
     stdin.write(keys.down)
     await tick()
-    expect(flat(lastFrame())).toMatch(/› r Review/)
+    expect(flat(lastFrame())).toMatch(/› t Translate/)
   })
 
   it('opens Tools as a submenu, and goes back a level at a time', async () => {

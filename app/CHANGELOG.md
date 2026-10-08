@@ -10,6 +10,10 @@ Entries say what changed. For why and how, read the commit.
 
 ## [Unreleased]
 
+### Changed
+
+- The app's home screen lists Review first, so it has focus when the app opens.
+
 ## [0.26.1] - 2026-10-08
 
 ### Fixed

@@ -149,15 +149,8 @@ export const CONFIGURATION: MenuNode[] = [
 ]
 
 export const HOME: MenuNode[] = [
-  {
-    id: 'translate',
-    key: 't',
-    label: 'Translate a .po file',
-    description: 'Draft with memory, glossary and MT',
-    icon: 'a→b',
-    asciiIcon: 'a>b',
-    help: 'Fills untranslated entries from the translation memory first, then machine drafts, and marks the drafts fuzzy for a human to check.',
-  },
+  // Review first: it has focus when the app opens, and reviewing submissions
+  // is what the app is for.
   {
     id: 'review',
     key: 'r',
@@ -166,6 +159,15 @@ export const HOME: MenuNode[] = [
     icon: '[✓]',
     asciiIcon: '[+]',
     help: 'Checks a submitted catalogue with the locale rules and the review agent, repairs what it can and writes the problems to a file.',
+  },
+  {
+    id: 'translate',
+    key: 't',
+    label: 'Translate a .po file',
+    description: 'Draft with memory, glossary and MT',
+    icon: 'a→b',
+    asciiIcon: 'a>b',
+    help: 'Fills untranslated entries from the translation memory first, then machine drafts, and marks the drafts fuzzy for a human to check.',
   },
   {
     id: 'fetch',
