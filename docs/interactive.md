@@ -26,8 +26,8 @@ has five steps:
    rules alone ([what that means](getting-started.md#using-polyglots-without-ai)).
    Each option says what it costs.
 3. **Draft engine and API keys**: what fills in untranslated strings: DeepL,
-   OpenAI, a local model or No AI, and the key it needs. Skip this if you only
-   review.
+   OpenAI, a local model, or translation memory only, and the key it needs.
+   Skip this if you only review.
 4. **Glossary sync**: downloads your locale's glossary from
    translate.wordpress.org. A review will not start without it.
 5. **Locale rules**: the checks for your language's conventions. Some
