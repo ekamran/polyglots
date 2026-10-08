@@ -7,6 +7,7 @@ import { configDir, configFile } from '../../src/paths.js'
 import type { TranslateOptions } from '../../src/commands/translate.js'
 import { CommandsProvider } from '../../src/tui/commands.js'
 import { Translate } from '../../src/tui/screens/Translate.js'
+import { formatSummary } from '../../src/tui/components/Progress.js'
 import { ESC_DELAY, fakeCommands, flat, keys, makeHome, render, scriptedTranslate, tick, waitFor, waitForText, cleanup, type Home } from './helpers.js'
 
 let home: Home
@@ -66,6 +67,31 @@ describe('Translate options', () => {
     await waitForText(lastFrame, /Draft engine:\s+openai/)
     stdin.write(keys.left)
     await waitForText(lastFrame, /Draft engine:\s+deepl/)
+  })
+})
+
+describe('Translate with no draft engine', () => {
+  it('offers none as an engine and says what it does', async () => {
+    const { lastFrame, stdin } = mount()
+    await pickFile(stdin, lastFrame)
+    stdin.write(keys.down)
+    await tick()
+    stdin.write(keys.left)
+    await waitForText(lastFrame, /Draft engine:\s+none/)
+    expect(flat(lastFrame())).toContain('Fills from the translation memory only')
+  })
+
+  it('says when the drafts will be written unreviewed', async () => {
+    saveConfig({ reviewProvider: 'none' })
+    const { lastFrame, stdin } = mount()
+    await pickFile(stdin, lastFrame)
+    expect(flat(lastFrame())).toContain('No review provider: drafts are written fuzzy')
+  })
+
+  it('counts what was left untranslated', () => {
+    expect(formatSummary({ file: 'x.po', total: 9, pending: 7, fromTm: 2, translated: 0, fuzzy: 0, skipped: 0, untranslated: 5 })).toBe(
+      'Done. 2 from TM, 5 left untranslated (no memory match).',
+    )
   })
 })
 

@@ -77,7 +77,7 @@ export function parseSecretName(raw: string): keyof Secrets {
   throw new UsageError(`Unknown key "${raw}"; expected one of ${SECRET_NAMES.join(', ')}`)
 }
 
-export const DRAFT_ENGINES: readonly DraftEngineChoice[] = ['deepl', 'openai', 'local']
+export const DRAFT_ENGINES: readonly DraftEngineChoice[] = ['deepl', 'openai', 'local', 'none']
 
 export type { DraftEngineChoice }
 
@@ -93,8 +93,10 @@ export function parseDraftEngine(raw: string): DraftEngineChoice {
 // the only way in is `polyglots config set reviewProvider`, or the menu. The
 // menu never offers `local`, which makes this the one door to it.
 export function parseReviewProvider(raw: string): ReviewChoice {
-  if (isReviewProvider(raw) || raw === 'local') return raw
-  throw new UsageError(`reviewProvider must be one of ${PROVIDERS.join(', ')} or local (experimental), got "${raw}"`)
+  if (isReviewProvider(raw) || raw === 'local' || raw === 'none') return raw
+  throw new UsageError(
+    `reviewProvider must be one of ${PROVIDERS.join(', ')}, local (experimental) or none (rules only, no AI), got "${raw}"`,
+  )
 }
 
 export function parseCsvDelimiter(raw: string): CsvDelimiter {
@@ -102,12 +104,13 @@ export function parseCsvDelimiter(raw: string): CsvDelimiter {
   throw new UsageError(`--delimiter must be ";" or ",", got "${raw}"`)
 }
 
-// `local` maps to nothing: a local runner needs no secret, and mapping it to
+// `local` and `none` map to nothing: a local runner needs no secret, and mapping it to
 // one would make the precheck demand a key that can never exist.
 const ENGINE_SECRET: Record<DraftEngineChoice, keyof Secrets | undefined> = {
   deepl: 'DEEPL_API_KEY',
   openai: 'OPENAI_API_KEY',
   local: undefined,
+  none: undefined,
 }
 
 export function secretForEngine(engine: DraftEngineChoice): keyof Secrets | undefined {

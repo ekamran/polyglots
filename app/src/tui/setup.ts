@@ -48,11 +48,13 @@ export function setupStatus(f: SetupFacts): SetupStatus {
     // falls back to the defaults when the file cannot be read.
     locale: f.localeConfigured || confirmed('locale') ? 'done' : 'missing',
     // The local reviewer is only ever chosen on purpose, by config set, so it
-    // counts as configured. An agent counts once discovery says it is usable;
-    // until discovery answers the step is unknown rather than missing, so the
-    // count does not flicker down and back up at every launch.
+    // counts as configured, and so does none, which is the choice to work
+    // without AI and has nothing for discovery to find. An agent counts once
+    // discovery says it is usable; until discovery answers the step is unknown
+    // rather than missing, so the count does not flicker down and back up at
+    // every launch.
     provider:
-      f.config.reviewProvider === 'local'
+      f.config.reviewProvider === 'local' || f.config.reviewProvider === 'none'
         ? 'done'
         : f.agents === undefined
           ? 'unknown'
@@ -63,7 +65,9 @@ export function setupStatus(f: SetupFacts): SetupStatus {
     // nothing to set, and a step they can never finish would hold the count
     // at 4/5 and reopen the wizard at every launch.
     keys:
-      Boolean(f.secrets.DEEPL_API_KEY) || Boolean(f.secrets.OPENAI_API_KEY) || f.config.defaultDraftEngine === 'local' || skipped('keys')
+      Boolean(f.secrets.DEEPL_API_KEY) || Boolean(f.secrets.OPENAI_API_KEY) || f.config.defaultDraftEngine === 'local' ||
+      f.config.defaultDraftEngine === 'none' ||
+      skipped('keys')
         ? 'done'
         : 'missing',
     glossary: f.glossaryCount === undefined ? 'missing' : f.glossaryCount > 0 ? 'done' : 'missing',

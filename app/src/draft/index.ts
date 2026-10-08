@@ -21,7 +21,7 @@ export type DraftEngineInput = DraftEngineChoice | 'qwen'
 /** The choice a typed or saved name means, or undefined for an unknown one. */
 export function normalizeDraftEngine(raw: string): DraftEngineChoice | undefined {
   if (raw === 'qwen' || raw === 'local') return 'local'
-  if (raw === 'deepl' || raw === 'openai') return raw
+  if (raw === 'deepl' || raw === 'openai' || raw === 'none') return raw
   return undefined
 }
 
@@ -78,6 +78,9 @@ const ENV_VAR: Record<'deepl' | 'openai', keyof Secrets> = {
  * meant to prevent.
  */
 export function draftEngineId(name: DraftEngineInput, local?: LocalTargetInput): DraftEngineName {
+  // `none` drafts nothing, so it has no identity to key a draft under, and a
+  // caller asking for one has missed that translate never builds it.
+  if (name === 'none') throw new Error('The draft engine "none" drafts nothing and has no engine id')
   if (normalizeDraftEngine(name) !== 'local') return name as 'deepl' | 'openai'
   return localModelId({
     kind: local?.kind ?? 'ollama',
@@ -87,6 +90,7 @@ export function draftEngineId(name: DraftEngineInput, local?: LocalTargetInput):
 }
 
 export function getDraftEngine(name: DraftEngineInput, secrets: Secrets, options: GetDraftEngineOptions = {}): DraftEngine {
+  if (name === 'none') throw new Error('The draft engine "none" drafts nothing; translate fills from the translation memory alone')
   if (normalizeDraftEngine(name) === 'local') {
     const target: LocalTarget = options.local ?? {
       kind: 'ollama',

@@ -446,8 +446,9 @@ export function resolveAgentBin(
  * no override passes exactly what it passed before.
  */
 export function agentBinOverride(provider: ReviewChoice, env: NodeJS.ProcessEnv): string | undefined {
-  // A local model is not spawned, so there is no binary to override.
-  if (provider === 'local') return undefined
+  // A local model is not spawned, and with no reviewer nothing is, so there
+  // is no binary to override.
+  if (provider === 'local' || provider === 'none') return undefined
   const { bin, source } = resolveAgentBin(provider, env)
   return source === 'default' ? undefined : bin
 }

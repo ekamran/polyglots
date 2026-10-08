@@ -167,6 +167,11 @@ export function renderBar(done: number, total: number): string {
 }
 
 export function formatSummary(summary: TranslateSummary): string {
+  // A memory-only run drafts nothing, so its line is about what the memory
+  // filled and what it could not, rather than three zeros.
+  if (summary.untranslated !== undefined) {
+    return `Done. ${summary.fromTm} from TM, ${summary.untranslated} left untranslated (no memory match).`
+  }
   return `Done. ${summary.translated} translated, ${summary.fuzzy} fuzzy, ${summary.fromTm} from TM, ${summary.skipped} skipped.`
 }
 

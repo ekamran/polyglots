@@ -133,6 +133,56 @@ describe('the steps', () => {
     expect(config.saved).toContainEqual({ reviewProvider: 'claude' })
   })
 
+  // Someone who wants no AI has no agent to find. The choice is always on the
+  // list, last so enter on the first row still picks an agent, and it is the
+  // whole list when nothing is installed.
+  it('offers No AI even when no agent is ready, and saves it as none', async () => {
+    const config = configStore()
+    const commands = fakeCommands({
+      ...config,
+      ...memoryTuiState(fresh()),
+      discoverAgents: async () => [unusableAgent('claude', 'not on PATH'), unusableAgent('antigravity', 'agy not on PATH')],
+      discoverModels: async () => [],
+    })
+    const { lastFrame, stdin } = render(<App commands={commands} />)
+    await waitForText(lastFrame, 'Step 1 of 5')
+    stdin.write(keys.esc)
+    await tick(ESC_DELAY)
+    await waitForText(lastFrame, 'No AI')
+    expect(flat(lastFrame())).not.toContain('No review agent is ready')
+    stdin.write(keys.enter)
+    await waitForText(lastFrame, 'Step 3 of 5')
+    expect(config.saved).toContainEqual({ reviewProvider: 'none' })
+  })
+
+  it('lists No AI after the agents', async () => {
+    const { lastFrame, stdin } = render(<App commands={fakeCommands({ ...memoryTuiState(fresh()) })} />)
+    await waitForText(lastFrame, 'Step 1 of 5')
+    stdin.write(keys.esc)
+    await tick(ESC_DELAY)
+    await waitForText(lastFrame, 'No AI')
+    const frame = flat(lastFrame())
+    expect(frame.indexOf('Claude Code')).toBeLessThan(frame.indexOf('No AI'))
+  })
+
+  it('offers no draft engine, and moves straight on without a key screen', async () => {
+    const config = configStore()
+    const { lastFrame, stdin } = render(<App commands={fakeCommands({ ...config, ...memoryTuiState(fresh()) })} />)
+    await waitForText(lastFrame, 'Step 1 of 5')
+    for (let i = 0; i < 2; i++) {
+      stdin.write(keys.esc)
+      await tick(ESC_DELAY)
+    }
+    await waitForText(lastFrame, 'Translation memory only')
+    for (let i = 0; i < 5; i++) {
+      stdin.write(keys.down)
+      await tick()
+    }
+    stdin.write(keys.enter)
+    await waitForText(lastFrame, 'Step 4 of 5')
+    expect(config.saved).toContainEqual({ defaultDraftEngine: 'none' })
+  })
+
   it('offers the local draft engine only when a local server answers', async () => {
     const withServer = render(<App commands={fakeCommands({ ...memoryTuiState(fresh()), discoverModels: async () => [modelServer()] })} />)
     await waitForText(withServer.lastFrame, 'Step 1 of 5')
@@ -201,8 +251,15 @@ describe('matchLocales', () => {
 
 describe('offeredProviders', () => {
   it('lists usable agents and the local reviewer only with a live server', () => {
-    expect(offeredProviders([agentStatus('claude'), agentStatus('antigravity')], []).map((p) => p.id)).toEqual(['claude', 'antigravity'])
-    expect(offeredProviders([], [modelServer()]).map((p) => p.id)).toEqual(['local'])
+    expect(offeredProviders([agentStatus('claude'), agentStatus('antigravity')], []).map((p) => p.id)).toEqual([
+      'claude',
+      'antigravity',
+      'none',
+    ])
+    expect(offeredProviders([], [modelServer()]).map((p) => p.id)).toEqual(['local', 'none'])
     expect(offeredProviders(undefined, undefined)).toEqual([])
+    // Not while either question is still out: it would be the only row.
+    expect(offeredProviders([], undefined)).toEqual([])
+    expect(offeredProviders(undefined, [])).toEqual([])
   })
 })

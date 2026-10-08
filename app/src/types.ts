@@ -22,7 +22,11 @@ export interface DraftResult {
 // any Ollama model could be configured. The old name is still read wherever a
 // person can type it or have saved it (normalizeDraftEngine), and is never
 // written.
-export type DraftEngineChoice = 'deepl' | 'openai' | 'local'
+//
+// `none` drafts nothing: translate fills what the translation memory holds and
+// leaves the rest untranslated. It has no engine and no identity below,
+// because it never produces a draft to key.
+export type DraftEngineChoice = 'deepl' | 'openai' | 'local' | 'none'
 
 // Which protocol a local model server speaks. Stated in config rather than
 // guessed per run: Ollama answers /v1/models too, and a run must not change
@@ -219,7 +223,13 @@ export type ReviewProvider = 'claude' | 'antigravity'
  * experimental and opt-in only (`config set reviewProvider local`), so nothing
  * that cycles or auto-selects providers ever sees it.
  */
-export type ReviewChoice = ReviewProvider | 'local'
+//
+// `none` is no reviewer at all: review runs the rules only, as --no-ai does,
+// and translate writes nothing a model would have had to judge. A choice a
+// person makes on purpose, in setup or by config set, for working without AI
+// or any third-party service; like `local`, nothing that cycles providers
+// ever lands on it.
+export type ReviewChoice = ReviewProvider | 'local' | 'none'
 
 /** One local model server's settings. */
 export interface LocalServerSettings {

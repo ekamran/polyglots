@@ -63,7 +63,7 @@ import { table } from './ui/layout.js'
 import { reviewSummary, statsServingSummary, statsSummary, translateSummary } from './cli/summaries.js'
 import { LOCAL_REVIEW_NOTICE, localReviewBatchSize } from './review/local.js'
 import type { RunTuiOptions } from './tui/index.js'
-import type { Locale, PolyglotsConfig } from './types.js'
+import type { DraftEngineChoice, Locale, PolyglotsConfig } from './types.js'
 import { VERSION } from './version.js'
 
 const EXIT_OK = 0
@@ -222,6 +222,7 @@ async function readSecretFromStdin(streams: CliStreams, name: string): Promise<s
 // the same id the verdict cache keys on, so the line says whose judgement the
 // run is about to record.
 function reviewerLabel(config: PolyglotsConfig, model: string | undefined): string {
+  if (config.reviewProvider === 'none') return 'rules only'
   if (config.reviewProvider === 'local') {
     try {
       return localModelId(resolveLocalTarget(config, model))
@@ -231,6 +232,15 @@ function reviewerLabel(config: PolyglotsConfig, model: string | undefined): stri
   }
   const chosen = model ?? configuredModel(config.reviewProvider)
   return chosen ? `${config.reviewProvider}:${chosen}` : config.reviewProvider
+}
+
+// What translate's header says about the review pass. Not reviewerLabel's
+// "rules only": translate runs no review rules of its own, and the two cases
+// with no reviewer differ in what they leave the person to check.
+function translateReviewerLabel(config: PolyglotsConfig, draftEngine: DraftEngineChoice, model: string | undefined): string {
+  if (draftEngine === 'none') return 'skipped (nothing drafted)'
+  if (config.reviewProvider === 'none') return 'none, drafts written fuzzy'
+  return reviewerLabel(config, model)
 }
 
 async function countTranslated(files: string[]): Promise<number> {
@@ -272,7 +282,10 @@ async function runTranslate(cli: Cli, patterns: string[], flags: TranslateFlags)
   loadLocaleRules(locale)
   warnUniversalOnly(cli, locale)
   const draftEngine = parseDraftEngine(flags.draftEngine ?? config.defaultDraftEngine)
-  const localReview = config.reviewProvider === 'local'
+  // With no engine nothing is drafted, so nothing is reviewed either: the
+  // local reviewer is neither checked nor warned about for a run that will
+  // never ask it anything.
+  const localReview = config.reviewProvider === 'local' && draftEngine !== 'none'
   const batchSize = resolveBatchSize(config, flags.batchSize)
   const dryRun = flags.dryRun === true
   const mustConfirm = flags.all === true && flags.yes !== true && !dryRun
@@ -317,8 +330,8 @@ async function runTranslate(cli: Cli, patterns: string[], flags: TranslateFlags)
   for (const file of files) {
     for (const line of header(cli.ui.err, 'translate', file, [
       ['locale', locale],
-      ['draft', draftEngine],
-      ['review', reviewerLabel(config, flags.model)],
+      ['draft', draftEngine === 'none' ? 'none (translation memory only)' : draftEngine],
+      ['review', translateReviewerLabel(config, draftEngine, flags.model)],
     ])) cli.err(line)
     const report = createProgressReporter(cli.streams.stderr, cli.ui.err)
     let summary: TranslateSummary
@@ -335,7 +348,8 @@ async function runTranslate(cli: Cli, patterns: string[], flags: TranslateFlags)
         model: flags.model,
         ...(flags.localModel ? { localModel: flags.localModel } : {}),
         secrets,
-        bin: agentBinOverride(config.reviewProvider, process.env),
+        // No agent is spawned when nothing is drafted, so none is named.
+        bin: draftEngine === 'none' ? undefined : agentBinOverride(config.reviewProvider, process.env),
         onProgress: report,
       })
     } catch (error) {
@@ -619,6 +633,19 @@ function liveText(live: AgentStatus['live']): string | undefined {
  */
 async function runDoctor(cli: Cli, flags: { json?: boolean; live?: boolean }): Promise<number> {
   const configured = cli.config().reviewProvider
+  // No reviewer is a mode, not a missing agent. Discovery is not run at all:
+  // it spawns every agent CLI to ask its version and sign-in, which is exactly
+  // what someone who chose to work without AI asked not to have done, and its
+  // answer could not change the exit code.
+  if (configured === 'none') {
+    if (flags.json) {
+      cli.out(JSON.stringify({ configured, agents: [] }, null, 2))
+      return EXIT_OK
+    }
+    cli.out(okLine(cli.ui.out, 'Review provider: none (rules only, no AI)'))
+    cli.out(hintLine(cli.ui.out, 'Reviews run the rules only. Choose an agent with: polyglots config set reviewProvider claude'))
+    return EXIT_OK
+  }
   const live = flags.live === true
   if (live) cli.err(warnLine(cli.ui.err, LIVE_WARNING))
   const agents = await cli.discoverAgents({ refresh: true, ...(live ? { live: true } : {}) })
@@ -773,7 +800,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
     .option('--all', 'Re-translate every entry, including already-translated ones (asks for confirmation)')
     .option('--fresh', 'Ignore the cached drafts and reviews, and translate again')
     .option('--dry-run', 'Run the pipeline without writing to the .po files')
-    .option('--draft-engine <engine>', `Draft engine: deepl, openai or local (default: ${shown.defaultDraftEngine})`)
+    .option('--draft-engine <engine>', `Draft engine: deepl, openai, local, or none to fill from the translation memory only (default: ${shown.defaultDraftEngine})`)
     .option('--local-model <name>', 'Model for the local draft engine on this run, instead of the configured one')
     .option('--locale <locale>', `Target locale (${localeDefaultHelp(shown, true)})`)
     .option('--batch-size <n>', `Entries per draft/review batch (default: ${shown.batchSize})`)
@@ -840,7 +867,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
     .option('--batch-size <n>', `Entries per batch (default: ${shown.batchSize})`)
     .option('--fresh', 'Ignore cached verdicts or drafts and ask again')
     .option('--no-ai', 'Review only: run the deterministic checks, skipping AI adjudication')
-    .option('--draft-engine <engine>', `Translate only: deepl, openai or local (default: ${shown.defaultDraftEngine})`)
+    .option('--draft-engine <engine>', `Translate only: deepl, openai, local or none (default: ${shown.defaultDraftEngine})`)
     .addHelpText(
       'after',
       '\nNames are slugs or translate.wordpress.org URLs, as arguments or one per line on stdin.\nA bare slug is tried as a theme first, then as a plugin.',
@@ -893,9 +920,16 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
       if (config.reviewProvider === 'local' && flags.ai !== false) {
         await warnAboutLocalReview(cli, resolveLocalTarget(config), batchSize, locale)
       }
+      // Said once per run, before the header, so a person who set none long
+      // ago and forgot is not left wondering why no agent ran.
+      const noReviewer = config.reviewProvider === 'none'
+      if (noReviewer && flags.ai !== false) {
+        cli.err(hintLine(cli.ui.err, 'reviewProvider is none, so this review runs the rules only, with no AI.'))
+      }
+      const rulesOnly = flags.ai === false || noReviewer
       for (const line of header(cli.ui.err, 'review', target!, [
         ['locale', locale],
-        ['review', flags.ai === false ? 'rules only' : reviewerLabel(config, undefined)],
+        ['review', rulesOnly ? 'rules only' : reviewerLabel(config, undefined)],
       ])) cli.err(line)
       const report = createReviewProgressReporter(cli.streams.stderr, cli.ui.err)
       // Only binds on a terminal. A piped or scheduled run has nobody to press
@@ -918,7 +952,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
         file: target!,
         locale,
         ...(flags.outDir ? { outDir: flags.outDir } : {}),
-        ...(flags.ai === false ? { noAi: true } : {}),
+        ...(rulesOnly ? { noAi: true } : {}),
         batchSize,
         ...(flags.fresh ? { fresh: true } : {}),
         bin: agentBinOverride(config.reviewProvider, process.env),
@@ -934,7 +968,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
       // or a script, where reaching for the clipboard would be a side effect
       // nobody asked for.
       const requesterMessage = buildReport(summary, cli.config().wporgUsername) || undefined
-      for (const line of reviewSummary(cli.ui.out, summary, requesterMessage)) cli.out(line)
+      for (const line of reviewSummary(cli.ui.out, summary, requesterMessage, noReviewer ? { noReviewer: true } : {})) cli.out(line)
     })
 
   program

@@ -52,6 +52,19 @@ describe('setupStatus', () => {
     expect(setupStatus(facts({ config: { ...DEFAULT_CONFIG, reviewProvider: 'local' }, agents: [] })).steps.provider).toBe('done')
   })
 
+  // No AI is a finished choice, not a missing agent: someone who works
+  // without AI must be able to reach 5/5, or the wizard reopens every launch.
+  it('counts the provider as done with none, before and after discovery answers', () => {
+    const none = { ...DEFAULT_CONFIG, reviewProvider: 'none' as const }
+    const { agents: _agents, ...rest } = facts({ config: none })
+    expect(setupStatus(rest).steps.provider).toBe('done')
+    expect(setupStatus(facts({ config: none, agents: [] })).steps.provider).toBe('done')
+  })
+
+  it('counts keys as done with the draft engine none, which needs no key', () => {
+    expect(setupStatus(facts({ config: { ...DEFAULT_CONFIG, defaultDraftEngine: 'none' } })).steps.keys).toBe('done')
+  })
+
   it('counts keys as done with a key, with the local engine, or when skipped', () => {
     expect(setupStatus(facts({ secrets: { DEEPL_API_KEY: 'k' } })).steps.keys).toBe('done')
     expect(setupStatus(facts({ secrets: { OPENAI_API_KEY: 'k' } })).steps.keys).toBe('done')

@@ -22,6 +22,11 @@ export function translateSummary(p: Painter, s: TranslateSummary, dryRun: boolea
       ['from TM', String(s.fromTm)],
       ['fuzzy', s.fuzzy > 0 ? p.paint('warn', String(s.fuzzy)) : '0', s.fuzzy > 0 ? p.paint('muted', 'check before upload') : ''],
       ['skipped', String(s.skipped)],
+      // Only on a memory-only run, which is the one run that leaves entries
+      // alone by design. Every other run's table is unchanged.
+      ...(s.untranslated === undefined
+        ? []
+        : [['untranslated', String(s.untranslated), s.untranslated > 0 ? p.paint('muted', 'no memory match; left for you') : '']]),
     ],
     { align: ['left', 'right', 'left'] },
   )
@@ -32,7 +37,18 @@ export function translateSummary(p: Painter, s: TranslateSummary, dryRun: boolea
   return [...box(p, title, rows), nextLine(p, next)]
 }
 
-export function reviewSummary(p: Painter, s: ReviewSummary, requesterMessage: string | undefined): string[] {
+export interface ReviewSummaryOptions {
+  // reviewProvider is none: the run was rules-only by standing choice, so the
+  // advice to re-run with AI would point at something the person opted out of.
+  noReviewer?: boolean
+}
+
+export function reviewSummary(
+  p: Painter,
+  s: ReviewSummary,
+  requesterMessage: string | undefined,
+  opts: ReviewSummaryOptions = {},
+): string[] {
   // Undecided entries are written beside decided ones, so flagged is both.
   const flagged = s.problems + s.needsReview
   const stopped = s.pending > 0
@@ -44,7 +60,10 @@ export function reviewSummary(p: Painter, s: ReviewSummary, requesterMessage: st
     // plain, the way a zero flagged count does.
     ['approvable', s.approvable > 0 ? p.paint('success', String(s.approvable)) : '0', ''],
   ]
-  if (s.needsReview > 0) rows.push(['guesses', String(s.needsReview), p.paint('muted', 're-run without --no-ai to decide them')])
+  if (s.needsReview > 0) {
+    const advice = opts.noReviewer ? 'yours to judge; marked in the file' : 're-run without --no-ai to decide them'
+    rows.push(['guesses', String(s.needsReview), p.paint('muted', advice)])
+  }
   if (s.unreviewed > 0) rows.push(['unreviewed', p.paint('warn', String(s.unreviewed)), p.paint('muted', 'could not be reviewed; flagged')])
   if (stopped) rows.push(['not reached', p.paint('warn', String(s.pending)), ''])
   // written - repaired, not flagged - repaired: a whitespace-only fix is neither
