@@ -161,6 +161,22 @@ describe('Fetch options', () => {
     expect(frame).toMatch(/Translate 1 project/)
   })
 
+  // With No AI chosen, review is rules-only whatever this field says, so it
+  // says so and does not offer a "no" it cannot honour.
+  it('holds Skip AI on with No AI chosen', async () => {
+    saveConfig({ defaultLocale: 'tr', reviewProvider: 'none' })
+    const view = mount()
+    await enterList(view, ['koji'])
+    await chooseAndResolve(view, 'waiting')
+    await toOptions(view)
+    expect(view.lastFrame()).toMatch(/Skip AI:\s+yes/)
+    for (const k of [keys.down, keys.down, keys.down, ' ']) {
+      view.stdin.write(k)
+      await tick()
+    }
+    expect(view.lastFrame()).toMatch(/Skip AI:\s+yes/)
+  })
+
   it('steps parallel between 1 and 8 and stops at both ends', async () => {
     const view = mount()
     await enterList(view, ['koji'])

@@ -100,7 +100,12 @@ function FetchInLocale({ onBack, locale }: FetchProps & { locale: Locale }) {
   const [parallel, setParallel] = useState(1)
   const [batchSize, setBatchSize] = useState(initialBatchSize(config))
   const [fresh, setFresh] = useState(false)
-  const [noAi, setNoAi] = useState(false)
+  // With No AI chosen, review is rules-only whatever this field says
+  // (reviewFile decides it), so the field is held on rather than offering a
+  // "no" it cannot honour.
+  const rulesOnly = config.reviewProvider === 'none'
+  const [noAiChoice, setNoAi] = useState(false)
+  const noAi = rulesOnly || noAiChoice
   const [engine, setEngine] = useState<DraftEngineChoice>(config.defaultDraftEngine)
   const [phase, setPhase] = useState<'downloading' | 'running'>('downloading')
   const [live, setLive] = useState<Map<string, Live>>(new Map())
@@ -307,7 +312,7 @@ function FetchInLocale({ onBack, locale }: FetchProps & { locale: Locale }) {
               if (field === 'batch') setBatchSize((n) => next(batchSizeChoices(initialBatchSize(config)), n, step))
               if (field === 'engine') setEngine((e) => next(ENGINES, e, step))
               if (field === 'fresh') setFresh((v) => !v)
-              if (field === 'noAi') setNoAi((v) => !v)
+              if (field === 'noAi' && !rulesOnly) setNoAi((v) => !v)
             }
           : undefined,
       select: shown === 'options' ? () => (field === 'start' ? start() : setFocus((f) => f + 1)) : undefined,
@@ -395,7 +400,7 @@ function FetchInLocale({ onBack, locale }: FetchProps & { locale: Locale }) {
           </Text>
           {review && (
             <Text>
-              {marker('noAi')}Skip AI:       {noAi ? 'yes, rules only' : 'no'}
+              {marker('noAi')}Skip AI:       {noAi ? (rulesOnly ? 'yes, rules only (No AI is chosen in setup)' : 'yes, rules only') : 'no'}
             </Text>
           )}
           <Text>
