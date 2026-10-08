@@ -28,7 +28,7 @@ export function translateSummary(p: Painter, s: TranslateSummary, dryRun: boolea
   const next =
     dryRun ? 'Nothing was written.'
     : s.stopped ? 'Re-run the same command to resume.'
-    : `Open ${p.paint('path', s.file)} in PoEdit to review.`
+    : `Open ${p.paint('path', s.file)} in your .po editor to review.`
   return [...box(p, title, rows), nextLine(p, next)]
 }
 

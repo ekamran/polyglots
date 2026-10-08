@@ -14,7 +14,7 @@ describe('translateSummary', () => {
     expect(lines[0]).toMatch(/^╭─ ✓ Done ─+╮$/)
     expect(lines).toContainEqual(expect.stringMatching(/│  translated\s+380\s+│/))
     expect(lines).toContainEqual(expect.stringMatching(/│  fuzzy\s+8  check before upload\s+│/))
-    expect(lines.at(-1)).toBe('› Open a.po in PoEdit to review.')
+    expect(lines.at(-1)).toBe('› Open a.po in your .po editor to review.')
   })
 
   it('titles a stopped run as stopped and says how to resume', () => {

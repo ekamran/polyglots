@@ -161,7 +161,7 @@ describe('translate summary output', () => {
     expect(h.stdout.text).toMatch(/fuzzy\s+1  check before upload/)
     expect(h.stdout.text).toMatch(/from TM\s+1/)
     expect(h.stdout.text).toMatch(/skipped\s+0/)
-    expect(h.stdout.text).toContain(`› Open ${file} in PoEdit to review.`)
+    expect(h.stdout.text).toContain(`› Open ${file} in your .po editor to review.`)
     expect(h.stderr.text).toContain('▰▰▰▰▰▰▰▰▰▰ 7/7  batch 1/1  fuzzy 1')
   })
 
@@ -191,7 +191,7 @@ describe('translate summary output', () => {
     expect(h.stdout.text).toContain('• Dry run')
     expect(h.stdout.text).toMatch(/translated\s+6/)
     expect(h.stdout.text).toContain('› Nothing was written.')
-    expect(h.stdout.text).not.toContain('PoEdit')
+    expect(h.stdout.text).not.toContain('.po editor')
   })
 
   // --mode all exists to translate an entry again. Without a word for it, a
@@ -215,7 +215,7 @@ describe('translate summary output', () => {
     expect(translate.calls.map((c) => c.file)).toEqual([file, second])
     const lines = h.stdout.text.trim().split('\n').filter((l) => l.startsWith('›'))
     expect(h.stdout.text.match(/✓ Done/g)).toHaveLength(2)
-    expect(lines).toEqual([`› Open ${file} in PoEdit to review.`, `› Open ${second} in PoEdit to review.`])
+    expect(lines).toEqual([`› Open ${file} in your .po editor to review.`, `› Open ${second} in your .po editor to review.`])
   })
 
   it('reports a file that throws, continues with the next file and exits 1 at the end', async () => {
@@ -228,8 +228,8 @@ describe('translate summary output', () => {
     expect(translate.calls.map((c) => c.file)).toEqual([file, second])
     expect(h.stderr.text).toContain(`✗ ${file}: bad po syntax`)
     expect(h.stdout.text.match(/✓ Done/g)).toHaveLength(1)
-    expect(h.stdout.text).toContain(`› Open ${second} in PoEdit to review.`)
-    expect(h.stdout.text).not.toContain(`Open ${file} in PoEdit`)
+    expect(h.stdout.text).toContain(`› Open ${second} in your .po editor to review.`)
+    expect(h.stdout.text).not.toContain(`Open ${file} in your .po editor`)
   })
 
   it('exits 3 with a Stopped summary on a quota stop and does not touch later files', async () => {
