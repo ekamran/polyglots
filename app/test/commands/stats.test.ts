@@ -170,6 +170,24 @@ describe('serveStats', () => {
     expect(fake.closed()).toBe(true)
   })
 
+  // Another polyglots keeps that server up, so there is nothing here to wait
+  // on or stop: report the address and return.
+  it('returns at once when another polyglots serves the page', async () => {
+    let waited = false
+    const ready: Array<{ sharedWith?: { pid: number } }> = []
+    await serveStats(
+      {
+        jobsDb: db,
+        open: false,
+        start: async () => ({ url: 'http://127.0.0.1:29117/t/', port: 29117, sharedWith: { pid: 4242 }, close: async () => {} }),
+        untilStopped: async () => void (waited = true),
+      },
+      (r) => ready.push(r),
+    )
+    expect(waited).toBe(false)
+    expect(ready[0]!.sharedWith).toEqual({ pid: 4242 })
+  })
+
   it('does not open the browser when asked not to', async () => {
     const fake = fakeServer()
     let opened = false

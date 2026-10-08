@@ -9,6 +9,7 @@ import { DONE_HINT, Hint } from '../components/Hint.js'
 import { useBackKeys } from '../hooks/useBackKeys.js'
 import { useTask } from '../hooks/useTask.js'
 import { useServices, useStatsError, useStatsUrl } from '../services.js'
+import { portInUseWarning } from '../../stats/server.js'
 import { openInDefaultApp } from '../open-file.js'
 import { TextInput, useInput } from '../input.js'
 
@@ -204,7 +205,17 @@ export function Stats({ cwd, onBack }: StatsProps) {
           <Text>
             Serving at <Text {...TOKENS.path.ink}>{url}</Text>
           </Text>
-          <Text {...TOKENS.muted.ink}>Only this machine can reach it. It keeps serving after you leave this screen, until you press x here or quit.</Text>
+          {services.stats?.sharedWith === undefined && (
+            <Text {...TOKENS.muted.ink}>Only this machine can reach it. It keeps serving after you leave this screen, until you press x or quit.</Text>
+          )}
+          {services.stats?.sharedWith !== undefined && (
+            <Text {...TOKENS.muted.ink}>
+              Served by another polyglots (pid {services.stats.sharedWith.pid}), which keeps it running until that one quits.
+            </Text>
+          )}
+          {services.stats?.portInUse !== undefined && (
+            <Text {...TOKENS.warn.ink}>{portInUseWarning(services.stats.portInUse, services.stats.port)}</Text>
+          )}
           {opened === true && <Text {...TOKENS.success.ink}>Opening it in the browser.</Text>}
           {opened === false && <Text {...TOKENS.warn.ink}>No browser to open here; copy the address above.</Text>}
         </>

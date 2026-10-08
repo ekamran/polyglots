@@ -1705,6 +1705,39 @@ describe('stats', () => {
     expect(h.stdout.text.trimEnd().split('\n').at(-1)).toContain('Stopped')
   })
 
+  // Another polyglots already serves the page: this one points at it and
+  // ends, since there is nothing of its own to keep up or stop.
+  it('points at the page another polyglots serves, and returns without waiting', async () => {
+    const h = harness()
+    const code = await h.run(['stats'], {
+      stdoutTty: true,
+      env: { NO_COLOR: '1' },
+      serveStats: async (_opts, onReady) => {
+        const { file: _file, ...summary } = result
+        onReady({ url: 'http://127.0.0.1:29117/tok/', opened: true, summary, sharedWith: { pid: 4242 } })
+      },
+    })
+    expect(code).toBe(0)
+    expect(h.stdout.text).toContain('Serving http://127.0.0.1:29117/tok/')
+    expect(h.stdout.text).toMatch(/another polyglots \(pid 4242\)/)
+    expect(h.stdout.text).not.toContain('Ctrl+C to stop')
+    expect(h.stdout.text).not.toContain('Stopped')
+  })
+
+  it('warns when the stats port was taken, since the page settings will not carry over', async () => {
+    const h = harness()
+    await h.run(['stats'], {
+      stdoutTty: true,
+      env: { NO_COLOR: '1' },
+      serveStats: async (_opts, onReady) => {
+        const { file: _file, ...summary } = result
+        onReady({ url: 'http://127.0.0.1:5/tok/', opened: true, summary, portInUse: 29117 })
+      },
+    })
+    expect(h.stderr.text).toMatch(/Port 29117 is in use by another program/)
+    expect(h.stderr.text).toMatch(/port 5/)
+  })
+
   // The TUI keeps the server silent; on the command line a failed request
   // would otherwise leave no trace but a 500 in the browser.
   it('writes server errors to stderr while serving', async () => {

@@ -122,12 +122,24 @@ export function statsSummary(p: Painter, s: StatsSummary): string[] {
 
 // The ending while the page is served rather than written: where it is, and
 // how to stop the server, since the command keeps running until Ctrl+C.
-export function statsServingSummary(p: Painter, s: Omit<StatsSummary, 'file'>, url: string, opened: boolean): string[] {
+export function statsServingSummary(
+  p: Painter,
+  s: Omit<StatsSummary, 'file'>,
+  url: string,
+  opened: boolean,
+  sharedWith?: { pid: number },
+): string[] {
   const body = nothingRecorded(s) ? [nextLine(p, 'Nothing recorded yet. The page fills in as you work.')] : statsBody(p, s)
+  const open = opened ? 'Opened in your browser.' : 'Open it in a browser.'
   return [
     ...body,
     ...incompleteHint(p, s),
     nextLine(p, `Serving ${p.paint('path', url)}`),
-    hintLine(p, opened ? 'Opened in your browser. Ctrl+C to stop.' : 'Open it in a browser. Ctrl+C to stop.'),
+    hintLine(
+      p,
+      sharedWith
+        ? `${open} It is served by another polyglots (pid ${sharedWith.pid}) and stops when that one quits.`
+        : `${open} Ctrl+C to stop.`,
+    ),
   ]
 }

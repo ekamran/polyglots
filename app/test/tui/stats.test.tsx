@@ -154,6 +154,24 @@ describe('the live statistics page', () => {
     expect(flat(view.lastFrame())).toContain('Locale: trx')
   })
 
+  it('says when the page is served by another polyglots, which keeps it running', async () => {
+    const commands = fakeCommands({
+      startStatsServer: vi.fn(async () => ({ url: 'http://127.0.0.1:29117/x/', port: 29117, sharedWith: { pid: 4242 }, close: vi.fn(async () => {}) })),
+    })
+    const view = await openLive(commands)
+    await waitForText(view.lastFrame, 'Serving at')
+    expect(flat(view.lastFrame())).toMatch(/served by another polyglots \(pid 4242\)/i)
+  })
+
+  it('warns when the stats port was taken, since the page settings will not carry over', async () => {
+    const commands = fakeCommands({
+      startStatsServer: vi.fn(async () => ({ url: 'http://127.0.0.1:9/x/', port: 9, portInUse: 29117, close: vi.fn(async () => {}) })),
+    })
+    const view = await openLive(commands)
+    await waitForText(view.lastFrame, 'Serving at')
+    expect(flat(view.lastFrame())).toMatch(/Port 29117 is in use by another program/)
+  })
+
   it('says why it could not start, and still offers the standalone copy', async () => {
     const commands = fakeCommands({ startStatsServer: vi.fn(async () => Promise.reject(new Error('jobs.db is locked'))) })
     const view = await openLive(commands)

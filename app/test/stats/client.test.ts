@@ -23,6 +23,8 @@ let client: Client | undefined
 beforeEach(() => {
   history.replaceState(null, '', '/tok/')
   document.documentElement.className = ''
+  delete document.documentElement.dataset.theme
+  localStorage.clear()
 })
 
 afterEach(() => {
@@ -101,7 +103,7 @@ describe('boot', () => {
     click(document.querySelector('[data-range="30d"]'))
     expect(fetch).not.toHaveBeenCalled()
     expect(document.querySelector('[data-range="30d"]')!.getAttribute('aria-current')).toBe('true')
-    expect(location.search).toBe('?range=30d')
+    expect(location.search).toBe('')
   })
 
   it('asks the server for a range it does not have yet', async () => {
@@ -130,7 +132,7 @@ describe('boot', () => {
     click(document.querySelector('[data-lang="tr"]'))
     expect(document.documentElement.lang).toBe('tr')
     expect(document.body.textContent).toContain('Genel bakış')
-    expect(location.search).toBe('?range=all&lang=tr')
+    expect(location.search).toBe('')
   })
 
   it('keeps the reader on the same view across a redraw', () => {
@@ -213,5 +215,69 @@ describe('boot', () => {
     expect(document.documentElement.dataset.theme).toBe('dark')
     expect(localStorage.getItem('polyglots-stats-theme')).toBe('dark')
     expect(document.querySelector('[data-theme-set="dark"]')!.getAttribute('aria-pressed')).toBe('true')
+  })
+
+  // The reader's choices live in localStorage, not the address: the address
+  // carries a new token every time the server starts, so a choice kept there
+  // was gone the next time the page was opened.
+  describe('choices kept across a reload', () => {
+    it('stores the range, the language and the view as they are chosen', () => {
+      mount({ mode: 'static', range: 'all', lang: 'en', payloads: demo })
+      client = boot(document, window)
+      click(document.querySelector('[data-range="30d"]'))
+      click(document.querySelector('[data-lang="tr"]'))
+      location.hash = '#reviews'
+      window.dispatchEvent(new HashChangeEvent('hashchange'))
+      expect(localStorage.getItem('polyglots-stats-range')).toBe('30d')
+      expect(localStorage.getItem('polyglots-stats-lang')).toBe('tr')
+      expect(localStorage.getItem('polyglots-stats-view')).toBe('reviews')
+    })
+
+    it('opens with every stored choice, at an address that names none of them', () => {
+      localStorage.setItem('polyglots-stats-range', '90d')
+      localStorage.setItem('polyglots-stats-lang', 'tr')
+      localStorage.setItem('polyglots-stats-view', 'projects')
+      localStorage.setItem('polyglots-stats-theme', 'dark')
+      mount({ mode: 'static', range: 'all', lang: 'en', payloads: demo })
+      client = boot(document, window)
+      expect(document.querySelector('[data-range="90d"]')!.getAttribute('aria-current')).toBe('true')
+      expect(document.documentElement.lang).toBe('tr')
+      expect(view('projects').classList.contains('active')).toBe(true)
+      expect(document.documentElement.dataset.theme).toBe('dark')
+    })
+
+    it('asks the server for a stored range the first paint did not include', async () => {
+      localStorage.setItem('polyglots-stats-range', '30d')
+      mount({ mode: 'server', range: 'all', lang: 'en', payloads: { all: demo.all } })
+      const fetch = vi.fn(async () => new Response(JSON.stringify(demo['30d']), { status: 200 }))
+      client = boot(document, window, { fetch })
+      await client.idle()
+      expect(fetch).toHaveBeenCalledWith('api/stats?range=30d', expect.anything())
+      expect(document.querySelector('[data-range="30d"]')!.getAttribute('aria-current')).toBe('true')
+    })
+
+    it('ignores a stored value it does not recognise', () => {
+      localStorage.setItem('polyglots-stats-range', 'forever')
+      localStorage.setItem('polyglots-stats-lang', 'xx')
+      localStorage.setItem('polyglots-stats-view', 'nowhere')
+      mount({ mode: 'static', range: 'all', lang: 'en', payloads: demo })
+      client = boot(document, window)
+      expect(document.querySelector('[data-range="all"]')!.getAttribute('aria-current')).toBe('true')
+      expect(document.documentElement.lang).toBe('en')
+      expect(view('overview').classList.contains('active')).toBe(true)
+    })
+
+    it('still works where storage throws, as in some private windows', () => {
+      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+        throw new Error('denied')
+      })
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new Error('denied')
+      })
+      mount({ mode: 'static', range: 'all', lang: 'en', payloads: demo })
+      client = boot(document, window)
+      click(document.querySelector('[data-range="30d"]'))
+      expect(document.querySelector('[data-range="30d"]')!.getAttribute('aria-current')).toBe('true')
+    })
   })
 })

@@ -46,20 +46,33 @@ export function matchesFilter(text: string, query: string, tag: string): boolean
   return q === '' || text.toLocaleLowerCase(tag).includes(q)
 }
 
+// The reader's choices, kept in localStorage rather than the address. The
+// address carries a new token every time the server starts, so a choice kept
+// in it was gone the next time the page was opened; storage belongs to the
+// origin, which the server's fixed port keeps the same from run to run.
+//
 // Storage can throw outright in a private window or with site data blocked.
-// The theme is a convenience, so a failure here means "auto", never an error.
-function stored(win: Window): string | null {
+// These are conveniences, so a failure means the default, never an error.
+const PREF_KEYS = {
+  theme: THEME_KEY,
+  range: 'polyglots-stats-range',
+  lang: 'polyglots-stats-lang',
+  view: 'polyglots-stats-view',
+} as const
+type Pref = keyof typeof PREF_KEYS
+
+function stored(win: Window, pref: Pref): string | null {
   try {
-    return win.localStorage.getItem(THEME_KEY)
+    return win.localStorage.getItem(PREF_KEYS[pref])
   } catch {
     return null
   }
 }
 
-function store(win: Window, value: string): void {
+function store(win: Window, pref: Pref, value: string): void {
   try {
-    if (value === 'auto') win.localStorage.removeItem(THEME_KEY)
-    else win.localStorage.setItem(THEME_KEY, value)
+    if (pref === 'theme' && value === 'auto') win.localStorage.removeItem(PREF_KEYS[pref])
+    else win.localStorage.setItem(PREF_KEYS[pref], value)
   } catch {
     // ignored: see stored()
   }
@@ -70,7 +83,6 @@ export function boot(doc: Document, win: Window, deps: Deps = {}): Client {
   const tip = doc.getElementById('tip')!
   const data = JSON.parse(doc.getElementById('stats-data')!.textContent ?? '{}') as BootData
   const fetcher = deps.fetch ?? ((url, init) => win.fetch(url, init))
-  const params = new URLSearchParams(win.location.search)
 
   let range: Range = data.range
   let lang: StatsLanguage = languageByTag(data.lang, STATS_TRANSLATIONS) ?? ENGLISH
@@ -85,7 +97,7 @@ export function boot(doc: Document, win: Window, deps: Deps = {}): Client {
   doc.documentElement.classList.add('js')
 
   function applyTheme(): void {
-    const theme = stored(win) ?? 'auto'
+    const theme = stored(win, 'theme') ?? 'auto'
     if (theme === 'auto') delete doc.documentElement.dataset.theme
     else doc.documentElement.dataset.theme = theme
     for (const b of doc.querySelectorAll('[data-theme-set]')) {
@@ -93,9 +105,22 @@ export function boot(doc: Document, win: Window, deps: Deps = {}): Client {
     }
   }
 
+  const asView = (v: string | null): View | undefined => ((VIEWS as readonly string[]).includes(v ?? '') ? (v as View) : undefined)
+  // A hash in the address wins, so a link to a view still lands on it;
+  // otherwise the view the reader last had open.
+  let view: View = asView(win.location.hash.slice(1)) ?? asView(stored(win, 'view')) ?? 'overview'
+
   function currentView(): View {
-    const hash = win.location.hash.slice(1)
-    return (VIEWS as readonly string[]).includes(hash) ? (hash as View) : 'overview'
+    return view
+  }
+
+  function followHash(): void {
+    const next = asView(win.location.hash.slice(1))
+    if (next) {
+      view = next
+      store(win, 'view', next)
+    }
+    showView()
   }
 
   function showView(): void {
@@ -203,10 +228,9 @@ export function boot(doc: Document, win: Window, deps: Deps = {}): Client {
     return JSON.stringify({ ...a, generatedAt: 0 }) === JSON.stringify({ ...b, generatedAt: 0 })
   }
 
-  function syncUrl(): void {
-    const q = new URLSearchParams({ range })
-    if (lang !== ENGLISH) q.set('lang', lang.tag)
-    win.history.replaceState(null, '', `?${q.toString()}${win.location.hash}`)
+  function rememberChoices(): void {
+    store(win, 'range', range)
+    store(win, 'lang', lang.tag)
   }
 
   function setBusy(busy: boolean): void {
@@ -240,7 +264,7 @@ export function boot(doc: Document, win: Window, deps: Deps = {}): Client {
   function setRange(next: Range): void {
     if (data.mode === 'static' || payloads[next]) {
       range = next
-      syncUrl()
+      rememberChoices()
       render()
       if (data.mode === 'server') void refresh()
       return
@@ -248,7 +272,7 @@ export function boot(doc: Document, win: Window, deps: Deps = {}): Client {
     pending = load(next).then(() => {
       if (!payloads[next]) return
       range = next
-      syncUrl()
+      rememberChoices()
       render()
     })
   }
@@ -337,13 +361,13 @@ export function boot(doc: Document, win: Window, deps: Deps = {}): Client {
     if (l) {
       e.preventDefault()
       lang = languageByTag(l.getAttribute('data-lang'), STATS_TRANSLATIONS) ?? ENGLISH
-      syncUrl()
+      rememberChoices()
       render()
       return
     }
     const theme = target.closest('[data-theme-set]')
     if (theme) {
-      store(win, theme.getAttribute('data-theme-set') ?? 'auto')
+      store(win, 'theme', theme.getAttribute('data-theme-set') ?? 'auto')
       applyTheme()
       return
     }
@@ -385,15 +409,24 @@ export function boot(doc: Document, win: Window, deps: Deps = {}): Client {
   doc.addEventListener('focusout', onOut)
   doc.addEventListener('keydown', onKey)
   doc.addEventListener('visibilitychange', onVisible)
-  win.addEventListener('hashchange', showView)
+  win.addEventListener('hashchange', followHash)
   const timer = data.mode === 'server' ? setInterval(() => !doc.hidden && void refresh(), REFRESH_MS) : undefined
 
-  // The URL can ask for a range or language the first paint did not use: the
-  // standalone copy always paints "all" in English, whatever its query says.
-  const wantRange = params.has('range') ? parseRange(params.get('range')) : range
-  const wantLang = languageByTag(params.get('lang'), STATS_TRANSLATIONS)
+  // The stored choices can differ from the first paint, which is the
+  // server's default range in the browser's language, or "all" in English in
+  // the standalone copy. A stored range the server did not send is fetched.
+  const storedRange = stored(win, 'range')
+  const wantRange = storedRange !== null && parseRange(storedRange) === storedRange ? (storedRange as Range) : range
+  const wantLang = stored(win, 'lang') === ENGLISH.tag ? ENGLISH : languageByTag(stored(win, 'lang'), STATS_TRANSLATIONS)
   if (wantLang) lang = wantLang
-  if (wantRange !== range || (wantLang && wantLang.tag !== data.lang)) {
+  if (wantRange !== range && !payloads[wantRange] && data.mode === 'server') {
+    if (wantLang && wantLang.tag !== data.lang) render()
+    else {
+      applyTheme()
+      showView()
+    }
+    setRange(wantRange)
+  } else if (wantRange !== range || (wantLang && wantLang.tag !== data.lang)) {
     if (payloads[wantRange]) range = wantRange
     render()
   } else {
@@ -414,7 +447,7 @@ export function boot(doc: Document, win: Window, deps: Deps = {}): Client {
       doc.removeEventListener('focusout', onOut)
       doc.removeEventListener('keydown', onKey)
       doc.removeEventListener('visibilitychange', onVisible)
-      win.removeEventListener('hashchange', showView)
+      win.removeEventListener('hashchange', followHash)
     },
   }
 }

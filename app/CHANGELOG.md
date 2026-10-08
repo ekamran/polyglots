@@ -21,11 +21,14 @@ Entries say what changed. For why and how, read the commit.
 - In the interactive mode, `x` stops the stats server from any screen; its address sits in the header as a link.
 - Locale Rules can save the built-in rules as the locale's file with `s`, which completes the setup step.
 - The stats share image names ada.tools/polyglots.
+- The stats page remembers its language, range, theme and view across reloads and restarts.
+- A second polyglots serving stats uses the page another one already serves.
 - `polyglots stats --no-open` serves the dashboard without opening a browser.
 
 ### Changed
 
 - The interactive mode is never wider than the home grid, and is centred on a wide terminal.
+- The stats server listens on port 29117, and warns and takes another port when that one is in use.
 - Interactive menu keys: Tools is `o`, API keys is `k`. Ctrl+C asks before stopping a run in progress.
 - A run stopped by Ctrl+C, SIGINT or SIGTERM, or by quitting the interactive mode, is recorded as stopped, not abandoned, so stats no longer counts it as a failure.
 - `polyglots stats` serves a live dashboard on localhost and opens it; `--out`, or running off a terminal, writes a standalone HTML copy.

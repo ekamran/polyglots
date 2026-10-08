@@ -28,6 +28,12 @@ export function dbFile(): string {
   return join(dataDir(), 'polyglots.db')
 }
 
+// Where the stats server on the fixed port leaves its address, so a second
+// polyglots can use that server instead of starting another.
+export function statsServerFile(): string {
+  return join(dataDir(), 'stats-server.json')
+}
+
 export function jobsDbFile(): string {
   return join(dataDir(), 'jobs.db')
 }

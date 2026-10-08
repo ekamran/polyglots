@@ -107,6 +107,10 @@ export interface ServeOptions {
 export interface Serving {
   url: string
   opened: boolean
+  // Set when the fixed port was taken and the server took another.
+  portInUse?: number
+  // Set when another polyglots already serves the page; nothing here to stop.
+  sharedWith?: { pid: number }
   summary: Omit<StatsSummary, 'file'>
 }
 
@@ -144,8 +148,15 @@ export async function serveStats(opts: ServeOptions, onReady: (serving: Serving)
       ...(opts.onError === undefined ? {} : { onError: opts.onError }),
     })
     const opened = opts.open === false ? false : await (opts.openBrowser ?? openInBrowser)(server.url)
-    onReady({ url: server.url, opened, summary: summarizeStats(jobs, floor === undefined ? {} : { since: floor }) })
-    await (opts.untilStopped ?? untilSignal)()
+    onReady({
+      url: server.url,
+      opened,
+      summary: summarizeStats(jobs, floor === undefined ? {} : { since: floor }),
+      ...(server.portInUse === undefined ? {} : { portInUse: server.portInUse }),
+      ...(server.sharedWith === undefined ? {} : { sharedWith: server.sharedWith }),
+    })
+    // Another polyglots keeps that server up: nothing here to wait on or stop.
+    if (server.sharedWith === undefined) await (opts.untilStopped ?? untilSignal)()
   } finally {
     await server?.close()
     if (ownsJobsDb) jobs.close()

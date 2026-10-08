@@ -23,6 +23,7 @@ import { DEFAULT_STATS_FILE, serveStats, writeStats } from './commands/stats.js'
 import { openJobsDb } from './jobs/db.js'
 import { stopOwnRuns } from './jobs/runs.js'
 import { stopOnSignal } from './jobs/stop-on-signal.js'
+import { portInUseWarning } from './stats/server.js'
 import { DEFAULT_CONFIG, isHttpUrl, loadConfig, loadSecrets, maskSecret, saveConfig, saveSecret } from './config.js'
 import {
   UsageError,
@@ -1079,10 +1080,13 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
         return
       }
       const onError = (err: Error) => cli.err(errorLine(cli.ui.err, `stats server: ${err.message}`))
-      await cli.serveStats({ ...since, open: flags.open, onError }, ({ url, opened, summary }) => {
-        for (const line of statsServingSummary(cli.ui.out, summary, url, opened)) cli.out(line)
+      let shared = false
+      await cli.serveStats({ ...since, open: flags.open, onError }, ({ url, opened, summary, portInUse, sharedWith }) => {
+        shared = sharedWith !== undefined
+        if (portInUse !== undefined) cli.err(warnLine(cli.ui.err, portInUseWarning(portInUse, Number(new URL(url).port))))
+        for (const line of statsServingSummary(cli.ui.out, summary, url, opened, sharedWith)) cli.out(line)
       })
-      cli.out(okLine(cli.ui.out, 'Stopped'))
+      if (!shared) cli.out(okLine(cli.ui.out, 'Stopped'))
     })
 
   const cfg = program.command('config').description('Settings and API keys')
