@@ -55,6 +55,21 @@ describe('translateFile: Plural-Forms', () => {
     }
   })
 
+  // xgettext and wp i18n make-pot both write this placeholder, so a fresh .pot
+  // has the header and still says nothing. Saying the header is missing sends
+  // a new user looking for something that is plainly in the file.
+  it('names the template placeholder rather than calling the header missing', async () => {
+    await rewrite((text) =>
+      text.replace(/"Plural-Forms:[^\n]*\n/, '"Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\\n"\n'),
+    )
+    const engine = fakeEngine()
+    const run = translateFile(base({ engine, review: fakeReview() }))
+    await expect(run).rejects.toThrow(
+      `${ws.file} still has the template's Plural-Forms placeholder (nplurals=INTEGER); set the header for tr, or start from the tr .po on translate.wordpress.org`,
+    )
+    expect(engine.calls).toHaveLength(0)
+  })
+
   it('runs a catalogue with no plural entries and no header', async () => {
     await rewrite((text) =>
       dropHeader(text)
