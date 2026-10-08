@@ -61,8 +61,8 @@ team's own common mistakes.
 
 A run that reaches the end writes `<name>-repaired.po` beside the input
 (`--out-dir` puts it elsewhere). It holds the flagged entries only, each with
-a note saying what was wrong and what was changed. Open it in Poedit, read
-the repairs, and approve the rest of the submission in GlotPress.
+a note saying what was wrong and what was changed. Open it in your `.po`
+editor, read the repairs, and approve the rest of the submission in GlotPress.
 
 The summary counts what happened:
 
