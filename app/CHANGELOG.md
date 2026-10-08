@@ -10,6 +10,8 @@ Entries say what changed. For why and how, read the commit.
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-10-08
+
 ### Added
 
 - Full-screen interactive mode: a home screen of cards, a header with setup status x/5, a keys footer, and a minimum size of 60×20.
