@@ -17,6 +17,7 @@ import { tryRules, type TryResult } from '../../rules/try.js'
 import { allGlossary, openDb } from '../../storage/index.js'
 import type { GlossaryEntry } from '../../types.js'
 import { TextInput, useInput } from '../input.js'
+import { ScrollTarget } from '../components/Viewport.js'
 
 export interface LocaleRulesProps {
   onBack: () => void
@@ -339,10 +340,12 @@ export function LocaleRules({ onBack }: LocaleRulesProps) {
       {draft && stage === 'rules' && (
         <>
           {BUILT_IN_RULES.map((rule, i) => (
-            <Text key={rule}>
-              {marker(i === ruleCursor)}[{activeRules().has(rule) ? 'x' : ' '}] {rule.padEnd(14)}
-              <Text dimColor>{UNIVERSAL_RULES.includes(rule) ? 'universal' : 'opt-in'}</Text>
-            </Text>
+            <ScrollTarget key={rule} active={i === ruleCursor}>
+              <Text>
+                {marker(i === ruleCursor)}[{activeRules().has(rule) ? 'x' : ' '}] {rule.padEnd(14)}
+                <Text dimColor>{UNIVERSAL_RULES.includes(rule) ? 'universal' : 'opt-in'}</Text>
+              </Text>
+            </ScrollTarget>
           ))}
           {/* The ids are what rules.json holds, so the list keeps them; the
               plain name and what the rule checks sit under it, for the one
