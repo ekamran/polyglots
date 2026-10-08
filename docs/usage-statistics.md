@@ -39,8 +39,10 @@ statistics**.
 
 ## How it is sent
 
-In the background when a command starts (`review`, `translate`, `fetch`,
-`stats`, or the interactive app), with a five-second timeout. It never delays
+In the background when a working command starts (`review`, `translate`,
+`fetch`, `stats`, `tm`, `glossary`, `split`) or when the interactive app
+opens, with a five-second timeout. `config`, `usage-stats` and `--help` never
+send. It never delays
 or slows a command: if the command finishes first, the send is simply
 abandoned. Failures are dropped, nothing is queued, and after a failure it
 does not try again for a day.
@@ -66,7 +68,8 @@ polyglots config set usageStats off
   setting says.
 
 Turning it off stops sending; the last totals already sent stay counted.
-`polyglots usage-stats reset` forgets the install id; if the setting is on, a
+`polyglots usage-stats reset`, or `r` on the app's Usage statistics screen,
+forgets the install id; if the setting is on, a
 new id is made at the next send. The server cannot link the old id to the new
 one, so your earlier totals stay counted under the old id.
 
