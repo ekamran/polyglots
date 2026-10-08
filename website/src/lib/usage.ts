@@ -1,7 +1,8 @@
 // The all-time totals that opted-in installs report (docs/usage-statistics.md),
-// read once when the site is built. The usage endpoint writes them outside the
-// site's folder on the server, because deploy.sh syncs that folder with
-// --delete, and serves them at the address below.
+// read when the site is built and again by the home page in the browser. The
+// usage endpoint writes them outside the site's folder on the server, because
+// deploy.sh syncs that folder with --delete, and serves them at the address
+// below.
 //
 // Optional in every way: the endpoint may not be deployed, may be down, or may
 // have nothing yet, and none of that is a reason to fail a build or to print a

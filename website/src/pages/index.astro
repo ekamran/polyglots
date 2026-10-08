@@ -217,13 +217,12 @@ const doc = (slug: string) => `${base}docs/${slug}/`;
     <div class="start">
       <div>
         <Install id="footer" />
-        {usage && (
-          <p class="usage">
-            Roughly, across the installs that share their totals:{' '}
-            about <strong>{approx(usage.reviewed)}</strong> strings reviewed, <strong>{approx(usage.repaired)}</strong> repaired and{' '}
-            <strong>{approx(usage.drafted)}</strong> drafted. <a href={doc('usage-statistics')}>How this is counted</a>
-          </p>
-        )}
+        <p class="usage" data-usage hidden={!usage}>
+          Roughly, across the installs that share their totals:{' '}
+          about <strong data-usage-key="reviewed">{usage && approx(usage.reviewed)}</strong> strings reviewed,{' '}
+          <strong data-usage-key="repaired">{usage && approx(usage.repaired)}</strong> repaired and{' '}
+          <strong data-usage-key="drafted">{usage && approx(usage.drafted)}</strong> drafted. <a href={doc('usage-statistics')}>How this is counted</a>
+        </p>
         <p class="muted small">Version {snapshot.version}. Driving polyglots from an agent? Point it at <a href={`${base}ai/`}>ada.tools/polyglots/ai</a>.</p>
       </div>
       <ul class="doclist">
@@ -233,6 +232,26 @@ const doc = (slug: string) => `${base}docs/${slug}/`;
     </div>
   </section>
 </Base>
+
+<script>
+  import { approx, loadUsageTotals, USAGE_TOTALS_URL, type UsageTotals } from '../lib/usage';
+
+  // The build writes the totals as they stood at the last deploy, and the
+  // endpoint updates them with every weekly report, so a page left to its
+  // build would show figures weeks old. The browser asks again and repaints.
+  // A failed or doubtful read leaves the build's figures, or the line hidden
+  // when the build had none: never a zero, never an error on the page.
+  const line = document.querySelector<HTMLElement>('[data-usage]');
+  if (line) {
+    void loadUsageTotals({ POLYGLOTS_USAGE_TOTALS: USAGE_TOTALS_URL }).then((totals) => {
+      if (!totals) return;
+      for (const el of line.querySelectorAll<HTMLElement>('[data-usage-key]')) {
+        el.textContent = approx(totals[el.dataset.usageKey as keyof UsageTotals]);
+      }
+      line.hidden = false;
+    });
+  }
+</script>
 
 <style>
   .hero { padding: clamp(2.5rem, 7vw, 5rem) 0 clamp(2rem, 5vw, 4rem); }
