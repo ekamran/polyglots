@@ -162,3 +162,11 @@ the rest. When it is a coin toss, take minor.
 `polyglots --version` reads `package.json` at run time, so after a refused build
 it reports the new version while running the old code. It is never evidence
 that `dist/` is current.
+
+## Local notes
+
+A maintainer's own working notes, if they keep any, live in `CLAUDE.local.md`
+beside this file. It is git-ignored and imported here, so it is read when it
+exists and skipped when it does not.
+
+@CLAUDE.local.md

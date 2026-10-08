@@ -28,3 +28,9 @@ app/LICENSE
 *.db
 *.db-wal
 *.db-shm
+
+# The maintainer's own working notes for agents, imported by CLAUDE.md.
+CLAUDE.local.md
+
+# Internal design notes; kept locally, not part of the project.
+notes/

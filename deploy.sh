@@ -4,14 +4,32 @@
 #   ./deploy.sh            build and deploy
 #   ./deploy.sh --dry-run  build, then show what would change, transfer nothing
 #
-# Override with POLYGLOTS_DEPLOY_HOST / POLYGLOTS_DEPLOY_PATH / POLYGLOTS_DEPLOY_OWNER.
+# Where it goes comes from POLYGLOTS_DEPLOY_HOST, POLYGLOTS_DEPLOY_PATH and
+# POLYGLOTS_DEPLOY_OWNER, set in the environment or in a .env file at the repo
+# root (git-ignored; .env.example lists the keys). There are no defaults: the
+# server's name and layout are the maintainer's, not the project's.
 
 set -euo pipefail
 
-HOST="${POLYGLOTS_DEPLOY_HOST:?set POLYGLOTS_DEPLOY_HOST}"
-REMOTE_PATH="${POLYGLOTS_DEPLOY_PATH:?set POLYGLOTS_DEPLOY_PATH}"
-OWNER="${POLYGLOTS_DEPLOY_OWNER:?set POLYGLOTS_DEPLOY_OWNER}"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
+
+# Read, not sourced: only these three keys are taken from .env, and nothing
+# in it is run. A variable already set in the environment wins.
+env_value() {
+  [ -f "$ROOT/.env" ] || return 0
+  sed -n "s/^$1=//p" "$ROOT/.env" | tail -n 1 | sed -e 's/^["'"'"']//' -e 's/["'"'"']$//'
+}
+HOST="${POLYGLOTS_DEPLOY_HOST:-$(env_value POLYGLOTS_DEPLOY_HOST)}"
+REMOTE_PATH="${POLYGLOTS_DEPLOY_PATH:-$(env_value POLYGLOTS_DEPLOY_PATH)}"
+OWNER="${POLYGLOTS_DEPLOY_OWNER:-$(env_value POLYGLOTS_DEPLOY_OWNER)}"
+MISSING=""
+[ -n "$HOST" ] || MISSING="$MISSING POLYGLOTS_DEPLOY_HOST"
+[ -n "$REMOTE_PATH" ] || MISSING="$MISSING POLYGLOTS_DEPLOY_PATH"
+[ -n "$OWNER" ] || MISSING="$MISSING POLYGLOTS_DEPLOY_OWNER"
+if [ -n "$MISSING" ]; then
+  echo "Not set:$MISSING. Put them in .env at the repo root (see .env.example) or in the environment."
+  exit 1
+fi
 SITE_DIR="$ROOT/website"
 
 # A plain string, not an array: bash 3.2 (macOS) treats an empty array as
@@ -20,8 +38,8 @@ DRY=""
 [ "${1:-}" = "--dry-run" ] && DRY="--dry-run"
 
 # rsync --delete and chown -R both act on REMOTE_PATH as a whole. Pointed one
-# level up, at the directory holding every site, they would delete and re-own every other site
-# on the host. So the path must be absolute, free of anything that climbs out
+# level up, at the directory holding every site on the host, they would delete
+# and re-own all of them. So the path must be absolute, free of anything that climbs out
 # of it, and name the polyglots directory itself.
 case "$REMOTE_PATH" in
   /*) ;;
