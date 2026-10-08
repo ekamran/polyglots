@@ -31,6 +31,13 @@ describe('shareCard', () => {
     expect(svg).not.toMatch(/href=|url\(|@import|foreignObject/)
   })
 
+  // In the bottom right, opposite the tagline, as text: an href would taint
+  // the canvas the PNG is drawn through.
+  it('names the site in the bottom right corner', () => {
+    const svg = shareCard(demo.all, ENGLISH)
+    expect(svg).toMatch(/<text x="1136" y="584" font-size="18" text-anchor="end"[^>]*>https:\/\/ada\.tools\/polyglots\/<\/text>/)
+  })
+
   it('escapes project names', () => {
     const p = structuredClone(demo['30d'])
     p.review.byProject = [{ project: 'A <b> & "C"', runs: 1, entries: 9, flagged: 1 }]

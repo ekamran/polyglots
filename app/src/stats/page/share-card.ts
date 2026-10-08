@@ -1,3 +1,4 @@
+import { SITE_URL } from '../../docs-links.js'
 import { WEB_PALETTE } from '../../ui/web-palette.js'
 import { count, percent, phrase, type PhraseKey, type StatsLanguage } from '../i18n.js'
 import { esc, localDay } from './html.js'
@@ -85,6 +86,9 @@ export function shareCard(p: StatsPayload, lang: StatsLanguage): string {
     (top.length === 0 ? '' : `<text x="780" y="200" font-size="22" font-weight="600" fill="${c.fg}">${t('shareTop')}</text>`) +
     projects +
     `<text x="64" y="584" font-size="18" fill="${c.muted}">${t('shareTagline')}</text>` +
+    // Where the card came from, opposite the tagline. Text, not a link: an
+    // href would taint the canvas the PNG is drawn through.
+    `<text x="${SHARE_WIDTH - 64}" y="584" font-size="18" text-anchor="end" fill="${c.muted}">${esc(SITE_URL)}</text>` +
     `</svg>`
   )
 }

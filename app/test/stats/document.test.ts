@@ -46,7 +46,9 @@ describe('renderDocument', () => {
     const { html } = renderDocument({ mode: 'static', range: 'all', payloads: demo, lang: ENGLISH })
     expect(html).not.toMatch(/<script[^>]+src=/)
     expect(html).not.toMatch(/<link[^>]+stylesheet/)
-    expect(html).not.toMatch(/@import|@font-face|https?:\/\/(?!www\.w3\.org)/)
+    // Two addresses appear and neither is fetched: the SVG namespace, and the
+    // site's address, which the share card draws as text.
+    expect(html).not.toMatch(/@import|@font-face|https?:\/\/(?!www\.w3\.org|ada\.tools\/polyglots\/)/)
   })
 
   it('embeds the data so no name can close the script element it sits in', () => {
