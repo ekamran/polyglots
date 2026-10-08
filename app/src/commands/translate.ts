@@ -15,7 +15,7 @@ import {
   normalizeDraftEngine,
   type DraftEngineInput,
 } from '../draft/index.js'
-import { createLocalChat, localModelId, resolveLocalTarget, type LocalChat } from '../draft/local-chat.js'
+import { createLocalChat, localIdleTimeoutMs, localModelId, resolveLocalTarget, type LocalChat } from '../draft/local-chat.js'
 import { createLocalDraftReviewer, draftReviewPromptVariant } from '../review/local.js'
 import {
   endRun,
@@ -578,10 +578,14 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
           // asked for, and so the engine and its cache key agree.
           ...(localDraft ? { local: localDraft } : {}),
           ...(opts.localChat ? { localChat: opts.localChat } : {}),
+          idleTimeoutMs: localIdleTimeoutMs(settings),
         })
       const review =
         opts.review ??
-        (localReview ? createLocalDraftReviewer(opts.localChat ?? createLocalChat(localReview), reviewEngine) : reviewBatch)
+        (localReview ? createLocalDraftReviewer(
+              opts.localChat ?? createLocalChat(localReview, { idleTimeoutMs: localIdleTimeoutMs(settings) }),
+              reviewEngine,
+            ) : reviewBatch)
       // A local reviewer has no MCP, so nothing would read the file.
       const mcpConfigPath =
         opts.mcpConfigPath ?? (localReview ? '' : await writeMcpConfig({ env: { [MCP_ENV.locale]: locale } }))

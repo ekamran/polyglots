@@ -169,11 +169,16 @@ export function createLocalEngine(options: LocalEngineOptions): DraftEngine {
 /** A local engine for any target, with the transport its kind needs. */
 export function createLocalTargetEngine(
   target: LocalTarget,
-  options: { chat?: LocalChat; fetch?: typeof fetch; onWarning?: WarningSink } = {},
+  options: { chat?: LocalChat; fetch?: typeof fetch; onWarning?: WarningSink; idleTimeoutMs?: number } = {},
 ): DraftEngine {
   return createLocalEngine({
     name: localModelId(target),
-    chat: options.chat ?? createLocalChat(target, options.fetch ? { fetch: options.fetch } : {}),
+    chat:
+      options.chat ??
+      createLocalChat(target, {
+        ...(options.fetch ? { fetch: options.fetch } : {}),
+        ...(options.idleTimeoutMs === undefined ? {} : { idleTimeoutMs: options.idleTimeoutMs }),
+      }),
     ...(options.onWarning ? { onWarning: options.onWarning } : {}),
   })
 }

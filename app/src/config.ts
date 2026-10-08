@@ -4,6 +4,7 @@ import { parse as parseDotenv } from 'dotenv'
 import { z } from 'zod'
 import { configFile, secretsFile } from './paths.js'
 import { DEFAULT_QWEN_BASE_URL, DEFAULT_QWEN_MODEL } from './draft/qwen.js'
+import { DEFAULT_LOCAL_IDLE_TIMEOUT_SECONDS } from './draft/local-chat.js'
 import type { PolyglotsConfig, Secrets } from './types.js'
 
 // LM Studio's port: the most common OpenAI-compatible server on a desktop, and
@@ -26,6 +27,7 @@ export const DEFAULT_CONFIG: PolyglotsConfig = {
   localModelServers: [],
   localServerKind: 'ollama',
   openaiCompatible: { baseUrl: DEFAULT_OPENAI_COMPATIBLE_BASE_URL, model: '' },
+  localIdleTimeout: DEFAULT_LOCAL_IDLE_TIMEOUT_SECONDS,
 }
 
 /**
@@ -102,6 +104,9 @@ const configSchema = z.object({
       contextLength,
     })
     .default({ baseUrl: DEFAULT_OPENAI_COMPATIBLE_BASE_URL, model: '' }),
+  // Defaulted, so a config from before the limit existed parses. Whole
+  // seconds and positive: zero would abandon every reply before it began.
+  localIdleTimeout: z.number().int().positive().default(DEFAULT_LOCAL_IDLE_TIMEOUT_SECONDS),
 })
 
 const SECRET_KEYS: ReadonlyArray<keyof Secrets> = ['DEEPL_API_KEY', 'OPENAI_API_KEY']

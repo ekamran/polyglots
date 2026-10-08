@@ -3,7 +3,7 @@ import { basename, dirname, extname, join } from 'node:path'
 import type Database from 'better-sqlite3'
 import { groupFor, OTHER_GROUP } from '../review/message.js'
 import { configuredModel, type AgentRunOptions } from '../agent/run.js'
-import { createLocalChat, localModelId, resolveLocalTarget, type LocalChat } from '../draft/local-chat.js'
+import { createLocalChat, localIdleTimeoutMs, localModelId, resolveLocalTarget, type LocalChat } from '../draft/local-chat.js'
 import { auditPromptVariant, createLocalAdjudicator } from '../review/local.js'
 import {
   auditEntries,
@@ -237,7 +237,8 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
   // model (`local:ollama:<model>`), so its verdicts can never be served as an
   // agent's or the other way round. Resolved here, before the run row exists,
   // so a target with no model is refused rather than recorded as a failure.
-  const local = provider === 'local' && !opts.noAi ? resolveLocalTarget(loadConfig(), opts.model) : undefined
+  const config = provider === 'local' && !opts.noAi ? loadConfig() : undefined
+  const local = config ? resolveLocalTarget(config, opts.model) : undefined
   const agent = provider === 'local' ? undefined : provider
   // What the engine id records. An explicit --model settles it; otherwise ask
   // the provider what it is configured to run, because antigravity chooses its
@@ -248,7 +249,7 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
   const engine = local
     ? engineId(localModelId(local), 'local')
     : engineId(opts.model ?? (agent ? configuredModel(agent) : undefined), provider)
-  const adjudicate = local ? (opts.adjudicate ?? createLocalAdjudicator(opts.localChat ?? createLocalChat(local), engine)) : opts.adjudicate
+  const adjudicate = local ? (opts.adjudicate ?? createLocalAdjudicator(opts.localChat ?? createLocalChat(local, { idleTimeoutMs: localIdleTimeoutMs(config!) }), engine)) : opts.adjudicate
   const glossary = readGlossary(opts.locale, opts.db)
   if (glossary.length === 0) {
     throw new Error(

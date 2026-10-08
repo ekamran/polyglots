@@ -106,6 +106,88 @@ export interface OpenAICompatibleClientLike {
 
 interface Transport {
   fetch?: typeof fetch
+  // How long the server may say nothing, before headers or between chunks,
+  // before the reply is abandoned. Unset means no limit.
+  idleTimeoutMs?: number
+}
+
+/**
+ * How long a local server may be silent, from config, where it is seconds.
+ *
+ * Silence, not total time. A local model on modest hardware can take many
+ * minutes over a batch, and a cap on the whole reply would cut off a slow
+ * model that is working. What has to be caught is a server that stops: a
+ * runner wedged after a model swap, or a stream left open by a crashed
+ * worker, which hung the run with no error until someone noticed. Three
+ * minutes by default because the first chunk is the slow one: the model may
+ * have to load and the whole prompt is evaluated before any token comes back,
+ * which on a CPU-only machine with a full context takes minutes.
+ */
+export const DEFAULT_LOCAL_IDLE_TIMEOUT_SECONDS = 180
+
+export function localIdleTimeoutMs(config: { localIdleTimeout?: number }): number {
+  return (config.localIdleTimeout ?? DEFAULT_LOCAL_IDLE_TIMEOUT_SECONDS) * 1000
+}
+
+interface IdleWatch {
+  signal: AbortSignal
+  // Restarts the silence clock: called on headers and on every chunk.
+  arm(): void
+  stop(): void
+  // Settles with p, or rejects with the timeout if the server goes quiet first.
+  race<T>(p: Promise<T>): Promise<T>
+  error(): Error | undefined
+}
+
+/**
+ * Raced against every await on the server rather than left to the abort
+ * signal alone. A fetch honours the signal, but nothing obliges every body
+ * stream or proxy to, and the failure this exists for is a promise that
+ * never settles.
+ */
+function idleWatch(ms: number | undefined): IdleWatch {
+  const controller = new AbortController()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let fired: Error | undefined
+  let fail: (error: Error) => void = () => undefined
+  const expired = new Promise<never>((_resolve, reject) => {
+    fail = reject
+  })
+  // Nobody may be racing at the moment it fires; that is not unhandled.
+  expired.catch(() => undefined)
+  const arm = () => {
+    if (ms === undefined) return
+    clearTimeout(timer)
+    timer = setTimeout(() => {
+      fired = new LocalReplyTruncatedError(
+        `the server sent nothing for ${ms / 1000}s, so the reply was abandoned (polyglots config set localIdleTimeout <seconds> if the model is only slow)`,
+      )
+      // Rejected before the abort, so a race sees the timeout rather than the
+      // AbortError the abort sets off in the fetch.
+      fail(fired)
+      controller.abort(fired)
+    }, ms)
+  }
+  arm()
+  return {
+    signal: controller.signal,
+    arm,
+    stop: () => clearTimeout(timer),
+    race: (p) => Promise.race([p, expired]),
+    error: () => fired,
+  }
+}
+
+/** Runs one exchange under an idle watch, reporting a stall as itself. */
+async function watched(ms: number | undefined, exchange: (watch: IdleWatch) => Promise<string>): Promise<string> {
+  const watch = idleWatch(ms)
+  try {
+    return await exchange(watch)
+  } catch (err) {
+    throw watch.error() ?? err
+  } finally {
+    watch.stop()
+  }
 }
 
 function trimSlash(url: string): string {
@@ -151,54 +233,72 @@ async function failure(res: Response): Promise<Error> {
  * Lines from a streamed body, split however the socket delivered them. A
  * partial line is held until the next chunk completes it.
  */
-async function* lines(res: Response): AsyncGenerator<string> {
+async function* lines(res: Response, watch: IdleWatch): AsyncGenerator<string> {
   if (!res.body) throw new Error('response had no body')
   // One decoder for the whole stream, in streaming mode: a multibyte character
   // ("ı", "ş") cut between two reads is held until its last byte arrives.
   // Decoding each chunk on its own turned both halves into U+FFFD.
   const decoder = new TextDecoder('utf-8')
   let buffered = ''
-  for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
-    buffered += decoder.decode(chunk, { stream: true })
-    const parts = buffered.split('\n')
-    buffered = parts.pop() ?? ''
-    for (const line of parts) if (line.trim() !== '') yield line
+  // Read by hand rather than with for await, so each read can be raced
+  // against the idle watch.
+  const reader = res.body.getReader()
+  try {
+    for (;;) {
+      const read = await watch.race(reader.read())
+      if (read.done) break
+      watch.arm()
+      buffered += decoder.decode(read.value, { stream: true })
+      const parts = buffered.split('\n')
+      buffered = parts.pop() ?? ''
+      for (const line of parts) if (line.trim() !== '') yield line
+    }
+    buffered += decoder.decode()
+    if (buffered.trim() !== '') yield buffered
+  } finally {
+    // Released however the reading ended: a stall, an error frame, or the
+    // caller returning on done. for await used to do this on its own, and a
+    // stalled socket must not stay open behind an error already reported.
+    reader.cancel().catch(() => undefined)
   }
-  buffered += decoder.decode()
-  if (buffered.trim() !== '') yield buffered
 }
 
 export function ollamaTransport(baseUrl: string, deps: Transport = {}): QwenClientLike {
   const fetchImpl = deps.fetch ?? globalThis.fetch
   return {
-    async chat(body) {
-      const res = await fetchImpl(`${trimSlash(baseUrl)}/api/chat`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      if (!res.ok) throw await failure(res)
+    chat: (body) =>
+      watched(deps.idleTimeoutMs, async (watch) => {
+        const res = await watch.race(
+          fetchImpl(`${trimSlash(baseUrl)}/api/chat`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(body),
+            signal: watch.signal,
+          }),
+        )
+        if (!res.ok) throw await watch.race(failure(res))
+        watch.arm()
 
-      let text = ''
-      for await (const line of lines(res)) {
-        let event: { message?: { content?: string }; done?: boolean; done_reason?: string; error?: unknown }
-        try {
-          event = JSON.parse(line) as typeof event
-        } catch {
-          continue
+        let text = ''
+        for await (const line of lines(res, watch)) {
+          let event: { message?: { content?: string }; done?: boolean; done_reason?: string; error?: unknown }
+          try {
+            event = JSON.parse(line) as typeof event
+          } catch {
+            continue
+          }
+          // Ollama reports a failure mid-generation as a line of its own, after
+          // a 200 and possibly after content. Swallowing it returned the partial
+          // reply as if it were whole.
+          if (event.error !== undefined) throw new Error(errorText(event.error))
+          text += event.message?.content ?? ''
+          if (event.done) {
+            if (event.done_reason === 'length') throw new LocalReplyTruncatedError()
+            return text
+          }
         }
-        // Ollama reports a failure mid-generation as a line of its own, after
-        // a 200 and possibly after content. Swallowing it returned the partial
-        // reply as if it were whole.
-        if (event.error !== undefined) throw new Error(errorText(event.error))
-        text += event.message?.content ?? ''
-        if (event.done) {
-          if (event.done_reason === 'length') throw new LocalReplyTruncatedError()
-          return text
-        }
-      }
-      throw new LocalReplyTruncatedError(ENDED_EARLY)
-    },
+        throw new LocalReplyTruncatedError(ENDED_EARLY)
+      }),
   }
 }
 
@@ -214,39 +314,44 @@ function chatCompletionsUrl(baseUrl: string): string {
 export function openaiCompatibleTransport(baseUrl: string, deps: Transport = {}): OpenAICompatibleClientLike {
   const fetchImpl = deps.fetch ?? globalThis.fetch
   return {
-    async chat(body) {
-      const res = await fetchImpl(chatCompletionsUrl(baseUrl), {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
-        body: JSON.stringify(body),
-      })
-      if (!res.ok) throw await failure(res)
+    chat: (body) =>
+      watched(deps.idleTimeoutMs, async (watch) => {
+        const res = await watch.race(
+          fetchImpl(chatCompletionsUrl(baseUrl), {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
+            body: JSON.stringify(body),
+            signal: watch.signal,
+          }),
+        )
+        if (!res.ok) throw await watch.race(failure(res))
+        watch.arm()
 
-      let text = ''
-      for await (const line of lines(res)) {
-        // Server-sent events: only `data:` lines carry anything, and the
-        // stream ends on a literal [DONE] rather than on a field. Whatever
-        // follows it is not part of this reply.
-        if (!line.startsWith('data:')) continue
-        const data = line.slice(5).trim()
-        if (data === '[DONE]') return text
-        let event: {
-          choices?: Array<{ delta?: { content?: string | null }; finish_reason?: string | null }>
-          error?: unknown
+        let text = ''
+        for await (const line of lines(res, watch)) {
+          // Server-sent events: only `data:` lines carry anything, and the
+          // stream ends on a literal [DONE] rather than on a field. Whatever
+          // follows it is not part of this reply.
+          if (!line.startsWith('data:')) continue
+          const data = line.slice(5).trim()
+          if (data === '[DONE]') return text
+          let event: {
+            choices?: Array<{ delta?: { content?: string | null }; finish_reason?: string | null }>
+            error?: unknown
+          }
+          try {
+            event = JSON.parse(data) as typeof event
+          } catch {
+            continue
+          }
+          // llama.cpp and vLLM send a failure after the 200 as an error frame.
+          if (event.error !== undefined) throw new Error(errorText(event.error))
+          const choice = event.choices?.[0]
+          text += choice?.delta?.content ?? ''
+          if (choice?.finish_reason === 'length') throw new LocalReplyTruncatedError()
         }
-        try {
-          event = JSON.parse(data) as typeof event
-        } catch {
-          continue
-        }
-        // llama.cpp and vLLM send a failure after the 200 as an error frame.
-        if (event.error !== undefined) throw new Error(errorText(event.error))
-        const choice = event.choices?.[0]
-        text += choice?.delta?.content ?? ''
-        if (choice?.finish_reason === 'length') throw new LocalReplyTruncatedError()
-      }
-      throw new LocalReplyTruncatedError(ENDED_EARLY)
-    },
+        throw new LocalReplyTruncatedError(ENDED_EARLY)
+      }),
   }
 }
 

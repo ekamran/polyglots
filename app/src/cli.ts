@@ -410,6 +410,7 @@ function isConfigKey(key: string): key is keyof PolyglotsConfig {
 function coerceConfigValue(key: keyof PolyglotsConfig, raw: string): PolyglotsConfig[typeof key] {
   switch (key) {
     case 'batchSize':
+    case 'localIdleTimeout':
       return parsePositiveInt(key, raw)
     case 'consistencyTtlDays':
       if (!/^\d+$/.test(raw.trim())) throw new UsageError(`${key} must be a non-negative integer, got "${raw}"`)

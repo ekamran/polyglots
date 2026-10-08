@@ -49,6 +49,8 @@ export interface GetDraftEngineOptions {
   local?: LocalTarget
   // Stands in for the local transport, for tests.
   localChat?: LocalChat
+  // How long the local server may be silent; see localIdleTimeoutMs.
+  idleTimeoutMs?: number
 }
 
 // Only the metered engines need a key. The local one needs a runner to be up,
@@ -105,6 +107,7 @@ export function getDraftEngine(name: DraftEngineInput, secrets: Secrets, options
     return createLocalTargetEngine(target, {
       ...(options.localChat ? { chat: options.localChat } : {}),
       ...(options.onWarning ? { onWarning: options.onWarning } : {}),
+      ...(options.idleTimeoutMs === undefined ? {} : { idleTimeoutMs: options.idleTimeoutMs }),
     })
   }
 
