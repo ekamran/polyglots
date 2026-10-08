@@ -14,7 +14,7 @@ import { MultilineInput } from '../components/MultilineInput.js'
 import { copyRules } from '../../cli/rules.js'
 import { packLine } from '../../rules/support.js'
 import { tryRules, type TryResult } from '../../rules/try.js'
-import { allGlossary, openDb } from '../../storage/index.js'
+import { glossaryRows } from '../setup.js'
 import type { GlossaryEntry } from '../../types.js'
 import { useKeys } from '../hooks/useKeys.js'
 import { TextInput } from '../input.js'
@@ -214,18 +214,7 @@ export function LocaleRules({ onBack }: LocaleRulesProps) {
     if (next === 'try') {
       setTrial(undefined)
       // The locale's glossary, read once, so the glossary rule fires in a trial too.
-      if (glossary === undefined) {
-        try {
-          const db = openDb()
-          try {
-            setGlossary(allGlossary(db, id))
-          } finally {
-            db.close()
-          }
-        } catch {
-          setGlossary([])
-        }
-      }
+      if (glossary === undefined) setGlossary(glossaryRows(id))
     }
     setStage(next)
   }
