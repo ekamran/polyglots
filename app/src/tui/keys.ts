@@ -81,6 +81,7 @@ export const KEYS = {
     palette: { keys: 'ctrl+k  :', does: 'go to any screen', match: (input, key) => (key.ctrl && input === 'k') || char(':')(input, key) },
     help: { keys: '?', does: 'help for this screen', match: char('?') },
     stopStats: { keys: 'x', does: 'stop the stats server while it serves', match: char('x') },
+    scroll: { keys: 'pgup pgdn', does: 'scroll a screen taller than the window', match: (_input, key) => key.pageUp || key.pageDown },
   },
   // q is "leave": back one level on every screen, quit on home, and stop on
   // a run, which is the CLI's q too.
@@ -272,7 +273,7 @@ export function groupOf(entry: KeyEntry): Group {
 
 const help = ({ keys, does }: KeyEntry): KeyHelp => ({ keys, does })
 
-export const GLOBAL_KEYS: KeyHelp[] = [KEYS.global.help, KEYS.global.palette, KEYS.back.esc, KEYS.back.q, KEYS.global.quit, KEYS.global.stopStats].map(
+export const GLOBAL_KEYS: KeyHelp[] = [KEYS.global.help, KEYS.global.palette, KEYS.back.esc, KEYS.back.q, KEYS.global.quit, KEYS.global.stopStats, KEYS.global.scroll].map(
   help,
 )
 

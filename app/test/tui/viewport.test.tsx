@@ -154,3 +154,25 @@ describe('a run screen taller than the body', () => {
     expect(flat(view.lastFrame())).toMatch(/p pause/)
   })
 })
+
+// A screen with no cursor (Agents at 60x20, a review summary) has nothing for
+// the body to follow, so page up and page down move it instead.
+describe('a tall screen with no cursor', () => {
+  it('scrolls with page down and page up', async () => {
+    const view = render(<App commands={fakeCommands()} cwd={cwd} />, { columns: 60, rows: 20 })
+    await openFromHome(view.stdin, 'agents')
+    await waitForText(() => flat(view.lastFrame()), /more below/)
+    expect(flat(view.lastFrame())).not.toMatch(/more above/)
+    view.stdin.write(keys.pageDown)
+    await waitForText(() => flat(view.lastFrame()), /more above/)
+    view.stdin.write(keys.pageUp)
+    await waitFor(() => !/more above/.test(flat(view.lastFrame())))
+  })
+
+  it('lists the scroll keys in the help overlay', async () => {
+    const view = render(<App commands={fakeCommands()} cwd={cwd} />, { columns: 120, rows: 40 })
+    await tick()
+    view.stdin.write('?')
+    await waitForText(() => flat(view.lastFrame()), /pgup pgdn/)
+  })
+})

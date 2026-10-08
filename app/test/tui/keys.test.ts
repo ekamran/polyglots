@@ -176,7 +176,7 @@ describe('the key table and the bindings cannot drift', () => {
   })
 
   it('lists the keys bound everywhere under one heading', () => {
-    expect(GLOBAL_KEYS.map((k) => k.keys)).toEqual(['?', 'ctrl+k  :', 'esc', 'q', 'ctrl+c', 'x'])
+    expect(GLOBAL_KEYS.map((k) => k.keys)).toEqual(['?', 'ctrl+k  :', 'esc', 'q', 'ctrl+c', 'x', 'pgup pgdn'])
   })
 
   // The listings the table used to get wrong while it was only documentation.

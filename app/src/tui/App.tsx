@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Box, Text, useApp } from 'ink'
 import { CommandsProvider, defaultCommands, errorMessage, useCommands, type TuiCommands } from './commands.js'
 import type { AgentStatus } from '../agent/discover.js'
@@ -8,7 +8,7 @@ import type { PolyglotsConfig, ReviewChoice, Secrets } from '../types.js'
 import { TOKENS } from '../ui/tokens.js'
 import { Footer, Header } from './components/Chrome.js'
 import { HelpOverlay, Palette, QuitPrompt } from './components/Overlays.js'
-import { Viewport } from './components/Viewport.js'
+import { Viewport, type PageBy } from './components/Viewport.js'
 import { ActivityProvider, createActivity, useBusy, type Activity } from './hooks/activity.js'
 import { useGlobalKeys } from './hooks/useKeys.js'
 import { InputGate, TypingProvider, useTyping, type Key } from './input.js'
@@ -254,6 +254,7 @@ function Shell({ cwd = process.cwd(), onExit }: AppProps) {
   // the terminal is too small: there is nothing to draw an overlay on, and
   // one set now would pop up unbidden when the terminal is enlarged.
   const framed = overlay === undefined && layout.fits
+  const pageBody = useRef<PageBy | undefined>(undefined)
   // Printable, so they belong to a text field when one has focus. Ctrl+K is
   // not something a field types, so it opens the palette from inside one.
   const unlessTyping = (act: () => void) => (_input: string, key: Key) => {
@@ -268,6 +269,8 @@ function Shell({ cwd = process.cwd(), onExit }: AppProps) {
       // Stops the stats server from anywhere, since it keeps serving after its
       // screen is left. The stats screen binds x itself, to show that it stopped.
       stopStats: framed && statsUrl !== undefined && screen !== 'stats' ? unlessTyping(() => void services.stopStats()) : undefined,
+      // The Help page pages through its own text with the same keys.
+      scroll: framed && screen !== 'help' ? (_input, key) => pageBody.current?.(key.pageUp ? -1 : 1) : undefined,
     },
   })
 
@@ -398,7 +401,9 @@ function Shell({ cwd = process.cwd(), onExit }: AppProps) {
         <Box display={hidden ? 'none' : 'flex'} flexDirection="column" flexGrow={1}>
           <InputGate open={!hidden}>
             {/* Keyed by screen, so the next screen starts at its top. */}
-            <Viewport key={screen}>{view}</Viewport>
+            <Viewport key={screen} pageRef={pageBody}>
+              {view}
+            </Viewport>
           </InputGate>
         </Box>
         {!layout.fits && (

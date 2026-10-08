@@ -142,6 +142,8 @@ export const keys = {
   backspace: '',
   esc: '',
   tab: '\t',
+  pageUp: '\u001b[5~',
+  pageDown: '\u001b[6~',
 }
 
 // Opens a screen the way a person would: by its hotkey, and its submenu's

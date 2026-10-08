@@ -13,9 +13,10 @@ import { TOKENS } from '../../ui/tokens.js'
 // reader is looking; a separate scroll key would leave two positions to keep
 // in step, and a keypress to reach the row the arrow keys already moved to.
 // A screen marks its cursor row with ScrollTarget and the body keeps that row
-// in view. A screen that marks nothing scrolls nowhere and shows its top, with
-// the count of rows out of sight said on the last line, so a clipped screen
-// at least says that it is.
+// in view. A screen that marks nothing has no cursor to follow (Agents on a
+// small terminal, a review summary), so page up and page down move its body a
+// page at a time, and the count of rows out of sight on the last line says
+// there is more.
 //
 // Measured from Ink's own layout after each commit. Yoga has computed the
 // layout by the time layout effects run, so the offset is decided against the
@@ -61,7 +62,10 @@ function topWithin(el: DOMElement, root: DOMElement): number | undefined {
   return top
 }
 
-export function Viewport({ children }: { children: ReactNode }) {
+/** Moves the body by pages; set by the Viewport for the frame's page keys. */
+export type PageBy = (pages: number) => void
+
+export function Viewport({ children, pageRef }: { children: ReactNode; pageRef?: { current: PageBy | undefined } }) {
   const outerRef = useRef<DOMElement>(null)
   const contentRef = useRef<DOMElement>(null)
   const target = useRef<DOMElement | null>(null)
@@ -118,6 +122,19 @@ export function Viewport({ children }: { children: ReactNode }) {
   )
 
   useLayoutEffect(recompute)
+
+  // Only where no row is followed: with a cursor on screen, the cursor is
+  // what moves the body, and a page key would be undone on the next render.
+  if (pageRef) {
+    pageRef.current = (pages) => {
+      if (target.current) return
+      const full = heightOf(outerRef.current)
+      const height = heightOf(contentRef.current)
+      if (full === 0 || height <= full) return
+      const room = full - 1
+      setOffset((current) => Math.min(Math.max(0, current + pages * Math.max(1, room - 1)), height - room))
+    }
+  }
 
   const full = heightOf(outerRef.current)
   const overflow = full > 0 && content.height > full
