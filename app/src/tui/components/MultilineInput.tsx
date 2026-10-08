@@ -1,5 +1,6 @@
 import { Box, Text } from 'ink'
-import { useInput, useTypingWhile } from '../input.js'
+import { useKeys } from '../hooks/useKeys.js'
+import { useTypingWhile } from '../input.js'
 
 export interface MultilineInputProps {
   value: string
@@ -15,11 +16,13 @@ export interface MultilineInputProps {
  */
 export function MultilineInput({ value, onChange, onDone }: MultilineInputProps) {
   useTypingWhile(true)
-  useInput((ch, key) => {
-    if (key.escape) onDone()
-    else if (key.return) onChange(`${value}\n`)
-    else if (key.backspace || key.delete) onChange(value.slice(0, -1))
-    else if (ch && !key.ctrl && !key.meta) onChange(value + ch.replace(/\r\n?/g, '\n'))
+  useKeys({
+    back: { esc: onDone, q: undefined },
+    multiline: {
+      newline: () => onChange(`${value}\n`),
+      erase: () => onChange(value.slice(0, -1)),
+      type: (ch) => onChange(value + ch.replace(/\r\n?/g, '\n')),
+    },
   })
   const lines = value.split('\n')
   return (

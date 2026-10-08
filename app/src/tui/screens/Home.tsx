@@ -5,7 +5,8 @@ import { PROVIDERS } from '../../agent/providers.js'
 import type { ReviewChoice } from '../../types.js'
 import { TOKENS } from '../../ui/tokens.js'
 import { MenuGrid, moveFocus } from '../components/MenuGrid.js'
-import { useInput } from '../input.js'
+import { useKeys, type GroupHandlers } from '../hooks/useKeys.js'
+import type { Key } from '../input.js'
 import type { MenuNode, ScreenId } from '../menu.js'
 import type { SetupStatus } from '../setup.js'
 import { SETUP_STEPS, type SetupStep } from '../state.js'
@@ -42,31 +43,41 @@ export interface MenuScreenProps {
   onLeave: () => void
 }
 
-/** Cards, arrows, hotkeys and enter: what home and both submenus share. */
+/**
+ * Cards, arrows, hotkeys and enter: what home and both submenus share. Home
+ * passes its provider key in `extra`, matched before the card letters so p
+ * never opens a card.
+ */
 function useMenuKeys(
   { items, layout, onOpen, onLeave }: MenuScreenProps,
   active: boolean,
-  extra?: (input: string) => boolean,
+  extra?: GroupHandlers<'home'>,
   escLeaves = true,
 ) {
   const [focus, setFocus] = useState(0)
-  useInput(
-    (input, key) => {
+  const move = (_input: string, key: Key) => {
+    const dir = key.upArrow ? 'up' : key.downArrow ? 'down' : key.leftArrow ? 'left' : 'right'
+    setFocus((f) => moveFocus(f, items.length, layout, dir))
+  }
+  useKeys(
+    {
       // Esc is "back", and home has nowhere to go back to. Quitting on it
       // would turn a stray press, or one too many on the way out of a
       // submenu, into the end of the session.
-      if (key.escape) return escLeaves ? onLeave() : undefined
-      if (input === 'q' && !key.ctrl && !key.meta) return onLeave()
-      if (key.return) return onOpen(items[focus]!.id)
-      const dir = key.upArrow ? 'up' : key.downArrow ? 'down' : key.leftArrow ? 'left' : key.rightArrow ? 'right' : undefined
-      if (dir) return setFocus((f) => moveFocus(f, items.length, layout, dir))
-      if (key.ctrl || key.meta) return
-      if (extra?.(input)) return
-      // A hotkey opens its card at once rather than only moving to it: the
-      // letter is printed on the card, and a second keystroke to confirm what
-      // the person already named would only slow down the commonest path.
-      const hit = items.find((n) => n.key === input)
-      if (hit) onOpen(hit.id)
+      back: { esc: escLeaves ? onLeave : undefined, q: onLeave },
+      home: { provider: extra?.provider },
+      menu: {
+        open: () => onOpen(items[focus]!.id),
+        move,
+        // A hotkey opens its card at once rather than only moving to it: the
+        // letter is printed on the card, and a second keystroke to confirm what
+        // the person already named would only slow down the commonest path.
+        hotkey: (input) => {
+          const hit = items.find((n) => n.key === input)
+          if (!hit) return false
+          onOpen(hit.id)
+        },
+      },
     },
     { isActive: active },
   )
@@ -111,37 +122,46 @@ export function Home(props: HomeProps) {
   const others = unusable.filter((a) => a.provider !== provider)
 
   const onCards = statusFocus === undefined
-  const focus = useMenuKeys(props, onCards, (input) => {
-    if (input === 'p') {
-      const next = nextProvider(provider, usable)
-      if (next === provider) {
-        const why = others.map((a) => `${a.provider}: ${a.reason ?? 'unavailable'}`).join('; ')
-        setNotice(`No other usable agent${why ? `: ${why}` : ''}`)
-        return true
-      }
-      setNotice(undefined)
-      onProvider(next)
-      return true
-    }
-    return false
-  }, false)
+  const focus = useMenuKeys(
+    props,
+    onCards,
+    {
+      provider: () => {
+        const next = nextProvider(provider, usable)
+        if (next === provider) {
+          const why = others.map((a) => `${a.provider}: ${a.reason ?? 'unavailable'}`).join('; ')
+          setNotice(`No other usable agent${why ? `: ${why}` : ''}`)
+          return
+        }
+        setNotice(undefined)
+        onProvider(next)
+      },
+    },
+    false,
+  )
 
   // Tab toggles between the cards and the setup status. On the status, the
   // arrows walk the five steps and enter opens the wizard at the one chosen,
   // which is how "selecting a step jumps to the fix" reads with a keyboard.
-  useInput((_input, key) => {
-    if (!key.tab) return
-    if (onCards) onStatusFocus(SETUP_STEPS.find((s) => status.steps[s] !== 'done') ?? SETUP_STEPS[0])
-    else onStatusFocus(undefined)
+  useKeys({
+    homeTab: {
+      setup: () => {
+        if (onCards) onStatusFocus(SETUP_STEPS.find((s) => status.steps[s] !== 'done') ?? SETUP_STEPS[0])
+        else onStatusFocus(undefined)
+      },
+    },
   })
-  useInput(
-    (input, key) => {
-      if (!statusFocus) return
-      const at = SETUP_STEPS.indexOf(statusFocus)
-      if (key.escape || input === 'q') onStatusFocus(undefined)
-      else if (key.leftArrow || key.upArrow) onStatusFocus(SETUP_STEPS[Math.max(0, at - 1)])
-      else if (key.rightArrow || key.downArrow) onStatusFocus(SETUP_STEPS[Math.min(SETUP_STEPS.length - 1, at + 1)])
-      else if (key.return) onOpenStep(statusFocus)
+  const at = statusFocus === undefined ? 0 : SETUP_STEPS.indexOf(statusFocus)
+  useKeys(
+    {
+      setupStatus: {
+        leave: () => onStatusFocus(undefined),
+        move: (_input, key) =>
+          onStatusFocus(
+            key.leftArrow || key.upArrow ? SETUP_STEPS[Math.max(0, at - 1)] : SETUP_STEPS[Math.min(SETUP_STEPS.length - 1, at + 1)],
+          ),
+        open: () => statusFocus && onOpenStep(statusFocus),
+      },
     },
     { isActive: !onCards },
   )

@@ -2,7 +2,8 @@ import { readdirSync, statSync } from 'node:fs'
 import { dirname, extname, join } from 'node:path'
 import { useMemo, useState } from 'react'
 import { Box, Text } from 'ink'
-import { SelectInput, useInput } from '../input.js'
+import { useKeys } from '../hooks/useKeys.js'
+import { SelectInput } from '../input.js'
 
 /**
  * How the listing is ordered.
@@ -188,9 +189,7 @@ export function FilePicker({ dir, extensions, onPick, limit = 15, annotate, choo
   // cursor to the top whenever the item values change, which is what a re-sort
   // wants, because the row that was under the cursor has moved and holding the
   // index would put the cursor on an unrelated file.
-  useInput((input) => {
-    if (input === 's') setSort(nextSort)
-  })
+  useKeys({ picker: { sort: () => setSort(nextSort) } })
 
   // ink-select-input hands its item component only the label, so the kind is
   // looked up by label; a directory's label carries a trailing slash, so a file

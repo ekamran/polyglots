@@ -4,7 +4,7 @@ import { estimateRemainingMs, formatDuration, formatFinishTime, renderBar as bar
 import { useElapsed } from '../hooks/useElapsed.js'
 import { openInDefaultApp } from '../open-file.js'
 import type { TranslateEvent, TranslateSummary } from '../../commands/translate.js'
-import { useInput } from '../input.js'
+import { useKeys } from '../hooks/useKeys.js'
 
 export interface ProgressState {
   started: boolean
@@ -173,9 +173,7 @@ export function Progress({ events }: { events: TranslateEvent[] }) {
   // Only once the run is over: during it the keys belong to pause, resume and
   // stop, and opening the file mid-run would show a catalogue still being
   // rewritten after every batch.
-  useInput((input) => {
-    if (input === 'o' && translatedFile !== undefined) setOpened(openInDefaultApp(translatedFile))
-  })
+  useKeys({ translateResult: { open: translatedFile === undefined ? undefined : () => setOpened(openInDefaultApp(translatedFile)) } })
 
   if (!state.started) return <Text dimColor>Starting…</Text>
 
