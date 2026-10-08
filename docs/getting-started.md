@@ -155,6 +155,9 @@ machine in three ways:
 - **Drafting** sends source strings to DeepL or OpenAI.
 - **Lookups** query translate.wordpress.org for the glossary, the exports and
   consistency data.
+- **Usage totals**, only if you turn them on: a weekly count of strings
+  reviewed, drafted and repaired, with no names, strings or locale. See
+  [Usage statistics](usage-statistics.md).
 
 With a [local model](local-models.md) for both drafting and reviewing, the
 strings stay on your machine; only the translate.wordpress.org lookups

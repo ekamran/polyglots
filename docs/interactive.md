@@ -31,6 +31,10 @@ has five steps:
    locales ship a pack; for the rest this is where you start one. See
    [Locale rules](locale-rules.md).
 
+Last, it asks once whether to share a few anonymous totals for the website.
+The answer is No unless you choose Yes; see
+[Usage statistics](usage-statistics.md).
+
 `enter` chooses and moves on, `esc` skips a step. You can stop part way:
 the wizard opens again next time at the first step still missing, and once
 you have been through it to the end it stays under **Configuration › Setup
@@ -135,6 +139,9 @@ again once stopped.
 | `k` | Configure API keys | Stores your DeepL and OpenAI keys. A key set in your environment wins over a saved one. |
 | `w` | Setup wizard | The five setup steps, from wherever you left them. |
 | `i` | Interface settings | Settings for the app only, such as printing the last output path after you quit. |
+
+Configuration also has **Usage statistics**, which shows exactly what would
+be shared and turns it on or off; see [Usage statistics](usage-statistics.md).
 
 Everything set here is the same configuration the commands read; see
 [Configuration](configuration.md).

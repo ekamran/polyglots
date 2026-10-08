@@ -5,6 +5,7 @@ import Terminal from '../components/Terminal.astro';
 import Icon from '../components/Icon.astro';
 import { allDocs } from '../lib/docs';
 import { snapshot } from '../lib/snapshot';
+import { loadUsageTotals } from '../lib/usage';
 
 const TAGLINE = 'Review a locale’s submissions in minutes, not evenings.';
 const DESCRIPTION =
@@ -12,6 +13,9 @@ const DESCRIPTION =
 
 const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 const docs = await allDocs();
+// Absent until opted-in installs have reported, and whenever it cannot be read.
+const usage = await loadUsageTotals();
+const n = (v: number) => v.toLocaleString('en-US');
 const doc = (slug: string) => `${base}docs/${slug}/`;
 ---
 <Base title={`polyglots · ${TAGLINE}`} description={DESCRIPTION}>
@@ -186,6 +190,7 @@ const doc = (slug: string) => `${base}docs/${slug}/`;
         <li><strong>Reviewing</strong> sends each batch of strings, with its glossary terms and memory matches, to the agent you review with and its model provider (Anthropic for Claude, Google for Antigravity).</li>
         <li><strong>Drafting</strong> sends source strings to DeepL or OpenAI.</li>
         <li><strong>Lookups</strong> query translate.wordpress.org for the glossary, exports and consistency data.</li>
+        <li><strong>Usage totals</strong>, only if you turn them on: a weekly count of strings reviewed, drafted and repaired, with no names, strings or locale. <a href={doc('usage-statistics')}>What is sent</a></li>
       </ul>
       <p>
         Only with a local model for both drafting and reviewing do the strings stay on your machine. Claude is held to polyglots’ three lookups on every run and cannot open files or run commands; Antigravity’s limits come from its own settings and any other tool servers registered with it.
@@ -212,6 +217,13 @@ const doc = (slug: string) => `${base}docs/${slug}/`;
     <div class="start">
       <div>
         <Install id="footer" />
+        {usage && (
+          <p class="usage">
+            So far, across {n(usage.installs)} {usage.installs === 1 ? 'install' : 'installs'} that share their totals:{' '}
+            <strong>{n(usage.reviewed)}</strong> strings reviewed, <strong>{n(usage.repaired)}</strong> repaired and{' '}
+            <strong>{n(usage.drafted)}</strong> drafted. <a href={doc('usage-statistics')}>How this is counted</a>
+          </p>
+        )}
         <p class="muted small">Version {snapshot.version}. Driving polyglots from an agent? Point it at <a href={`${base}ai/`}>ada.tools/polyglots/ai</a>.</p>
       </div>
       <ul class="doclist">
@@ -284,6 +296,8 @@ const doc = (slug: string) => `${base}docs/${slug}/`;
   .start { display: grid; gap: 2rem; margin-top: 1.5rem; }
   @media (min-width: 900px) { .start { grid-template-columns: 1fr 1fr; gap: 3.5rem; } }
   .small { font-size: 0.9rem; margin-top: 1rem; }
+  .usage { margin: 1.25rem 0 0; color: var(--fg-2); max-width: 34rem; }
+  .usage strong { color: var(--fg); font-variant-numeric: tabular-nums; }
   .doclist { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
   @media (min-width: 560px) { .doclist { grid-template-columns: 1fr 1fr; } }
   .doclist a { text-decoration: none; }
