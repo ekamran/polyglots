@@ -125,7 +125,7 @@ const doc = (slug: string) => `${base}docs/${slug}/`;
         <tbody>
           <tr><td>Reviewing</td><td><strong>Claude Code</strong> (default)</td><td>Your Claude plan’s usage, or API billing if the CLI is signed in with a key.</td></tr>
           <tr><td>Reviewing</td><td><strong>Antigravity CLI</strong> <a href={doc('antigravity')}>setup</a></td><td>Your Antigravity account’s usage.</td></tr>
-          <tr><td>Drafting</td><td><strong>DeepL</strong> (default)</td><td>Free within DeepL API Free’s monthly allowance; metered on a paid plan.</td></tr>
+          <tr><td>Drafting</td><td><strong>DeepL</strong> (default)</td><td>Free within DeepL API Free’s allowance (one-time for new accounts); metered on a paid plan.</td></tr>
           <tr><td>Drafting</td><td><strong>OpenAI</strong></td><td>Metered per token.</td></tr>
           <tr><td>Drafting, experimental reviewing</td><td><strong>Local models</strong>: Ollama, LM Studio, llama.cpp, vLLM <a href={doc('local-models')}>setup</a></td><td>Free; runs on your machine.</td></tr>
           <tr><td>Rules-only review</td><td><code>review --no-ai</code></td><td>Free; no model at all.</td></tr>

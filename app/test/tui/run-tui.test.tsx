@@ -3,6 +3,10 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { TranslateOptions } from '../../src/commands/translate.js'
 import { runTui, type RunTuiOptions } from '../../src/tui/index.js'
+import { defaultCommands } from '../../src/tui/commands.js'
+import { openJobsDb } from '../../src/jobs/db.js'
+import { getRun, startRun } from '../../src/jobs/runs.js'
+import { jobsDbFile } from '../../src/paths.js'
 import { createActivity } from '../../src/tui/hooks/activity.js'
 import { DEFAULT_TUI_STATE } from '../../src/tui/state.js'
 import { FakeStdin, FakeStdout, fakeCommands, keys, makeHome, memoryTuiState, tick, waitForText, type Home } from './helpers.js'
@@ -240,6 +244,46 @@ describe('runTui', () => {
     await done
     expect(exit).toHaveBeenCalledWith(130)
     release()
+  })
+
+  // End to end against a jobs.db in the test's own home: the run row is
+  // written the way the real translate writes it, under this process's pid,
+  // and the real stopOwnRuns ends it.
+  describe.each([
+    ['y at the quit prompt', 'y'],
+    ['a second Ctrl+C', CTRL_C],
+  ])('quitting a run with %s', (_name, answer) => {
+    it('leaves the run recorded as stopped, not abandoned', async () => {
+      expect(jobsDbFile().startsWith(home.path)).toBe(true)
+      let runId!: number
+      let release!: () => void
+      const gate = new Promise<void>((resolve) => (release = resolve))
+      const commands = fakeCommands({
+        translateFile: vi.fn(async (opts: TranslateOptions) => {
+          const db = openJobsDb()
+          runId = startRun(db, { file: opts.file, command: 'translate', locale: 'tr', nplurals: 2, batchSize: 25, engine: 'deepl' })
+          db.close()
+          opts.onProgress?.({ type: 'start', file: opts.file, total: 4, pending: 2 })
+          await gate
+          return { file: opts.file, total: 4, pending: 2, fromTm: 0, translated: 2, fuzzy: 0, skipped: 0 }
+        }),
+        stopOwnRuns: defaultCommands.stopOwnRuns,
+      })
+      const { stdin, exit, done, lastFrame } = start(commands)
+      await openTranslateAndStart(stdin, lastFrame)
+      await waitForText(lastFrame, /0\/2/)
+      stdin.write(CTRL_C)
+      await waitForText(lastFrame, 'A run is still going')
+      stdin.write(answer)
+      await done
+      expect(exit).toHaveBeenCalledWith(130)
+      const db = openJobsDb()
+      const row = getRun(db, runId)!
+      db.close()
+      expect(row.state).toBe('stopped')
+      expect(row.ending).toBe('stopped')
+      release()
+    })
   })
 
   it('records a quit during a run as stopped before exiting', async () => {

@@ -43,7 +43,7 @@ translation. It asks before it starts; `--yes` skips the question.
 
 | Engine | Needs | Cost |
 |---|---|---|
-| `deepl` (default) | `DEEPL_API_KEY` | Free within DeepL API Free's monthly character allowance (500,000 at the time of writing); metered on a paid plan. |
+| `deepl` (default) | `DEEPL_API_KEY` | Free within DeepL API Free's allowance: 1,000,000 characters once for new accounts, 500,000 a month for accounts that already had the old plan (at the time of writing); metered on a paid plan. |
 | `openai` | `OPENAI_API_KEY` | Metered per token by OpenAI. |
 | `local` | a model server on your machine | Nothing; see [local models](local-models.md). |
 

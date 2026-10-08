@@ -46,7 +46,7 @@ export interface DraftEngineOption {
 }
 
 export const DRAFT_ENGINES: readonly DraftEngineOption[] = [
-  { id: 'deepl', label: 'DeepL', cost: 'Needs a DeepL API key; DeepL has a free plan with a monthly limit.' },
+  { id: 'deepl', label: 'DeepL', cost: 'Needs a DeepL API key. New free accounts get 1M characters once; older ones keep 500k a month.' },
   { id: 'openai', label: 'OpenAI', cost: 'Needs an OpenAI API key, billed per token.' },
   { id: 'local', label: 'Local model', cost: 'Free; drafts with the model on your local server.' },
 ]
