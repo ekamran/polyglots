@@ -153,6 +153,7 @@ const doc = (slug: string) => `${base}docs/${slug}/`;
         <p>Meaning, fluency and the soft findings go to an AI agent with the rule hints in hand and three lookups: the glossary, your memory and translate.wordpress.org’s consistency data. Claude gets those and nothing else, no shell and no files; Antigravity is held to them by <a href={doc('antigravity')}>its own settings</a>. It decides, and repairs what it rejects.</p>
       </div>
     </div>
+    <p class="no-ai">Prefer no AI? Choose <strong>No AI</strong> in setup: every mechanical check still runs, on your machine, with nothing sent to a model. <a href={doc('getting-started') + '#using-polyglots-without-ai'}>What the rules catch, and what they cannot</a></p>
   </section>
 
   <section class="wrap band" aria-labelledby="engines">
@@ -170,7 +171,7 @@ const doc = (slug: string) => `${base}docs/${slug}/`;
           <tr><td>Drafting</td><td><strong>DeepL</strong> (default)</td><td>Free within DeepL API Free’s allowance (one-time for new accounts); metered on a paid plan.</td></tr>
           <tr><td>Drafting</td><td><strong>OpenAI</strong></td><td>Metered per token.</td></tr>
           <tr><td>Drafting, experimental reviewing</td><td><strong>Local models</strong>: Ollama, LM Studio, llama.cpp, vLLM <a href={doc('local-models')}>setup</a></td><td>Free; runs on your machine.</td></tr>
-          <tr><td>Rules-only review</td><td><code>review --no-ai</code></td><td>Free; no model at all.</td></tr>
+          <tr><td>Rules-only review</td><td><strong>No AI</strong>, chosen in setup, or <code>review --no-ai</code> <a href={doc('getting-started') + '#using-polyglots-without-ai'}>what it checks</a></td><td>Free; no model at all.</td></tr>
         </tbody>
       </table>
     </div>
@@ -277,6 +278,7 @@ const doc = (slug: string) => `${base}docs/${slug}/`;
   @media (min-width: 720px) { .cards { grid-template-columns: 1fr 1fr; } }
   .card { border: 1px solid var(--rule); border-radius: var(--radius); padding: 1.4rem 1.5rem 0.6rem; background: var(--bg-2); }
   .card h3 { font-size: 1.1rem; }
+  .no-ai { margin: 1.5rem 0 0; color: var(--fg-2); max-width: 46rem; }
 
   .table-wrap { overflow-x: auto; margin-top: 1.5rem; }
   .engines { width: 100%; border-collapse: collapse; font-size: 0.97rem; min-width: 36rem; }

@@ -22,9 +22,12 @@ has five steps:
    `pt_BR`, `nl_NL_formal`) and choose from the matches.
 2. **Review provider**: the AI agent that reviews: Claude Code or
    Antigravity, whichever is installed and signed in on this machine, or a
-   model on your own computer (experimental). Each option says what it costs.
+   model on your own computer (experimental), or **No AI**, which runs the
+   rules alone ([what that means](getting-started.md#using-polyglots-without-ai)).
+   Each option says what it costs.
 3. **Draft engine and API keys**: what fills in untranslated strings: DeepL,
-   OpenAI or a local model, and the key it needs. Skip this if you only review.
+   OpenAI, a local model or No AI, and the key it needs. Skip this if you only
+   review.
 4. **Glossary sync**: downloads your locale's glossary from
    translate.wordpress.org. A review will not start without it.
 5. **Locale rules**: the checks for your language's conventions. Some
