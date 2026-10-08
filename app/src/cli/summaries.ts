@@ -2,7 +2,7 @@ import type { TranslateSummary } from '../commands/translate.js'
 import type { ReviewSummary } from '../types.js'
 import type { Tally } from '../commands/fetch-report.js'
 import type { StatsSummary } from '../commands/stats.js'
-import { box, sparkline, table } from '../ui/layout.js'
+import { box, displayWidth, padTo, sparkline, table } from '../ui/layout.js'
 import { hintLine, nextLine } from '../ui/messages.js'
 import type { Painter } from '../ui/paint.js'
 
@@ -40,7 +40,9 @@ export function reviewSummary(p: Painter, s: ReviewSummary, requesterMessage: st
   const rows: string[][] = [
     ['reviewed', String(s.reviewed), p.paint('muted', `${s.skipped} not submitted`)],
     ['flagged', flagged > 0 ? p.paint('warn', String(flagged)) : '0', ''],
-    ['approvable', p.paint('success', String(s.approvable)), ''],
+    // Green says "there is something here you can approve", so a zero stays
+    // plain, the way a zero flagged count does.
+    ['approvable', s.approvable > 0 ? p.paint('success', String(s.approvable)) : '0', ''],
   ]
   if (s.needsReview > 0) rows.push(['guesses', String(s.needsReview), p.paint('muted', 're-run without --no-ai to decide them')])
   if (s.unreviewed > 0) rows.push(['unreviewed', p.paint('warn', String(s.unreviewed)), p.paint('muted', 'could not be reviewed; flagged')])
@@ -94,10 +96,20 @@ function statsBody(p: Painter, s: Omit<StatsSummary, 'file'>): string[] {
   if (s.submissions > 0) {
     const rate = s.entries === 0 ? 0 : Math.round((s.flagged / s.entries) * 100)
     rows.push(['submissions', n(s.submissions)], ['entries', n(s.entries)], ['flagged', `${n(s.flagged)}`, p.paint('muted', `${rate}%`)])
-    if (s.weeks.length > 0) rows.push(['weekly', p.paint('accent', sparkline(s.weeks, p.glyphs.spark)), p.paint('muted', `last ${s.weeks.length} weeks`)])
   }
+  const reviewRows = rows.length
   if (s.translateRuns > 0) rows.push(['translate runs', n(s.translateRuns)], ['drafted', n(s.translateEntries)])
-  const out = box(p, `${p.paint('accent', p.glyphs.bullet)} Statistics`, table(rows, { align: ['left', 'right', 'left'] }))
+  const lines = table(rows, { align: ['left', 'right', 'left'] })
+  // The sparkline is kept out of the table. As a cell of the counts column it
+  // was the widest thing in it, and right-aligning every count to its width
+  // left the numbers a dozen columns from their labels. Drawn as its own line,
+  // it starts where the counts column starts and runs on past it.
+  if (s.submissions > 0 && s.weeks.length > 0) {
+    const labelWidth = Math.max(...rows.map((r) => displayWidth(r[0]!)))
+    const spark = p.paint('accent', sparkline(s.weeks, p.glyphs.spark))
+    lines.splice(reviewRows, 0, `${padTo('weekly', labelWidth)}  ${spark}  ${p.paint('muted', `last ${s.weeks.length} weeks`)}`)
+  }
+  const out = box(p, `${p.paint('accent', p.glyphs.bullet)} Statistics`, lines)
   if (s.topProjects.length > 0) {
     out.push('', p.paint('heading', 'Top projects'))
     out.push(...table(

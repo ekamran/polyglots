@@ -80,6 +80,15 @@ describe('reviewSummary', () => {
     expect(lines[at + 1]).toBe('Thanks! 1 entry needs a look.')
   })
 
+  it('paints the approvable count green only when there is something to approve', () => {
+    const colour = createPainter({ isTTY: true }, {})
+    const row = (approvable: number) =>
+      reviewSummary(colour, reviewed({ reviewed: 5, problems: 5 - approvable, needsReview: 0, approvable, pending: 0 }, 'p.po'), undefined)
+        .find((l) => l.includes('approvable'))!
+    expect(row(0)).not.toContain('\x1b[32m')
+    expect(row(3)).toContain('\x1b[32m')
+  })
+
   it('reads the same with colour on, once the codes are stripped', () => {
     const s = reviewed({ problems: 2 }, 'p.po')
     const painted = reviewSummary(createPainter({ isTTY: true }, {}), s, 'msg')
@@ -110,6 +119,20 @@ describe('statsSummary', () => {
     expect(text).toMatch(/submissions\s+12/)
     expect(text).toMatch(/entries\s+4,102/)
     expect(text).toMatch(/weekly\s+▁\S{3}/)
+  })
+
+  // The sparkline is wider than any count, and as a cell of the counts column
+  // it pushed every number far right of its label. It now starts where the
+  // column starts and runs past it, so the numbers sit as close as before.
+  it('keeps the counts beside their labels however long the sparkline is', () => {
+    const long = { ...s, weeks: [0, 2, 5, 9, 3, 1, 0, 4, 8, 12, 6, 2] }
+    const lines = statsSummary(plainPainter, long)
+    const entries = lines.find((l) => l.includes('entries'))!
+    const weekly = lines.find((l) => l.includes('weekly'))!
+    expect(entries).toMatch(/entries {2,9}4,102/)
+    expect(weekly.indexOf('▁')).toBe(entries.indexOf('4,102'))
+    expect(weekly).toMatch(/█\S*  last 12 weeks/)
+    expect(new Set(lines.filter((l) => /^[╭│╰]/.test(l)).map((l) => l.length)).size).toBe(1)
   })
 
   it('lists the top projects and points at the page', () => {
