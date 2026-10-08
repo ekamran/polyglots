@@ -16,6 +16,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { cutRelease } from './release-changelog.mjs'
+import { auditRefusal } from './release-audit.mjs'
 
 const app = join(dirname(fileURLToPath(import.meta.url)), '..')
 const repo = join(app, '..')
@@ -38,6 +39,20 @@ if (read('git', ['status', '--porcelain'], repo) !== '') fail('The working tree 
 
 console.log('==> Checking for a running review or translate')
 run('node', ['scripts/no-live-run.mjs'])
+
+// Before the slow steps, so a new advisory is heard about in seconds; the
+// reasons it reads the report rather than the exit code are in
+// release-audit.mjs.
+console.log('==> Auditing production dependencies')
+let auditJson
+try {
+  auditJson = read('npm', ['audit', '--omit=dev', '--audit-level=high', '--json'])
+} catch (error) {
+  // Non-zero on a finding, with the report still on stdout.
+  auditJson = typeof error?.stdout === 'string' ? error.stdout : ''
+}
+const refusal = auditRefusal(auditJson)
+if (refusal) fail(refusal)
 
 console.log('==> Typecheck and tests')
 run('npm', ['run', 'typecheck'])
