@@ -69,8 +69,13 @@ export function summarizeStats(jobs: Database.Database, opts: { since?: number }
  * Writes the standalone copy of the stats page: script, style and every
  * range's data inside one file, for mailing or archiving.
  *
- * Read-only against the job store: it never writes a row, so it is safe to run
- * while a review or translate is in flight.
+ * Never writes a row to the job store, so it is safe to run while a review or
+ * translate is in flight. Opening the store does run its migrations, the same
+ * idempotent, additive ones every command runs: they create a missing store
+ * and add the pid and ended columns an older one lacks, which the queries here
+ * read. A read-only handle that skipped them was considered and rejected: it
+ * would fail on exactly the stores the migrations exist for, and jobs.db is
+ * disposable, unlike polyglots.db, which stats never opens.
  */
 export async function writeStats(opts: StatsOptions = {}): Promise<StatsSummary> {
   const jobs = opts.jobsDb ?? openJobsDb()
