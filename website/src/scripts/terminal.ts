@@ -1,10 +1,12 @@
 // Replays a terminal panel's recorded frames over its static copy: types the
 // command, then steps through the screens the real run produced, each held for
-// as long as the scenario said. Plays once, when the panel first comes into
+// as long as the scenario said. A TUI panel has no command to type: the app
+// owns the whole screen, so it starts on its first frame. Plays once, when the panel first comes into
 // view. Nothing moves for a reader who prefers reduced motion; they get the
 // finished output that is already in the page.
 
 interface Payload {
+  /** Empty for a TUI panel, which has no prompt line. */
   command: string;
   frames: Array<[hold: number, html: string]>;
   speed: number;
@@ -67,15 +69,18 @@ export function enhance(figure: HTMLElement): void {
     body.append(anim);
     const prompt = '<span class="prompt">$ </span>';
     try {
-      // Typed at a human pace, but never for more than about a second and a
-      // half: a long command is not more interesting for taking longer.
-      const step = Math.min(45, 1400 / payload.command.length);
-      for (let i = 0; i <= payload.command.length; i++) {
-        anim.innerHTML = `${prompt}<span class="cmd">${escape(payload.command.slice(0, i))}</span><span class="cursor"></span>`;
-        await hold(step, signal);
+      let head = '';
+      if (payload.command) {
+        // Typed at a human pace, but never for more than about a second and a
+        // half: a long command is not more interesting for taking longer.
+        const step = Math.min(45, 1400 / payload.command.length);
+        for (let i = 0; i <= payload.command.length; i++) {
+          anim.innerHTML = `${prompt}<span class="cmd">${escape(payload.command.slice(0, i))}</span><span class="cursor"></span>`;
+          await hold(step, signal);
+        }
+        await hold(350, signal);
+        head = `${prompt}<span class="cmd">${escape(payload.command)}</span>\n`;
       }
-      await hold(350, signal);
-      const head = `${prompt}<span class="cmd">${escape(payload.command)}</span>\n`;
       for (const [ms, html] of payload.frames) {
         anim.innerHTML = head + html;
         await hold(ms, signal);

@@ -22,9 +22,13 @@ Or run it without installing:
 npx polyglots
 ```
 
-Run `polyglots` with no arguments for the interactive menu, or use the
-commands below. Every menu screen has a command behind it, so anything you do
-in the menu can also be scripted.
+Then run `polyglots` with nothing after it. That opens the interactive app,
+which walks you through the setup below in a wizard and does everything else
+with the arrow keys and enter: see [The interactive app](interactive.md).
+
+The rest of this page does the same with commands, which suit scripts and
+scheduled jobs. Every screen in the app has a command behind it, so anything
+you do there can also be scripted.
 
 ## Choose a reviewer
 
@@ -163,6 +167,7 @@ from whatever other tool servers you registered with it; see
 
 ## Next
 
+- [The interactive app](interactive.md): the screens and every key.
 - [Configuration](configuration.md): every setting and key.
 - [Locale rules](locale-rules.md): teach the checks your team's conventions.
 - [Command reference](https://ada.tools/polyglots/docs/commands/): every

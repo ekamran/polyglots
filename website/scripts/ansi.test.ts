@@ -37,6 +37,24 @@ test('a sequence the converter does not know is dropped, never shown', () => {
   assert.equal(ansiToHtml('\x1b]8;;https://x\x07link\x1b]8;;\x07 \x1b[?25l'), 'link ')
 })
 
+// The TUI paints through Ink, whose muted token is dimColor rather than gray,
+// and whose text fields draw their cursor in inverse video.
+test('dim is the token the TUI paints muted text with', () => {
+  assert.equal(ansiToHtml('\x1b[2mnote\x1b[22m plain'), '<span class="t-muted">note</span> plain')
+})
+
+test('dim over a colour keeps the colour and fades it', () => {
+  assert.equal(ansiToHtml('\x1b[36m\x1b[2mx\x1b[22m\x1b[39m'), '<span class="t-accent t-dim">x</span>')
+})
+
+test('22 ends bold and dim together, as a terminal does', () => {
+  assert.equal(ansiToHtml('\x1b[1m\x1b[2ma\x1b[22mb'), '<span class="t-muted t-bold">a</span>b')
+})
+
+test('inverse video is a class of its own', () => {
+  assert.equal(ansiToHtml('ab\x1b[7m \x1b[27m'), 'ab<span class="t-inverse"> </span>')
+})
+
 test('the screen redraws a line in place on clear-line', () => {
   const s = new Screen()
   s.write('header\n')

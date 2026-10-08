@@ -2,14 +2,13 @@
 import Base from '../layouts/Base.astro';
 import Install from '../components/Install.astro';
 import Terminal from '../components/Terminal.astro';
-import Wordmark from '../components/Wordmark.astro';
 import Icon from '../components/Icon.astro';
 import { allDocs } from '../lib/docs';
 import { snapshot } from '../lib/snapshot';
 
 const TAGLINE = 'Review a locale’s submissions in minutes, not evenings.';
 const DESCRIPTION =
-  'polyglots reviews and translates WordPress .po files for translate.wordpress.org locale teams: deterministic checks, an AI agent for judgement, and repairs written into the file. Nothing is uploaded to translate.wordpress.org.';
+  'polyglots reviews and translates WordPress .po files for translate.wordpress.org locale teams, in an app you drive with the arrow keys or from the command line: deterministic checks, an AI agent for judgement, and repairs written into the file. Nothing is uploaded to translate.wordpress.org.';
 
 const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 const docs = await allDocs();
@@ -18,25 +17,64 @@ const doc = (slug: string) => `${base}docs/${slug}/`;
 <Base title={`polyglots · ${TAGLINE}`} description={DESCRIPTION}>
   <section class="hero">
     <div class="wrap hero-grid">
+      <h1 class="hero-head">{TAGLINE}</h1>
+      <div class="hero-shot">
+        <Terminal tui="review" animate title="polyglots" />
+      </div>
       <div class="hero-copy">
-        <Wordmark />
-        <h1>{TAGLINE}</h1>
         <p class="lede">
-          A command-line tool for WordPress locale teams. It checks every string a contributor submits, repairs what it can,
-          and hands you a file of only the entries that still need you. Untranslated strings get a machine draft reviewed
-          by an AI agent. Everything ends as a <code>.po</code> file you read in your own editor; nothing is uploaded to translate.wordpress.org.
+          polyglots is an app for WordPress locale teams. Pick a contributor’s <code>.po</code> file and it checks every
+          string against your glossary and the translations your team already approved, repairs what it can, and hands you
+          back only the entries that still need you, with a message ready for the contributor.
         </p>
         <Install id="hero" />
-        <p class="more"><a href={doc('getting-started')}>Get started <Icon name="arrow" /></a></p>
+        <p class="start-it">Then type <code>polyglots</code> and press enter. The app opens in your terminal window, and a setup wizard walks you through the first run.</p>
+        <p class="more">
+          <a href={doc('getting-started')}>Get started <Icon name="arrow" /></a>
+          <a href={doc('interactive')}>Tour the app <Icon name="arrow" /></a>
+        </p>
       </div>
-      <Terminal demo="review" animate speed={1.6} title="review" />
+    </div>
+  </section>
+
+  <section class="wrap band" aria-labelledby="app">
+    <p class="eyebrow">The app</p>
+    <h2 id="app">Arrow keys and enter, and every key on screen</h2>
+    <p class="lede">
+      You do not need to know the command line. Run <code>polyglots</code> with nothing after it and you get the screen
+      above: a card for each job, your setup at the top, and the keys for the screen you are on at the bottom. Each screen
+      shown here is the app itself, rendered from its source when this page was built.
+    </p>
+    <div class="app-grid">
+      <ul class="points">
+        <li>
+          <h3>Pick a file, not a command</h3>
+          <p>Review and Translate open on a list of the <code>.po</code> files in your folder, newest first, with how many strings each holds. Choose one, check the options, start.</p>
+        </li>
+        <li>
+          <h3>Set up once, in five steps</h3>
+          <p>Your locale, which AI agent reviews, drafting keys, the glossary from translate.wordpress.org, and your locale’s rules. Skip any step; the header shows what is left, and the wizard is always under Configuration.</p>
+        </li>
+        <li>
+          <h3>Watch it work, stop when you like</h3>
+          <p>A run shows its progress, the time left and the last entries it decided. <kbd>p</kbd> pauses, <kbd>q</kbd> stops, and nothing already reviewed is lost: start it again and it carries on.</p>
+        </li>
+        <li>
+          <h3>Help is one key away</h3>
+          <p><kbd>?</kbd> explains the screen you are on, <kbd>ctrl</kbd>+<kbd>k</kbd> jumps to any other, <kbd>esc</kbd> goes back. <a href={doc('interactive')}>The full tour</a></p>
+        </li>
+      </ul>
+      <Terminal tui="setup" title="polyglots · first run" />
     </div>
   </section>
 
   <section class="wrap band" aria-labelledby="round-trip">
-    <p class="eyebrow">The round trip</p>
-    <h2 id="round-trip">Fetch, translate, review, and see how it went</h2>
-    <p class="lede">Four commands cover a locale team’s week. Each output below is the CLI’s own, rendered from its source when this page was built.</p>
+    <p class="eyebrow">On the command line</p>
+    <h2 id="round-trip">The same work as commands, for scripts and automation</h2>
+    <p class="lede">
+      Every screen in the app has a command behind it. Use them to run a week’s fetch and review in one line, from a
+      scheduled job, or from an AI agent. Each output below is the CLI’s own, rendered from its source when this page was built.
+    </p>
 
     <ol class="phases">
       <li class="phase">
@@ -186,13 +224,32 @@ const doc = (slug: string) => `${base}docs/${slug}/`;
 
 <style>
   .hero { padding: clamp(2.5rem, 7vw, 5rem) 0 clamp(2rem, 5vw, 4rem); }
-  .hero-grid { display: grid; gap: 2.5rem; align-items: center; }
-  @media (min-width: 1000px) { .hero-grid { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 3.5rem; } }
-  .hero-copy { display: grid; gap: 1.1rem; justify-items: start; min-width: 0; }
-  .hero h1 { font-size: clamp(1.9rem, 4.4vw, 2.9rem); margin: 0.4rem 0 0; max-width: 18ch; }
+  /* On a phone the app comes straight after the headline, so it is in the
+     first screenful there too; beside the copy on a wide screen. */
+  .hero-grid { display: grid; gap: 1.75rem; grid-template-areas: 'head' 'shot' 'copy'; }
+  @media (min-width: 1000px) {
+    .hero-grid {
+      grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+      grid-template-areas: 'head shot' 'copy shot';
+      grid-template-rows: auto 1fr;
+      gap: 1.5rem 3rem;
+    }
+    .hero-shot { align-self: center; }
+  }
+  .hero-head { grid-area: head; align-self: end; }
+  .hero-shot { grid-area: shot; min-width: 0; }
+  .hero-copy { grid-area: copy; display: grid; gap: 1.1rem; justify-items: start; align-content: start; min-width: 0; }
+  .hero h1 { font-size: clamp(1.9rem, 4.4vw, 2.9rem); margin: 0; max-width: 18ch; }
   .hero .lede { margin: 0; }
-  .more { margin: 0; }
+  .start-it { margin: 0; color: var(--fg-2); max-width: 34rem; }
+  .more { margin: 0; display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; }
   .more a { display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 600; text-decoration: none; }
+
+  .app-grid { display: grid; gap: 2.5rem; margin-top: 2rem; align-items: start; }
+  @media (min-width: 1000px) { .app-grid { grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); gap: 3rem; } }
+  .points { list-style: none; margin: 0; padding: 0; display: grid; gap: 1.4rem; }
+  .points h3 { font-size: 1.1rem; margin-bottom: 0.35em; }
+  .points p { margin: 0; color: var(--fg-2); }
 
   .band { padding-top: clamp(3.5rem, 8vw, 6rem); }
   .band > h2 { max-width: 30ch; }
