@@ -1,13 +1,15 @@
 import { Box, Text } from 'ink'
 import { useState } from 'react'
-import type { ReviewEvent, ReviewSummary } from '../../types.js'
+import type { ReviewEntry, ReviewEntryOutcome, ReviewEvent, ReviewSummary } from '../../types.js'
+import type { Token } from '../../ui/tokens.js'
+import { RecentEntries, recentEntries, RECENT_LIMIT, type PanelRow } from './RecentEntries.js'
 import { buildReport } from '../../review/message.js'
 import { copyToClipboard } from '../clipboard.js'
 import { openInDefaultApp } from '../open-file.js'
 import { renderBar } from './Progress.js'
 import { estimateRemainingMs, formatDuration, formatFinishTime } from '../../cli/progress.js'
 import { useElapsed } from '../hooks/useElapsed.js'
-import { useInput } from '../input.js'
+import { useKeys } from '../hooks/useKeys.js'
 
 export interface ReviewProgressState {
   started: boolean
@@ -172,6 +174,23 @@ export function reduceReviewProgress(events: ReviewEvent[]): ReviewProgressState
   return state
 }
 
+const REVIEW_TONE: Record<ReviewEntryOutcome, Token> = {
+  approved: 'success',
+  flagged: 'warn',
+  repaired: 'accent',
+  unreviewed: 'error',
+}
+
+function reviewRow(entry: ReviewEntry): PanelRow {
+  return {
+    key: entry.key,
+    outcome: entry.outcome,
+    tone: REVIEW_TONE[entry.outcome],
+    msgid: entry.msgid,
+    ...(entry.rules ? { detail: entry.rules.join(', ') } : {}),
+  }
+}
+
 function ruleBreakdown(byRule: Record<string, number>): string[] {
   return Object.entries(byRule)
     .sort(([, a], [, b]) => b - a)
@@ -230,9 +249,11 @@ export function ReviewProgress({ events, wporgUsername = '' }: { events: ReviewE
   // Both only once the run is over. During it the keys belong to pause, resume
   // and stop, and a c or an o that silently did nothing would still have to be
   // explained to whoever pressed it.
-  useInput((input) => {
-    if (input === 'c' && report !== undefined) setCopied(copyToClipboard(report) ? 'yes' : 'no')
-    if (input === 'o' && repairedFile !== undefined) setOpened(openInDefaultApp(repairedFile))
+  useKeys({
+    reviewResult: {
+      open: repairedFile === undefined ? undefined : () => setOpened(openInDefaultApp(repairedFile)),
+      copy: report === undefined ? undefined : () => setCopied(copyToClipboard(report) ? 'yes' : 'no'),
+    },
   })
 
   if (!state.started) return <Text dimColor>Starting…</Text>
@@ -285,6 +306,9 @@ export function ReviewProgress({ events, wporgUsername = '' }: { events: ReviewE
       {/* Only when something was inherited. A cold run saying "0 already
           judged" would be noise on every first review. */}
       {state.cachedEntries > 0 && <Text color="green">{resumeLine(state)}</Text>}
+
+      {/* Until the summary, which needs the room for the requester message. */}
+      {!summary && <RecentEntries rows={recentEntries<ReviewEntry>(events, RECENT_LIMIT).map(reviewRow)} />}
 
       {state.markerIgnored && (
         <Text color="yellow">
@@ -342,7 +366,7 @@ export function ReviewProgress({ events, wporgUsername = '' }: { events: ReviewE
           {summary.problemsFile ? (
             <>
               <Text>Wrote {summary.problemsFile}.</Text>
-              <Text dimColor>o to open it in PoEdit</Text>
+              <Text dimColor>o to open it in your .po editor</Text>
               {opened && <Text color="green">Opening it now.</Text>}
             </>
           ) : (

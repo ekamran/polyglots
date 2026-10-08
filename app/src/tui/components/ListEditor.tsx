@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Box, Text } from 'ink'
 import { Form, type FormField } from './Form.js'
 import { Hint } from './Hint.js'
-import { useInput } from '../input.js'
+import { useKeys } from '../hooks/useKeys.js'
 
 export interface ListEditorProps<T> {
   title: string
@@ -37,17 +37,21 @@ export function ListEditor<T>({
   const [cursor, setCursor] = useState(0)
   const [mode, setMode] = useState<{ kind: 'list' } | { kind: 'add' } | { kind: 'edit'; index: number }>({ kind: 'list' })
 
-  useInput(
-    (ch, key) => {
-      if (key.escape) onBack()
-      else if (key.upArrow) setCursor((c) => Math.max(0, c - 1))
-      else if (key.downArrow) setCursor((c) => Math.min(items.length - 1, c + 1))
-      else if (ch === 'a') setMode({ kind: 'add' })
-      else if (key.return && items.length > 0) setMode({ kind: 'edit', index: cursor })
-      else if (ch === 'd' && items.length > 0) {
-        onChange(items.filter((_, i) => i !== cursor))
-        setCursor((c) => Math.max(0, Math.min(c, items.length - 2)))
-      }
+  const some = items.length > 0
+  useKeys(
+    {
+      back: { esc: onBack, q: undefined },
+      listEditor: {
+        move: (_ch, key) => (key.upArrow ? setCursor((c) => Math.max(0, c - 1)) : setCursor((c) => Math.min(items.length - 1, c + 1))),
+        add: () => setMode({ kind: 'add' }),
+        edit: some ? () => setMode({ kind: 'edit', index: cursor }) : undefined,
+        remove: some
+          ? () => {
+              onChange(items.filter((_, i) => i !== cursor))
+              setCursor((c) => Math.max(0, Math.min(c, items.length - 2)))
+            }
+          : undefined,
+      },
     },
     { isActive: mode.kind === 'list' },
   )

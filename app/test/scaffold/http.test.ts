@@ -45,7 +45,7 @@ describe('fetchHtml', () => {
     expect(seen).toHaveLength(1)
     expect(seen[0]!.method).toBe('GET')
     expect(seen[0]!.headers['user-agent']).toBe(USER_AGENT)
-    expect(USER_AGENT).toBe(`polyglots/${VERSION} (+https://github.com/emre/polyglots)`)
+    expect(USER_AGENT).toBe(`polyglots/${VERSION} (+https://github.com/emreerkan/polyglots)`)
   })
 
   it('throws on 404 with the status in the message', async () => {

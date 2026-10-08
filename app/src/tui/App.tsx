@@ -10,7 +10,8 @@ import { Footer, Header } from './components/Chrome.js'
 import { HelpOverlay, Palette, QuitPrompt } from './components/Overlays.js'
 import { Viewport } from './components/Viewport.js'
 import { ActivityProvider, createActivity, useBusy, type Activity } from './hooks/activity.js'
-import { InputGate, TypingProvider, useGlobalInput, useTyping } from './input.js'
+import { useGlobalKeys } from './hooks/useKeys.js'
+import { InputGate, TypingProvider, useTyping, type Key } from './input.js'
 import { footerKeys } from './keys.js'
 import { CONFIGURATION, HOME, parentOf, TOOLS, type ScreenId } from './menu.js'
 import { providerLabel } from './local.js'
@@ -237,25 +238,25 @@ function Shell({ cwd = process.cwd(), onExit }: AppProps) {
   }
 
   // A second Ctrl+C at the quit prompt answers yes: someone pressing it
-  // twice means it.
-  useGlobalInput((input, key) => {
-    if (key.ctrl && input === 'c') {
-      if (overlay === 'quit') quit()
-      else requestQuit()
-      return
-    }
-    // Nothing to draw an overlay on, and one set now would pop up
-    // unbidden when the terminal is enlarged.
-    if (overlay !== undefined || !layout.fits) return
-    if (key.ctrl && input === 'k') return setOverlay('palette')
-    if (key.ctrl || key.meta) return
-    // Printable, so they belong to a text field when one has focus.
-    if (typing.current()) return
-    if (input === '?') setOverlay('help')
-    else if (input === ':') setOverlay('palette')
-    // Stops the stats server from anywhere, since it keeps serving after its
-    // screen is left. The stats screen binds x itself, to show that it stopped.
-    else if (input === 'x' && statsUrl !== undefined && screen !== 'stats') void services.stopStats()
+  // twice means it. Everything else waits while an overlay is up, and while
+  // the terminal is too small: there is nothing to draw an overlay on, and
+  // one set now would pop up unbidden when the terminal is enlarged.
+  const framed = overlay === undefined && layout.fits
+  // Printable, so they belong to a text field when one has focus. Ctrl+K is
+  // not something a field types, so it opens the palette from inside one.
+  const unlessTyping = (act: () => void) => (_input: string, key: Key) => {
+    if (!key.ctrl && typing.current()) return
+    act()
+  }
+  useGlobalKeys({
+    global: {
+      quit: () => (overlay === 'quit' ? quit() : requestQuit()),
+      palette: framed ? unlessTyping(() => setOverlay('palette')) : undefined,
+      help: framed ? unlessTyping(() => setOverlay('help')) : undefined,
+      // Stops the stats server from anywhere, since it keeps serving after its
+      // screen is left. The stats screen binds x itself, to show that it stopped.
+      stopStats: framed && statsUrl !== undefined && screen !== 'stats' ? unlessTyping(() => void services.stopStats()) : undefined,
+    },
   })
 
   const switchProvider = (next: ReviewChoice) => {

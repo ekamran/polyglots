@@ -16,7 +16,8 @@ import { packLine } from '../../rules/support.js'
 import { tryRules, type TryResult } from '../../rules/try.js'
 import { allGlossary, openDb } from '../../storage/index.js'
 import type { GlossaryEntry } from '../../types.js'
-import { TextInput, useInput } from '../input.js'
+import { useKeys } from '../hooks/useKeys.js'
+import { TextInput } from '../input.js'
 import { ScrollTarget } from '../components/Viewport.js'
 
 export interface LocaleRulesProps {
@@ -198,78 +199,78 @@ export function LocaleRules({ onBack }: LocaleRulesProps) {
     setNotice(undefined)
   }
 
-  useInput((ch, key) => {
-    // The list editors own their keys.
-    // Copy shows a form only when there is a saved file and nothing unsaved;
-    // otherwise it is a notice, and esc has to come from here.
-    if (stage === 'copy' && (dirty || !draft?.exists)) {
-      if (key.escape) setStage('overview')
-      return
-    }
-    if (['mistakes', 'nounList', 'patterns', 'guidance', 'try', 'copy'].includes(stage)) return
-    if (stage === 'nouns') {
-      if (key.escape) setStage('overview')
-      else if (key.upArrow || key.downArrow) setNounCursor((c) => (c === 0 ? 1 : 0))
-      else if (key.return) setStage('nounList')
-      return
-    }
-    if (stage === 'pick') {
-      if (key.escape) onBack()
-      return
-    }
-    if (stage === 'leave') {
-      if (ch === 's') void save().then(() => setStage('overview'))
-      else if (ch === 'd') onBack()
-      else if (key.escape) setStage('overview')
-      return
-    }
-    if (stage === 'rules') {
-      if (key.escape) setStage('overview')
-      else if (key.upArrow) setRuleCursor((c) => Math.max(0, c - 1))
-      else if (key.downArrow) setRuleCursor((c) => Math.min(BUILT_IN_RULES.length - 1, c + 1))
-      else if (key.return || ch === ' ') toggle(BUILT_IN_RULES[ruleCursor]!)
-      return
-    }
-    if (stage === 'ratio') {
-      if (key.escape) setStage('overview')
-      else if (key.leftArrow || key.rightArrow) {
-        const next = round(Math.min(1, Math.max(RATIO_STEP, ratio + (key.leftArrow ? -RATIO_STEP : RATIO_STEP))))
-        setValue({ ...value, glossaryStemRatio: next })
-        setNotice(undefined)
-      } else if (ch === 'r') {
-        const { glossaryStemRatio: _, ...rest } = value
-        setValue(rest)
-      }
-      return
-    }
-    // overview
-    if (key.escape || (ch === 'q' && !key.ctrl)) {
-      if (dirty) setStage('leave')
-      else onBack()
-    } else if (key.upArrow) setCursor((c) => Math.max(0, c - 1))
-    else if (key.downArrow) setCursor((c) => Math.min(SECTIONS.length - 1, c + 1))
-    else if (key.return) {
-      const next = SECTION_STAGE[cursor]!
-      if (next === 'copy') setCopyResult(undefined)
-      if (next === 'try') {
-        setTrial(undefined)
-        // The locale's glossary, read once, so the glossary rule fires in a trial too.
-        if (glossary === undefined) {
+  // One listener, every stage: what a key does depends on the stage, and only
+  // the live stage's handlers are set. The list editors, the forms and the
+  // guidance editor own their keys, so none are set here while one is open.
+  // Copy shows a form only when there is a saved file and nothing unsaved;
+  // otherwise it is a notice, and esc has to come from here.
+  const on = (...stages: Stage[]) => stages.includes(stage)
+  const copyNotice = stage === 'copy' && (dirty || !draft?.exists)
+  const toOverview = () => setStage('overview')
+  const leave = () => (dirty ? setStage('leave') : onBack())
+  const openSection = () => {
+    const next = SECTION_STAGE[cursor]!
+    if (next === 'copy') setCopyResult(undefined)
+    if (next === 'try') {
+      setTrial(undefined)
+      // The locale's glossary, read once, so the glossary rule fires in a trial too.
+      if (glossary === undefined) {
+        try {
+          const db = openDb()
           try {
-            const db = openDb()
-            try {
-              setGlossary(allGlossary(db, id))
-            } finally {
-              db.close()
-            }
-          } catch {
-            setGlossary([])
+            setGlossary(allGlossary(db, id))
+          } finally {
+            db.close()
           }
+        } catch {
+          setGlossary([])
         }
       }
-      setStage(next)
     }
-    else if (ch === 's' && savable) void save()
+    setStage(next)
+  }
+  useKeys({
+    back: {
+      esc: copyNotice || on('nouns', 'rules', 'ratio', 'leave') ? toOverview : on('pick') ? onBack : on('overview') ? leave : undefined,
+      q: on('overview') ? leave : undefined,
+    },
+    localeRules: {
+      move: on('overview')
+        ? (_ch, key) => (key.upArrow ? setCursor((c) => Math.max(0, c - 1)) : setCursor((c) => Math.min(SECTIONS.length - 1, c + 1)))
+        : undefined,
+      open: on('overview') ? openSection : undefined,
+      save: on('overview') && savable ? () => void save() : undefined,
+    },
+    leave: {
+      save: on('leave') ? () => void save().then(toOverview) : undefined,
+      discard: on('leave') ? onBack : undefined,
+    },
+    ruleList: {
+      move: on('rules')
+        ? (_ch, key) =>
+            key.upArrow ? setRuleCursor((c) => Math.max(0, c - 1)) : setRuleCursor((c) => Math.min(BUILT_IN_RULES.length - 1, c + 1))
+        : undefined,
+      toggle: on('rules') ? () => toggle(BUILT_IN_RULES[ruleCursor]!) : undefined,
+    },
+    ratio: {
+      change: on('ratio')
+        ? (_ch, key) => {
+            const next = round(Math.min(1, Math.max(RATIO_STEP, ratio + (key.leftArrow ? -RATIO_STEP : RATIO_STEP))))
+            setValue({ ...value, glossaryStemRatio: next })
+            setNotice(undefined)
+          }
+        : undefined,
+      reset: on('ratio')
+        ? () => {
+            const { glossaryStemRatio: _, ...rest } = value
+            setValue(rest)
+          }
+        : undefined,
+    },
+    nouns: {
+      move: on('nouns') ? () => setNounCursor((c) => (c === 0 ? 1 : 0)) : undefined,
+      open: on('nouns') ? () => setStage('nounList') : undefined,
+    },
   })
 
   const marker = (selected: boolean) => (selected ? '❯ ' : '  ')

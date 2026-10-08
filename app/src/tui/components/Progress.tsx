@@ -3,8 +3,15 @@ import { useState } from 'react'
 import { estimateRemainingMs, formatDuration, formatFinishTime, renderBar as bar, type BatchPhase } from '../../cli/progress.js'
 import { useElapsed } from '../hooks/useElapsed.js'
 import { openInDefaultApp } from '../open-file.js'
-import type { TranslateEvent, TranslateSummary } from '../../commands/translate.js'
-import { useInput } from '../input.js'
+import type {
+  TranslateEntry,
+  TranslateEntryOutcome,
+  TranslateEvent,
+  TranslateSummary,
+} from '../../commands/translate.js'
+import type { Token } from '../../ui/tokens.js'
+import { RecentEntries, recentEntries, RECENT_LIMIT, type PanelRow } from './RecentEntries.js'
+import { useKeys } from '../hooks/useKeys.js'
 
 export interface ProgressState {
   started: boolean
@@ -163,6 +170,25 @@ export function formatSummary(summary: TranslateSummary): string {
   return `Done. ${summary.translated} translated, ${summary.fuzzy} fuzzy, ${summary.fromTm} from TM, ${summary.skipped} skipped.`
 }
 
+const TRANSLATE_TONE: Record<TranslateEntryOutcome, Token> = {
+  memory: 'success',
+  drafted: 'accent',
+  fuzzy: 'warn',
+  skipped: 'error',
+}
+
+// A fuzzy entry says which side doubted it: two approved wordings in the memory
+// is a choice to make, an engine draft the reviewer doubted is a check to do.
+function translateRow(entry: TranslateEntry): PanelRow {
+  return {
+    key: entry.key,
+    outcome: entry.outcome,
+    tone: TRANSLATE_TONE[entry.outcome],
+    msgid: entry.msgid,
+    ...(entry.outcome === 'fuzzy' && entry.from ? { detail: entry.from === 'memory' ? 'memory' : 'MT' } : {}),
+  }
+}
+
 export function Progress({ events }: { events: TranslateEvent[] }) {
   const state = reduceProgress(events)
   const elapsed = useElapsed(state.phase !== undefined, state.phase?.since ?? 0)
@@ -173,9 +199,7 @@ export function Progress({ events }: { events: TranslateEvent[] }) {
   // Only once the run is over: during it the keys belong to pause, resume and
   // stop, and opening the file mid-run would show a catalogue still being
   // rewritten after every batch.
-  useInput((input) => {
-    if (input === 'o' && translatedFile !== undefined) setOpened(openInDefaultApp(translatedFile))
-  })
+  useKeys({ translateResult: { open: translatedFile === undefined ? undefined : () => setOpened(openInDefaultApp(translatedFile)) } })
 
   if (!state.started) return <Text dimColor>Starting…</Text>
 
@@ -201,6 +225,8 @@ export function Progress({ events }: { events: TranslateEvent[] }) {
       <Text dimColor>
         {state.file} · {state.total} entries, {state.pending} selected, {state.fromTm} from TM
       </Text>
+      {/* Until the summary, which is what the person reads at the end. */}
+      {!state.summary && <RecentEntries rows={recentEntries<TranslateEntry>(events, RECENT_LIMIT).map(translateRow)} />}
       {state.warnings.length > 0 && (
         <Box flexDirection="column" marginTop={1}>
           <Text color="yellow">Warnings:</Text>
@@ -216,7 +242,7 @@ export function Progress({ events }: { events: TranslateEvent[] }) {
         <Box flexDirection="column" marginTop={1}>
           {state.summary.stopped && <Text color="red">Stopped: {state.summary.stopped}</Text>}
           <Text bold>{formatSummary(state.summary)}</Text>
-          <Text>Open {state.summary.file} in PoEdit to review.</Text>
+          <Text>Open {state.summary.file} in your .po editor to review.</Text>
           <Text dimColor>o to open it</Text>
           {opened && <Text color="green">Opening it now.</Text>}
         </Box>

@@ -5,7 +5,7 @@ import { TOKENS } from '../../ui/tokens.js'
 import { VERSION } from '../../version.js'
 import { useCommands } from '../commands.js'
 import { useBackKeys } from '../hooks/useBackKeys.js'
-import { useInput } from '../input.js'
+import { useKeys } from '../hooks/useKeys.js'
 import { GLOBAL_KEYS, SCREEN_KEYS } from '../keys.js'
 import { walk } from '../menu.js'
 import { tuiStateFile, type TuiState } from '../state.js'
@@ -45,11 +45,11 @@ export function Help({ height, onBack }: { height: number; onBack: () => void })
   const [top, setTop] = useState(0)
   const last = Math.max(0, lines.length - room)
   useBackKeys(onBack)
-  useInput((_input, key) => {
-    if (key.upArrow) setTop((t) => Math.max(0, t - 1))
-    else if (key.downArrow) setTop((t) => Math.min(last, t + 1))
-    else if (key.pageUp) setTop((t) => Math.max(0, t - room))
-    else if (key.pageDown || _input === ' ') setTop((t) => Math.min(last, t + room))
+  useKeys({
+    helpPage: {
+      line: (_input, key) => (key.upArrow ? setTop((t) => Math.max(0, t - 1)) : setTop((t) => Math.min(last, t + 1))),
+      page: (_input, key) => (key.pageUp ? setTop((t) => Math.max(0, t - room)) : setTop((t) => Math.min(last, t + room))),
+    },
   })
   return (
     <Box flexDirection="column">
@@ -77,7 +77,8 @@ export function Help({ height, onBack }: { height: number; onBack: () => void })
 }
 
 export function About({ onBack }: { onBack: () => void }) {
-  useBackKeys(onBack, { onEnter: onBack })
+  useBackKeys(onBack)
+  useKeys({ about: { close: onBack } })
   const row = (label: string, value: string) => (
     <Text>
       <Text {...TOKENS.muted.ink}>{label.padEnd(10)}</Text> {value}
@@ -118,20 +119,21 @@ export function Interface({ onBack }: { onBack: () => void }) {
   const [at, setAt] = useState(0)
   const [error, setError] = useState<string>()
   useBackKeys(onBack)
-  useInput((input, key) => {
-    if (key.upArrow) setAt((a) => Math.max(0, a - 1))
-    else if (key.downArrow) setAt((a) => Math.min(SETTINGS.length - 1, a + 1))
-    else if (key.return || input === ' ') {
-      const setting = SETTINGS[at]!
-      const next: TuiState = { ...state, settings: { ...state.settings, [setting.key]: !state.settings[setting.key] } }
-      try {
-        commands.saveTuiState(next)
-        setState(next)
-        setError(undefined)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err))
-      }
-    }
+  useKeys({
+    interface: {
+      move: (_input, key) => (key.upArrow ? setAt((a) => Math.max(0, a - 1)) : setAt((a) => Math.min(SETTINGS.length - 1, a + 1))),
+      toggle: () => {
+        const setting = SETTINGS[at]!
+        const next: TuiState = { ...state, settings: { ...state.settings, [setting.key]: !state.settings[setting.key] } }
+        try {
+          commands.saveTuiState(next)
+          setState(next)
+          setError(undefined)
+        } catch (err) {
+          setError(err instanceof Error ? err.message : String(err))
+        }
+      },
+    },
   })
   return (
     <Box flexDirection="column">
