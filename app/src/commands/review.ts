@@ -90,16 +90,13 @@ function readGlossary(locale: Locale, injected?: Database.Database) {
 }
 
 /**
- * What the memory already says about each source in this submission.
+ * What the memory holds for each entry, and which of those matches may settle
+ * an entry without a model.
  *
  * Resolved once, here, because the rules read no database and one indexed
  * lookup per entry is cheaper than the alternative: asking the model to look
  * them up, one round trip at a time, for the 45% of entries the memory has
  * nothing useful to say about.
- */
-/**
- * What the memory holds for each entry, and which of those matches may settle
- * an entry without a model.
  *
  * The lookup falls back to a row with no context when an entry's own msgctxt
  * finds nothing. That fallback stays in `memory`, where it is only a hint in the
@@ -274,7 +271,6 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
   const target = outputPath(opts.file, { ...(opts.outDir === undefined ? {} : { outDir: opts.outDir }), noAi })
   const properNouns = opts.properNouns ?? configuredProperNouns(opts.locale)
   const batchSize = opts.batchSize ?? DEFAULT_BATCH_SIZE
-
 
   // An unfinished review used to be recovered from a marker in the output
   // file's header, with the flagged entries read back out of the file itself.
