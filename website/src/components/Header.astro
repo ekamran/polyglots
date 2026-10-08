@@ -2,12 +2,18 @@
 import Icon from './Icon.astro';
 import ThemeSwitch from './ThemeSwitch.astro';
 import Wordmark from './Wordmark.astro';
+import { snapshot } from '../lib/snapshot';
 
 const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 ---
 <header class="site">
   <div class="wrap bar">
-    <a class="home" href={base} aria-label="polyglots home"><Wordmark size="small" /></a>
+    <div class="brand">
+      <a class="home" href={base} aria-label="polyglots home"><Wordmark size="small" /></a>
+      {/* The version the site was built from (app/package.json, read by the
+          snapshot), so it is current as long as a release is deployed. */}
+      <a class="version" href="https://github.com/emreerkan/polyglots/blob/main/app/CHANGELOG.md" aria-label={`Version ${snapshot.version}: what changed`}>v{snapshot.version}</a>
+    </div>
     <nav aria-label="Main">
       <a href={`${base}docs/`}>Docs</a>
       <a href={`${base}ai/`}>For agents</a>
@@ -20,7 +26,10 @@ const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 <style>
   .site { border-bottom: 1px solid var(--rule); }
   .bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 4rem; flex-wrap: wrap; padding-block: 0.5rem; }
+  .brand { display: flex; align-items: baseline; gap: 0.6rem; }
   .home { color: var(--fg); text-decoration: none; }
+  .version { font-family: var(--font-mono); font-size: 0.8rem; color: var(--muted); font-variant-numeric: tabular-nums; text-decoration: none; }
+  .version:hover { color: var(--fg); text-decoration: underline; }
   nav { display: flex; align-items: center; gap: clamp(0.75rem, 2.5vw, 1.5rem); }
   nav a { color: var(--fg-2); text-decoration: none; font-size: 0.95rem; }
   nav a:hover { color: var(--fg); }
