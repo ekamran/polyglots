@@ -132,11 +132,18 @@ export function boot(doc: Document, win: Window, deps: Deps = {}): Client {
     }
   }
 
-  function tableKey(table: Element): string {
-    const section = table.closest('.view')?.id ?? ''
-    const all = [...(table.closest('.view') ?? doc).querySelectorAll('table.sortable')]
-    return `${section}:${all.indexOf(table)}`
+  // Where a control lives: its view, and inside a table, which table. Found
+  // again after a redraw by name, never by counting. Counting matched the nth
+  // table or details on the whole page, and a refresh that added one earlier
+  // in the page (the translate view passing ten projects and gaining its full
+  // list) moved focus, sort, filter text and the open list onto a neighbour.
+  function placeOf(el: Element): string {
+    const view = el.closest('.view')?.id ?? ''
+    const table = el.closest('[data-table]')?.getAttribute('data-table') ?? ''
+    return `${view}/${table}`
   }
+
+  const tableKey = placeOf
 
   function applySort(table: HTMLTableElement, col: number, dir: 'ascending' | 'descending'): void {
     const head = table.querySelectorAll('th')
@@ -183,41 +190,47 @@ export function boot(doc: Document, win: Window, deps: Deps = {}): Client {
     if (!payload) return
     // A redraw replaces every element, so the state a reader built up by hand
     // (open details, filter text, focus) is read off first and put back.
-    const open = [...root.querySelectorAll('details')].map((d) => d.open)
-    const filters = [...root.querySelectorAll<HTMLInputElement>('[data-filter]')].map((i) => i.value)
+    const open = new Map([...root.querySelectorAll('details')].map((d) => [placeOf(d), d.open]))
+    const filters = new Map([...root.querySelectorAll<HTMLInputElement>('[data-filter]')].map((i) => [placeOf(i), i.value]))
     const focused = doc.activeElement && root.contains(doc.activeElement) ? focusKey(doc.activeElement) : undefined
 
     root.innerHTML = renderRoot({ payload, lang, languages: LANGUAGES })
 
-    root.querySelectorAll('details').forEach((d, i) => (d.open = open[i] ?? false))
-    root.querySelectorAll<HTMLInputElement>('[data-filter]').forEach((input, i) => {
-      input.value = filters[i] ?? ''
+    root.querySelectorAll('details').forEach((d) => (d.open = open.get(placeOf(d)) ?? false))
+    root.querySelectorAll<HTMLInputElement>('[data-filter]').forEach((input) => {
+      input.value = filters.get(placeOf(input)) ?? ''
       if (input.value !== '') filter(input)
     })
     for (const table of root.querySelectorAll<HTMLTableElement>('table.sortable')) {
       const s = sorts.get(tableKey(table))
       if (s) applySort(table, s.col, s.dir)
     }
-    if (focused) root.querySelectorAll<HTMLElement>(focused.selector)[focused.index]?.focus()
+    if (focused) matchesIn(focused.selector, focused.place)[focused.index]?.focus()
     doc.documentElement.lang = lang.tag
     doc.title = `polyglots · ${root.querySelector('h1')?.textContent ?? ''}`
     applyTheme()
     showView()
   }
 
-  // Where the focused control sits, as a selector and its position among the
-  // matches, so the same control can be found after a redraw. The position
-  // matters: every projects table has a [data-sort="2"], and both views with a
-  // long project list have a [data-filter]. A redraw from the same kind of
-  // payload produces the same structure, so the nth match is the same control.
-  function focusKey(el: Element): { selector: string; index: number } | undefined {
+  // Where the focused control sits: a selector, the place it is in, and its
+  // position among the matches in that place, so the same control is found
+  // after a redraw. Every projects table has a [data-sort="2"] and two views
+  // can have a [data-filter], so the selector alone is not enough; the place
+  // narrows it to one table or view, and inside that the position is stable,
+  // because a table's columns do not change with its numbers.
+  function focusKey(el: Element): { selector: string; place: string; index: number } | undefined {
     for (const attr of ['data-filter', 'data-sort', 'data-range', 'data-lang', 'data-theme-set', 'data-view', 'data-share']) {
       const v = el.getAttribute(attr)
       if (v === null) continue
       const selector = v === '' ? `[${attr}]` : `[${attr}="${v}"]`
-      return { selector, index: [...root.querySelectorAll(selector)].indexOf(el) }
+      const place = placeOf(el)
+      return { selector, place, index: matchesIn(selector, place).indexOf(el as HTMLElement) }
     }
     return undefined
+  }
+
+  function matchesIn(selector: string, place: string): HTMLElement[] {
+    return [...root.querySelectorAll<HTMLElement>(selector)].filter((el) => placeOf(el) === place)
   }
 
   // Equal apart from when the server built them. Every payload carries its

@@ -68,7 +68,12 @@ interface Cell {
   v: number | string
 }
 
-function sortableTable(cols: Column[], rows: Cell[][], extraClass = ''): string {
+// Named, so the page client can find the same table again after a redraw by
+// its view and its name rather than by counting tables, which shifts whenever
+// a refresh adds or drops one.
+type TableName = 'engines' | 'proj-top' | 'proj-all'
+
+function sortableTable(cols: Column[], rows: Cell[][], name: TableName): string {
   const head = cols
     .map(
       (c, i) =>
@@ -84,7 +89,7 @@ function sortableTable(cols: Column[], rows: Cell[][], extraClass = ''): string 
           .join('')}</tr>`,
     )
     .join('')
-  return `<div class="scroll"><table class="sortable ${extraClass}"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`
+  return `<div class="scroll"><table class="sortable ${name}" data-table="${name}"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`
 }
 
 function projectRows(rows: ProjectRow[], s: Say): Cell[][] {
@@ -131,7 +136,7 @@ function engineTable(rows: EngineRow[], s: Say): string {
     { html: e.entries === 0 ? '—' : s.pct(e.flagged / e.entries), v: e.entries === 0 ? 0 : e.flagged / e.entries },
     { html: e.medianTurnaroundMs === undefined ? '—' : s.dur(e.medianTurnaroundMs), v: e.medianTurnaroundMs ?? 0 },
   ])
-  return sortableTable(cols, cells)
+  return sortableTable(cols, cells, 'engines')
 }
 
 /**

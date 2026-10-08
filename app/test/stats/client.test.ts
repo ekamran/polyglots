@@ -208,6 +208,39 @@ describe('boot', () => {
     expect(now.getAttribute('data-sort')).toBe('2')
   })
 
+  // Controls were found again by their position among every match on the
+  // page, so a refresh that added a table earlier in the page (the translate
+  // view passing ten projects and gaining its full list) moved focus, the
+  // open list, the filter text and the sort onto a different table.
+  it('keeps focus, the open list, the filter and the sort on their own table when a refresh adds another', async () => {
+    const before = structuredClone(demo.all)
+    before.translate.byProject = before.translate.byProject.slice(0, 10)
+    mount({ mode: 'server', range: 'all', lang: 'en', payloads: { all: before } })
+    const fetch = vi.fn(async () => new Response(JSON.stringify(demo.all), { status: 200 }))
+    client = boot(document, window, { fetch })
+    expect(document.querySelector('#translation table.proj-all')).toBeNull()
+    document.querySelector<HTMLDetailsElement>('#projects details')!.open = true
+    const input = document.querySelector<HTMLInputElement>('#projects [data-filter]')!
+    input.value = 'a'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    const button = document.querySelectorAll<HTMLButtonElement>('#projects table.proj-all [data-sort]')[2]!
+    click(button)
+    button.focus()
+    document.dispatchEvent(new Event('visibilitychange'))
+    await client.idle()
+    expect(document.querySelector('#translation table.proj-all')).not.toBeNull()
+    const now = document.activeElement as HTMLElement
+    expect(now).not.toBe(button)
+    expect(now.closest('table')?.classList.contains('proj-all')).toBe(true)
+    expect(now.closest('.view')?.id).toBe('projects')
+    expect(document.querySelector<HTMLDetailsElement>('#projects details')!.open).toBe(true)
+    expect(document.querySelector<HTMLDetailsElement>('#translation details')!.open).toBe(false)
+    expect(document.querySelector<HTMLInputElement>('#projects [data-filter]')!.value).toBe('a')
+    expect(document.querySelector<HTMLInputElement>('#translation [data-filter]')!.value).toBe('')
+    expect(document.querySelector('#projects table.proj-all th:nth-child(3)')!.getAttribute('aria-sort')).not.toBe('none')
+    expect(document.querySelector('#translation table.proj-all th:nth-child(3)')!.getAttribute('aria-sort')).toBe('none')
+  })
+
   it('remembers the theme the reader picked', () => {
     mount({ mode: 'static', range: 'all', lang: 'en', payloads: demo })
     client = boot(document, window)
