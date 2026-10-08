@@ -44,5 +44,5 @@ export function packLine(locale: Locale): string {
  */
 export function supportNotice(locale: Locale): string | undefined {
   if (!isUniversalOnly(profileFor(locale))) return undefined
-  return `Note: no locale rules for ${locale}; only the universal checks run. Add some with: polyglots rules edit ${locale}`
+  return `No locale rules for ${locale}; only the universal checks run. Add some with: polyglots rules edit ${locale}`
 }
