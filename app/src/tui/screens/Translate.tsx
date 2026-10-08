@@ -13,6 +13,7 @@ import { FilePicker } from '../components/FilePicker.js'
 import { BACK_HINT, DONE_HINT, Hint } from '../components/Hint.js'
 import { Progress } from '../components/Progress.js'
 import { appendEvent } from '../components/RecentEntries.js'
+import { ScrollTarget } from '../components/Viewport.js'
 import { useTask } from '../hooks/useTask.js'
 import { createRunControl, type RunControl } from '../../run-control.js'
 import { agentBinOverride } from '../../agent/providers.js'
@@ -247,7 +248,13 @@ export function Translate({ cwd, onBack }: TranslateProps) {
       {(stage === 'running' || stage === 'done') && (
         <>
           <Progress events={events} />
-          {stage === 'running' && <Hint>p pause · r resume · q stop and keep what is done</Hint>}
+          {/* Kept in view when failed batches make the screen taller than the
+              body: these keys are how the run is stopped. */}
+          {stage === 'running' && (
+            <ScrollTarget active>
+              <Hint>p pause · r resume · q stop and keep what is done</Hint>
+            </ScrollTarget>
+          )}
           {task.state.status === 'error' && <Text color="red">Translation failed: {task.state.message}</Text>}
           {stage === 'done' && <Hint>{DONE_HINT}</Hint>}
         </>

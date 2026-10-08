@@ -1,8 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { App } from '../../src/tui/App.js'
-import { cleanup, fakeCommands, flat, keys, makeHome, openFromHome, render, tick, waitForText, type Home } from './helpers.js'
+import { cleanup, fakeCommands, flat, keys, makeHome, openFromHome, render, tick, waitFor, waitForText, type Home } from './helpers.js'
+import type { ReviewEvent } from '../../src/types.js'
+import type { TuiCommands } from '../../src/tui/commands.js'
 
 let home: Home
 let cwd: string
@@ -104,5 +106,48 @@ describe('a screen taller than the body', () => {
     view.resize(80, 24)
     await waitForText(view.lastFrame, /❯ \[x\] control/)
     expect(lines(view.lastFrame()).length).toBeLessThanOrEqual(24)
+  })
+})
+
+// The dashboards size their entries panel to leave the key hint in the frame,
+// but failed batches add a line each below it, and at the minimum size those
+// pushed the hint out. The hint is what stops a run, so a run screen keeps it
+// in view and lets the top scroll away instead.
+describe('a run screen taller than the body', () => {
+  it('keeps the pause and stop keys in view at 60x20 when batches fail', async () => {
+    await writeFile(join(cwd, 'submission.po'), '')
+    const events: ReviewEvent[] = [{ type: 'start', file: 'submission.po', total: 300, reviewable: 300 }]
+    for (let b = 1; b <= 6; b++) {
+      events.push({ type: 'batch-start', index: b, of: 10, size: 30, at: b * 60_000 })
+      events.push({
+        type: 'entries',
+        index: b,
+        entries: Array.from({ length: 30 }, (_, i) => ({ key: `e${b}-${i}`, msgid: `Entry ${b}-${i}`, outcome: 'approved' as const })),
+      })
+      if (b % 2 === 0) events.push({ type: 'batch-failed', index: b, size: 30, reason: 'claude exited with code 1', at: (b + 1) * 60_000 })
+      else events.push({ type: 'batch-done', index: b, problems: 0, at: (b + 1) * 60_000 })
+    }
+    const reviewFile = vi.fn<TuiCommands['reviewFile']>(async (opts) => {
+      for (const e of events) opts.onProgress?.(e)
+      opts.onProgress?.({ type: 'batch-start', index: 7, of: 10, size: 30, at: Date.now() })
+      return new Promise<never>(() => {})
+    })
+    const view = render(<App commands={fakeCommands({ reviewFile })} cwd={cwd} />, { columns: 60, rows: 20 })
+    await openFromHome(view.stdin, 'review')
+    await waitForText(view.lastFrame, 'submission.po')
+    view.stdin.write(keys.down)
+    await tick()
+    view.stdin.write(keys.enter)
+    await waitForText(view.lastFrame, /Locale/)
+    for (let i = 0; i < 4; i++) {
+      view.stdin.write(keys.down)
+      await tick()
+    }
+    view.stdin.write(keys.enter)
+    await waitFor(() => reviewFile.mock.calls.length > 0)
+    await waitForText(view.lastFrame, /Entry 6-29/)
+    await tick(20)
+    expect(lines(view.lastFrame()).length).toBeLessThanOrEqual(20)
+    expect(flat(view.lastFrame())).toMatch(/p pause/)
   })
 })

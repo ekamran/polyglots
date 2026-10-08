@@ -12,6 +12,7 @@ import { FilePicker } from '../components/FilePicker.js'
 import { BACK_HINT, DONE_HINT, Hint } from '../components/Hint.js'
 import { ReviewProgress } from '../components/ReviewProgress.js'
 import { appendEvent } from '../components/RecentEntries.js'
+import { ScrollTarget } from '../components/Viewport.js'
 import { useTask } from '../hooks/useTask.js'
 import { createRunControl, type RunControl } from '../../run-control.js'
 import { batchSizeChoices } from '../batch-size.js'
@@ -198,7 +199,13 @@ export function Review({ cwd, onBack }: ReviewProps) {
       {(stage === 'running' || stage === 'done') && (
         <>
           <ReviewProgress events={events} wporgUsername={config.wporgUsername} />
-          {stage === 'running' && <Hint>p pause · r resume · q stop and keep what is done</Hint>}
+          {/* Kept in view when failed batches make the screen taller than the
+              body: these keys are how the run is stopped. */}
+          {stage === 'running' && (
+            <ScrollTarget active>
+              <Hint>p pause · r resume · q stop and keep what is done</Hint>
+            </ScrollTarget>
+          )}
           {task.state.status === 'error' && <Text color="red">Review failed: {task.state.message}</Text>}
           {stage === 'done' && <Hint>{DONE_HINT}</Hint>}
         </>
