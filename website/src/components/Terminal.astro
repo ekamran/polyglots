@@ -75,22 +75,22 @@ const payload = animate ? JSON.stringify({ command, frames: frames.map((f) => [f
   .body :global(pre) {
     margin: 0; border-radius: 0; background: none; color: inherit;
     padding: 1rem 1.15rem 1.15rem;
-    font-size: clamp(0.7rem, 1.55vw, 0.84rem); line-height: 1.45;
+    font-size: clamp(0.7rem, 1.55vw, 0.84rem); line-height: 1.204;
     white-space: pre; tab-size: 2;
   }
   /* The full-screen app is a picture of a whole terminal, so it is scaled to
      fit its panel rather than scrolled: the font is whatever lets every column
-     in (a JetBrains Mono cell is 0.6em wide), up to the size the CLI panels
+     in (a Meslo cell, and the shrunk Fira Code one, is 0.602em wide), up to the size the CLI panels
      use. Where even that would be unreadable it stops shrinking and the panel
-     scrolls sideways instead, inside itself. The line height is the font's
-     own ascent plus descent, which is what box-drawing and block glyphs are
-     drawn to fill: the card borders and the wordmark join up as they do in a
-     terminal. */
+     scrolls sideways instead, inside itself. The line height is Fira Code's
+     ascent plus descent after the shrink (1.2308em × 0.9783), which is what
+     its box-drawing and block glyphs are drawn to fill: the card borders and
+     the wordmark join up as they do in a terminal. */
   .tui .body { container-type: inline-size; }
   .tui .body :global(pre) {
     padding: 0.9rem 1rem;
-    font-size: clamp(0.36rem, calc((100cqw - 2rem) / (var(--cols) * 0.6 + 0.5)), 0.9rem);
-    line-height: 1.32;
+    font-size: clamp(0.36rem, calc((100cqw - 2rem) / (var(--cols) * 0.602 + 0.5)), 0.9rem);
+    line-height: 1.204;
   }
   .term :global(.t-dim) { opacity: 0.6; }
   .term :global(.t-inverse) { background: var(--term-fg); color: var(--term-bg); }

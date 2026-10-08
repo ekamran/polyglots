@@ -1,18 +1,38 @@
-/* Self-hosted, subset JetBrains Mono (NL cut), for terminal panels and code.
-   Everything else uses the system stack: no web font for prose. */
+/* Self-hosted subsets of MesloLGS NF and Fira Code, for terminal panels and
+   code; prose uses the system stack. The pair is a common terminal setup:
+   Meslo draws ASCII, Fira Code everything else, box drawing and block
+   elements included (scripts/subset-font.sh). A terminal forces both into one
+   cell grid and a browser does not, so Fira Code is shrunk to Meslo's cell
+   width (0.6021em against 0.6154em); without it every right border drifts. */
 @font-face {
-  font-family: 'JetBrains Mono';
-  src: url('/fonts/jetbrains-mono-regular.woff2') format('woff2');
+  font-family: 'Polyglots Meslo';
+  src: url('/fonts/meslo-regular.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
-  font-family: 'JetBrains Mono';
-  src: url('/fonts/jetbrains-mono-bold.woff2') format('woff2');
+  font-family: 'Polyglots Meslo';
+  src: url('/fonts/meslo-bold.woff2') format('woff2');
   font-weight: 700;
   font-style: normal;
   font-display: swap;
+}
+@font-face {
+  font-family: 'Polyglots Fira';
+  src: url('/fonts/fira-code-regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  size-adjust: 97.83%;
+}
+@font-face {
+  font-family: 'Polyglots Fira';
+  src: url('/fonts/fira-code-bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  size-adjust: 97.83%;
 }
 
 /* Light is the default, and also what a reader without JavaScript gets: the
@@ -79,7 +99,7 @@
   --t-path: #62d2d8;
 
   --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  --font-mono: 'Polyglots Meslo', 'Polyglots Fira', ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
   --wrap: 72rem;
   --gutter: clamp(1rem, 4vw, 2rem);
   --radius: 10px;
@@ -111,7 +131,7 @@ h2 { font-size: clamp(1.5rem, 3.2vw, 2rem); }
 h3 { font-size: 1.2rem; }
 p { margin: 0 0 1em; text-wrap: pretty; }
 
-code, kbd, pre { font-family: var(--font-mono); font-size: 0.9em; }
+code, kbd, pre { font-family: var(--font-mono); font-size: 0.9em; font-variant-ligatures: none; font-feature-settings: 'liga' 0, 'calt' 0; }
 :not(pre) > code {
   background: var(--bg-2);
   border: 1px solid var(--rule);

@@ -176,7 +176,7 @@ const summaryOf = (file: string): ReviewSummary => ({
  */
 export const reviewFlow: TuiScenario = {
   name: 'review',
-  columns: 80,
+  columns: 100,
   rows: 24,
   config: { defaultLocale: LOCALE, reviewProvider: 'claude', wporgUsername: 'your-wporg-name' },
   tuiState: SET_UP,
@@ -236,7 +236,7 @@ export const reviewFlow: TuiScenario = {
 /** A fresh install: no tui.json, so the setup wizard opens at its first step. */
 export const setup: TuiScenario = {
   name: 'setup',
-  columns: 80,
+  columns: 100,
   rows: 24,
   config: {},
   commands: () => ({
