@@ -118,11 +118,15 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Thank you to everyone who has improved polyglots:
 
-- [Kamran Abdul Aziz](https://github.com/ekamran): sentence marks beyond
-  `.!?` in the punctuation check, so Hindi, Japanese, Arabic and other
-  scripts' correct endings are no longer reported
-  ([#20](https://github.com/emreerkan/polyglots/issues/20),
-  [#21](https://github.com/emreerkan/polyglots/pull/21)).
+- [Kamran Abdul Aziz](https://github.com/ekamran):
+  - sentence marks beyond `.!?` in the punctuation check, so Hindi, Japanese,
+    Arabic and other scripts' correct endings are no longer reported
+    ([#20](https://github.com/emreerkan/polyglots/issues/20),
+    [#21](https://github.com/emreerkan/polyglots/pull/21));
+  - text that differs only in Unicode encoding, such as Hindi ड़ or Bengali
+    য়, compared as the same text in the glossary, memory and consistency
+    checks ([#23](https://github.com/emreerkan/polyglots/issues/23),
+    [#24](https://github.com/emreerkan/polyglots/pull/24)).
 
 ## License
 
