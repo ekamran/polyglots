@@ -66,6 +66,7 @@ import { engineId } from './jobs/hash.js'
 import type { RunTuiOptions } from './tui/index.js'
 import type { Locale, PolyglotsConfig } from './types.js'
 import { VERSION } from './version.js'
+import { previewUsagePayload, resetUsageState, sendUsageInBackground, usageStatus, usageStateFile } from './usage/index.js'
 
 const EXIT_OK = 0
 const EXIT_ERROR = 1
@@ -107,6 +108,9 @@ export interface CliDeps {
   // Injected so tests decide colour and glyphs themselves, instead of
   // inheriting whatever LANG, TERM or NO_COLOR the machine running them has.
   env?: NodeJS.ProcessEnv
+  // Starts the weekly usage send without waiting for it (src/usage). Injected
+  // so a test can see whether a command starts one without any request.
+  sendUsage?: () => void
 }
 
 interface Cli {
@@ -420,7 +424,8 @@ async function warnAboutLocalReview(
 
 // defaultLocale named first and by hand: it has no default, so it is not a key
 // of DEFAULT_CONFIG, and leaving it out would make it impossible to set.
-const CONFIG_KEYS = ['defaultLocale', ...Object.keys(DEFAULT_CONFIG)] as Array<keyof PolyglotsConfig>
+// usageStats likewise: absent means never asked, so it has no default either.
+const CONFIG_KEYS = ['defaultLocale', ...Object.keys(DEFAULT_CONFIG), 'usageStats'] as Array<keyof PolyglotsConfig>
 // The parts of the two local server settings, settable on their own. Dotted
 // rather than a nested `config set ollama '{...}'`, because nobody should have
 // to type JSON to change a model name.
@@ -498,6 +503,14 @@ function coerceConfigValue(key: keyof PolyglotsConfig, raw: string): PolyglotsCo
         .map((entry) => entry.trim())
         .filter((entry) => entry.length > 0)
         .map((entry) => parseHttpUrl(key, entry))
+    // on and off, the words the issue and the docs use; true and false too,
+    // since that is what config.json holds and what someone will type.
+    case 'usageStats': {
+      const value = raw.trim().toLowerCase()
+      if (value === 'on' || value === 'true') return true
+      if (value === 'off' || value === 'false') return false
+      throw new UsageError(`${key} must be on or off, got "${raw}"`)
+    }
     case 'ollama':
       throw new UsageError(
         'ollama has a model, a baseUrl and a contextLength; set them with: polyglots config set ollama.model <name> (or ollama.baseUrl <url>, ollama.contextLength <tokens>)',
@@ -530,6 +543,7 @@ function formatConfigValue(key: keyof PolyglotsConfig, value: PolyglotsConfig[ke
     return servers.length === 0 ? '(none)' : servers.join(', ')
   }
   if (key === 'defaultLocale' && value === undefined) return '(not set)'
+  if (key === 'usageStats') return value === true ? 'on' : value === false ? 'off' : '(not asked; off)'
   if (key !== 'properNouns') return String(value)
   const byLocale = value as Record<string, string[]>
   const locales = Object.keys(byLocale).sort()
@@ -581,6 +595,10 @@ function configGet(cli: Cli, key: string | undefined): void {
     // The two server objects printed as a line rather than [object Object].
     // An unset locale prints as an empty line rather than "undefined", so a
     // script testing for one reads it as absent.
+    if (key === 'usageStats') {
+      cli.out(config.usageStats === undefined ? '' : formatConfigValue(key, config.usageStats))
+      return
+    }
     cli.out(key === 'ollama' || key === 'openaiCompatible' ? formatConfigValue(key, config[key]) : String(config[key] ?? ''))
     return
   }
@@ -644,6 +662,8 @@ const ENVIRONMENT_HELP = [
   '  POLYGLOTS_CLAUDE_BIN  the older name, applied to claude only',
   '  POLYGLOTS_HOME        root for config/ and data/ instead of the XDG directories',
   '  POLYGLOTS_ASCII=1     plain ASCII glyphs instead of Unicode (also NO_COLOR, FORCE_COLOR)',
+  '  DO_NOT_TRACK=1        never send usage statistics, whatever usageStats says',
+  '  POLYGLOTS_USAGE_URL   where opted-in usage statistics go (default: https://ada.tools/polyglots/api/usage)',
 ].join('\n')
 
 const LIVE_WARNING = 'Sends one prompt to each usable agent; this spends a request on metered plans.'
@@ -1108,6 +1128,19 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
       if (!shared) cli.out(okLine(cli.ui.out, 'Stopped'))
     })
 
+  const usage = program.command('usage-stats').description('Opt-in anonymous usage totals: see what is sent, or forget the install id')
+  usage
+    .command('show')
+    .description('Print exactly what the next weekly send carries')
+    .action(() => usageStatsShow(cli))
+  usage
+    .command('reset')
+    .description('Forget the install id; a new one is made at the next send')
+    .action(() => {
+      const removed = resetUsageState()
+      cli.out(okLine(cli.ui.out, removed ? 'Install id forgotten. Totals already sent stay counted under the old one.' : 'There was no install id to forget.'))
+    })
+
   const cfg = program.command('config').description('Settings and API keys')
   cfg
     .command('get [key]')
@@ -1151,9 +1184,45 @@ function exitCodeFor(cli: Cli, error: unknown): number {
   return EXIT_ERROR
 }
 
+// The commands that start a usage send: the ones that do the work being
+// counted, and the interactive app. Not config, so turning the setting on
+// sends nothing until the next real command; not usage-stats, so looking at
+// the payload never sends it; not help or --version.
+const SENDS_USAGE = new Set(['review', 'translate', 'fetch', 'stats', 'tm', 'glossary', 'split'])
+
+function startsUsageSend(argv: string[]): boolean {
+  if (argv.length === 0) return true
+  return SENDS_USAGE.has(argv[0]!) && !argv.includes('--help') && !argv.includes('-h')
+}
+
+function usageStatsShow(cli: Cli): void {
+  // process.env, not the injected one: that exists for colour, and
+  // DO_NOT_TRACK has to be read where the send reads it.
+  const config = cli.config()
+  const status = usageStatus(config, process.env)
+  const payload = previewUsagePayload({ config, env: process.env })
+  const say: Record<typeof status, string> = {
+    on: `On. This is what the next weekly send carries; nothing else leaves this machine. The install id is kept in ${usageStateFile()}.`,
+    off: 'Off: nothing is sent. Turned on, this is what would be: polyglots config set usageStats on',
+    unanswered: 'Off, never turned on: nothing is sent. Turned on, this is what would be: polyglots config set usageStats on',
+    'do-not-track': 'Off because DO_NOT_TRACK is set, whatever usageStats says: nothing is sent. This is what would be.',
+  }
+  cli.err(hintLine(cli.ui.err, say[status]))
+  cli.out(JSON.stringify(payload, null, 2))
+}
+
 export async function main(argv: string[], deps: CliDeps = {}): Promise<number> {
   const cli = createCli(deps)
   let exitCode = EXIT_OK
+  // Started, never awaited: it reads the setting itself and does nothing when
+  // off, and a request still out when the command ends dies with the process.
+  if (startsUsageSend(argv)) {
+    try {
+      ;(deps.sendUsage ?? (() => void sendUsageInBackground()))()
+    } catch {
+      // A usage send has no business failing a command.
+    }
+  }
   try {
     if (argv.length === 0) {
       await cli.runTui()

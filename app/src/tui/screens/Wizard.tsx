@@ -22,12 +22,34 @@ import { SyncGlossary } from './SyncGlossary.js'
 // "back" is the wizard's "next", so a glossary sync or a rules edit behaves
 // here exactly as it does from Configuration.
 
-const TITLES: Record<SetupStep, string> = {
+// The wizard's own steps: the five setup steps, then one question that is not
+// part of setup. Kept out of SETUP_STEPS on purpose. Those are counted in the
+// header's x/5 and reopen the wizard while missing; counting the usage
+// question there would make "no answer yet" read as unfinished setup and
+// press the person to answer, which is the opposite of asking neutrally.
+type WizardStep = SetupStep | 'usage'
+
+// Worded as issue #19 agreed, and answered No by default: No is listed first,
+// so enter alone, the key that moves a wizard on, keeps it off.
+export const USAGE_QUESTION =
+  'Share anonymous totals (strings reviewed, number of projects) to show on the website? You can change this any time.'
+
+const USAGE_ANSWERS = [
+  { id: 'no', label: 'No', cost: 'Nothing is sent.' },
+  {
+    id: 'yes',
+    label: 'Yes',
+    cost: 'Counts only, at most once a week; never locale, project names, files, strings or your username. polyglots usage-stats show prints it.',
+  },
+] as const
+
+const TITLES: Record<WizardStep, string> = {
   locale: 'Locale',
   provider: 'Review provider',
   keys: 'Draft engine and API keys',
   glossary: 'Glossary sync',
   rules: 'Locale rules',
+  usage: 'Usage statistics',
 }
 
 export interface WizardProps {
@@ -200,18 +222,27 @@ function PickStep<T extends { id: string; label: string; cost: string }>({
 
 export function Wizard({ start, status, agents, onRecord, onAdvance, onDone }: WizardProps) {
   const commands = useCommands()
-  const [step, setStep] = useState<SetupStep>(start)
+  const [step, setStep] = useState<WizardStep>(start)
   // Inside the keys step: once an engine is picked, its own screen follows.
   const [engine, setEngine] = useState<DraftEngineOption['id'] | undefined>(undefined)
   const [error, setError] = useState<string>()
   const servers = useServers()
-  const index = SETUP_STEPS.indexOf(step)
+  const index = step === 'usage' ? SETUP_STEPS.length : SETUP_STEPS.indexOf(step)
+  // Asked once: an answer either way, from here or from the CLI, means the
+  // question is not put again. Configuration › Usage statistics changes it.
+  const unanswered = () => {
+    try {
+      return commands.loadConfig().usageStats === undefined
+    } catch {
+      return false
+    }
+  }
 
   const advance = () => {
     onAdvance?.()
     setEngine(undefined)
     setError(undefined)
-    const next = SETUP_STEPS[index + 1]
+    const next = step === 'usage' ? undefined : (SETUP_STEPS[index + 1] ?? (unanswered() ? 'usage' : undefined))
     if (next) setStep(next)
     else {
       // Reaching the end, by finishing or by skipping, is what stops the
@@ -220,7 +251,9 @@ export function Wizard({ start, status, agents, onRecord, onAdvance, onDone }: W
       onDone()
     }
   }
-  const record = (kind: 'confirmed' | 'skipped') =>
+  const record = (kind: 'confirmed' | 'skipped') => {
+    // The answer to the usage question lives in config.json, not in tui.json.
+    if (step === 'usage') return
     onRecord((s) => ({
       ...s,
       wizard: {
@@ -231,6 +264,7 @@ export function Wizard({ start, status, agents, onRecord, onAdvance, onDone }: W
         [kind === 'confirmed' ? 'skipped' : 'confirmed']: s.wizard[kind === 'confirmed' ? 'skipped' : 'confirmed'].filter((x) => x !== step),
       },
     }))
+  }
   const skip = () => {
     record('skipped')
     advance()
@@ -293,20 +327,46 @@ export function Wizard({ start, status, agents, onRecord, onAdvance, onDone }: W
     }
   } else if (step === 'glossary') {
     body = <SyncGlossary onBack={advance} />
+  } else if (step === 'usage') {
+    // esc is the default answer, said out loud: leaving the question
+    // unanswered would ask it again at the next walk through the wizard.
+    body = (
+      <PickStep
+        intro={USAGE_QUESTION}
+        options={USAGE_ANSWERS}
+        waiting={false}
+        empty=""
+        onPick={(a) => {
+          if (!save({ usageStats: a.id === 'yes' })) return
+          advance()
+        }}
+        onSkip={() => {
+          if (!save({ usageStats: false })) return
+          advance()
+        }}
+      />
+    )
   } else {
     body = <LocaleRules onBack={advance} />
   }
 
   return (
     <Box flexDirection="column">
-      <Text>
-        <Text {...TOKENS.heading.ink}>Setup</Text> <Text {...TOKENS.muted.ink}>·</Text> Step {index + 1} of {SETUP_STEPS.length}{' '}
-        <Text {...TOKENS.muted.ink}>·</Text> <Text bold>{TITLES[step]}</Text>
-        {'  '}
-        <Text {...TOKENS.muted.ink}>
-          ({STEP_LABELS[step]} {status.steps[step] === 'done' ? 'is done' : 'needs doing'})
+      {step === 'usage' ? (
+        <Text>
+          <Text {...TOKENS.heading.ink}>Setup</Text> <Text {...TOKENS.muted.ink}>·</Text> One last question{' '}
+          <Text {...TOKENS.muted.ink}>·</Text> <Text bold>{TITLES[step]}</Text>
         </Text>
-      </Text>
+      ) : (
+        <Text>
+          <Text {...TOKENS.heading.ink}>Setup</Text> <Text {...TOKENS.muted.ink}>·</Text> Step {index + 1} of {SETUP_STEPS.length}{' '}
+          <Text {...TOKENS.muted.ink}>·</Text> <Text bold>{TITLES[step]}</Text>
+          {'  '}
+          <Text {...TOKENS.muted.ink}>
+            ({STEP_LABELS[step]} {status.steps[step] === 'done' ? 'is done' : 'needs doing'})
+          </Text>
+        </Text>
+      )}
       <Text {...TOKENS.muted.ink}>esc skips a step · the wizard stays under Configuration › Setup wizard</Text>
       <Text> </Text>
       {body}

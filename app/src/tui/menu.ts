@@ -25,6 +25,7 @@ export type ScreenId =
   | 'configure-keys'
   | 'setup'
   | 'interface'
+  | 'usage-stats'
 
 export interface MenuNode {
   id: ScreenId
@@ -136,6 +137,15 @@ export const CONFIGURATION: MenuNode[] = [
     asciiIcon: '[*]',
     help: 'Settings that belong to the interactive app only, kept apart from the config the CLI reads.',
   },
+  {
+    id: 'usage-stats',
+    key: 'u',
+    label: 'Usage statistics',
+    description: 'Opt-in anonymous totals',
+    icon: '(Σ)',
+    asciiIcon: '(S)',
+    help: 'Turns the weekly anonymous totals for the website on or off, and shows exactly what would be sent. Off unless turned on; DO_NOT_TRACK keeps it off.',
+  },
 ]
 
 export const HOME: MenuNode[] = [
@@ -192,7 +202,7 @@ export const HOME: MenuNode[] = [
     description: 'Glossary, rules, agents, keys',
     icon: '[≡]',
     asciiIcon: '[=]',
-    help: 'Glossary, locale rules, agents, local models, API keys, setup and interface settings.',
+    help: 'Glossary, locale rules, agents, local models, API keys, setup, interface settings and usage statistics.',
     children: CONFIGURATION,
   },
   {

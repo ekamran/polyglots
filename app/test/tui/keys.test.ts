@@ -119,6 +119,7 @@ const FILES: Record<string, ScreenId[]> = {
   'screens/Fetch.tsx': ['fetch'],
   'screens/Review.tsx': ['review'],
   'screens/Translate.tsx': ['translate'],
+  'screens/UsageStats.tsx': ['usage-stats'],
 }
 
 // Bound on every screen, and listed once under "Everywhere" rather than on each.

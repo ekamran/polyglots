@@ -260,6 +260,10 @@ export interface PolyglotsConfig {
   // Extra local model servers to list models from, beyond the loopback ports
   // that are always tried. Read only by discovery, never by a run or a hash.
   localModelServers: string[]
+  // Opt-in anonymous usage totals (src/usage). Absent until the person has
+  // answered, which counts as no: nothing is sent and no install id exists.
+  // DO_NOT_TRACK turns it off whatever this says.
+  usageStats?: boolean
 }
 
 export interface Secrets {

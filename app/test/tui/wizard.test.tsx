@@ -171,7 +171,7 @@ describe('the steps', () => {
 
   it('is dismissed and lands on home after the last step', async () => {
     const state = memoryTuiState(fresh())
-    const { lastFrame, stdin } = render(<App commands={fakeCommands({ ...state })} />)
+    const { lastFrame, stdin } = render(<App commands={fakeCommands({ ...state, ...configStore({ usageStats: false }) })} />)
     await waitForText(lastFrame, 'Step 1 of 5')
     for (const step of [1, 2, 3, 4, 5]) {
       await waitForText(lastFrame, `Step ${step} of 5`)
@@ -189,6 +189,59 @@ describe('the steps', () => {
     await waitForText(lastFrame, 'Setup wizard')
     stdin.write('w')
     await waitForText(lastFrame, 'Step 1 of 5')
+  })
+})
+
+describe('the usage statistics question', () => {
+  // Walks the five setup steps with esc, to the question after them.
+  async function toQuestion(initial: Partial<PolyglotsConfig> = {}) {
+    const config = configStore(initial)
+    const state = memoryTuiState(fresh())
+    const r = render(<App commands={fakeCommands({ ...config, ...state })} />)
+    await waitForText(r.lastFrame, 'Step 1 of 5')
+    for (const step of [1, 2, 3, 4, 5]) {
+      await waitForText(r.lastFrame, `Step ${step} of 5`)
+      r.stdin.write(keys.esc)
+      await tick(ESC_DELAY)
+    }
+    return { ...r, config, state }
+  }
+
+  it('is asked once, neutrally, after the setup steps, with No as the default answer', async () => {
+    const { lastFrame, stdin, config, state } = await toQuestion()
+    await waitForText(lastFrame, 'Share anonymous totals (strings reviewed, number of projects) to show on the website?')
+    expect(flat(lastFrame())).toContain('You can change this any time.')
+    expect(flat(lastFrame())).not.toContain('Step 6')
+    stdin.write(keys.enter)
+    await waitForText(lastFrame, 'Translate a .po file')
+    expect(config.saved).toContainEqual({ usageStats: false })
+    expect(state.saveTuiState.mock.calls.at(-1)![0].wizard.dismissed).toBe(true)
+  })
+
+  it('saves yes only when yes is chosen', async () => {
+    const { lastFrame, stdin, config } = await toQuestion()
+    await waitForText(lastFrame, 'Share anonymous totals')
+    stdin.write(keys.down)
+    await tick()
+    stdin.write(keys.enter)
+    await waitForText(lastFrame, 'Translate a .po file')
+    expect(config.saved).toContainEqual({ usageStats: true })
+  })
+
+  it('takes esc as the default answer, no', async () => {
+    const { lastFrame, stdin, config } = await toQuestion()
+    await waitForText(lastFrame, 'Share anonymous totals')
+    stdin.write(keys.esc)
+    await tick(ESC_DELAY)
+    await waitForText(lastFrame, 'Translate a .po file')
+    expect(config.saved).toContainEqual({ usageStats: false })
+  })
+
+  it('is not asked again once answered', async () => {
+    const { lastFrame, config } = await toQuestion({ usageStats: true })
+    await waitForText(lastFrame, 'Translate a .po file')
+    expect(flat(lastFrame())).not.toContain('Share anonymous totals')
+    expect(config.saved.some((p) => 'usageStats' in p)).toBe(false)
   })
 })
 

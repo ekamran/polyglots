@@ -102,6 +102,10 @@ const configSchema = z.object({
       contextLength,
     })
     .default({ baseUrl: DEFAULT_OPENAI_COMPATIBLE_BASE_URL, model: '' }),
+  // Optional and never defaulted: absent means the question was never
+  // answered, which the wizard needs to tell apart from an answered no.
+  // Either way nothing is sent unless it is true (src/usage).
+  usageStats: z.boolean().optional(),
 })
 
 const SECRET_KEYS: ReadonlyArray<keyof Secrets> = ['DEEPL_API_KEY', 'OPENAI_API_KEY']

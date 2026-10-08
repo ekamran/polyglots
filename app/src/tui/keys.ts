@@ -128,6 +128,10 @@ export const KEYS = {
     move: { keys: '↑↓', does: 'move', match: vertical },
     toggle: { keys: 'space  enter', does: 'toggle', match: any(enter, space) },
   },
+  usageStats: {
+    toggle: { keys: 'space  enter', does: 'turn sharing on or off', match: any(enter, space) },
+    reset: { keys: 'r', does: 'forget the install id', match: char('r') },
+  },
   agents: {
     recheck: { keys: 'r', does: 're-check', match: char('r') },
   },
@@ -378,6 +382,7 @@ export const SCREENS: Record<ScreenId, ScreenKeys> = {
   'configure-keys': { shown: [fields.saveKey], more: [finished.close] },
   setup: { shown: [KEYS.wizard.choose, KEYS.wizard.skip], more: [KEYS.wizard.move] },
   interface: { shown: [KEYS.interface.move, KEYS.interface.toggle] },
+  'usage-stats': { shown: [KEYS.usageStats.toggle, KEYS.usageStats.reset] },
 }
 
 /** The full listing, for the `?` overlay and the help page. */

@@ -19,6 +19,12 @@ import { afterEach, beforeEach } from 'vitest'
 let home: string | undefined
 let previous: string | undefined
 
+// Where an opted-in usage send goes. Port 9 on loopback is the discard port,
+// which nothing listens on, so a test that turns usage statistics on by
+// accident gets a refused connection in a millisecond instead of reaching
+// ada.tools. A test that wants a real endpoint starts one and passes its URL.
+process.env.POLYGLOTS_USAGE_URL = 'http://127.0.0.1:9/polyglots/api/usage'
+
 beforeEach(() => {
   previous = process.env.POLYGLOTS_HOME
   home = mkdtempSync(join(tmpdir(), 'polyglots-test-'))
