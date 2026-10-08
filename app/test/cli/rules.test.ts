@@ -124,6 +124,36 @@ describe('rules copy', () => {
     expect(r.stdout).toMatch(/1 mistake/)
   })
 
+  // The template's opening lines describe the locale it was written for. Left
+  // as they were, a copy from Swedish told the Danish team about the Swedish
+  // pack and how to check the Swedish file.
+  it('rewrites the template lines that name the source locale', async () => {
+    expect((await run(['rules', 'edit', 'sv'], { openEditor: async () => {} })).code).toBe(0)
+    await run(['rules', 'copy', 'sv', 'da'])
+    const copied = (await readFile(localeRulesFile('da'), 'utf8')).split('\n')
+    expect(copied.slice(0, 2)).toEqual([
+      '# polyglots rules for da_DK (da)',
+      '# No built-in pack for da: only the universal rules run unless this file adds some.',
+    ])
+    expect(copied).toContain('# Check the file with: polyglots rules check da')
+    expect(copied.join('\n')).not.toMatch(/Built-in pack: Swedish|rules check sv/)
+  })
+
+  it('drops the pack line when the target has a maintained pack, and adds one when it leaves one', async () => {
+    await run(['rules', 'edit', 'sv'], { openEditor: async () => {} })
+    await run(['rules', 'copy', 'sv', 'tr'])
+    const toTurkish = (await readFile(localeRulesFile('tr'), 'utf8')).split('\n')
+    expect(toTurkish.slice(0, 2)).toEqual(['# polyglots rules for tr_TR (tr)', '#'])
+
+    await run(['rules', 'copy', 'tr', 'de'])
+    const fromTurkish = (await readFile(localeRulesFile('de'), 'utf8')).split('\n')
+    expect(fromTurkish.slice(0, 3)).toEqual([
+      '# polyglots rules for de_DE (de)',
+      '# No built-in pack for de: only the universal rules run unless this file adds some.',
+      '#',
+    ])
+  })
+
   it('copies to a translation set, accepting any spelling of the locales', async () => {
     await writeRules('de', 'guidance: Siezen.\n')
     await run(['rules', 'copy', 'de', 'de_DE_formal'])

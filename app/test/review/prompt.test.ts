@@ -5,7 +5,7 @@ import type { ReviewInput } from '../../src/types.js'
 const inputs: ReviewInput[] = [
   { key: 'Save changes', msgid: 'Save changes', comments: ['button label'], drafts: ['Değişiklikleri kaydet'] },
   {
-    key: 'post statusPublished',
+    key: 'post status\x04Published',
     msgid: 'Published',
     msgctxt: 'post status',
     comments: [],
@@ -36,7 +36,7 @@ describe('buildReviewPrompt', () => {
     expect(prompt).toMatch(/^1\. \{"id":1,/m)
     expect(prompt).toMatch(/^2\. \{"id":2,/m)
     expect(prompt).toMatch(/^3\. \{"id":3,/m)
-    expect(prompt).not.toContain('')
+    expect(prompt).not.toContain('\x04')
     expect(prompt).not.toContain('\\u0004')
     expect(prompt).not.toContain('"key"')
     expect(prompt).toMatch(/exactly one result per input id/i)

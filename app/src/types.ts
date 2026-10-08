@@ -260,6 +260,10 @@ export interface PolyglotsConfig {
   // Extra local model servers to list models from, beyond the loopback ports
   // that are always tried. Read only by discovery, never by a run or a hash.
   localModelServers: string[]
+  // Seconds a local server may send nothing, before its first chunk or
+  // between two, before the reply is abandoned as cut off. Read by runs only,
+  // never by a hash: it decides when to give up, not what is asked.
+  localIdleTimeout: number
 }
 
 export interface Secrets {

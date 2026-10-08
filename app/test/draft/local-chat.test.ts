@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   createLocalChat,
+  localIdleTimeoutMs,
   localModelId,
   LocalReplyTruncatedError,
   resolveLocalTarget,
@@ -211,5 +212,89 @@ describe('the transports and how a stream ends', () => {
 describe('resolveLocalTarget wording', () => {
   it('names the Ollama key when an Ollama model is blank', () => {
     expect(() => resolveLocalTarget(DEFAULT_CONFIG, '  ')).toThrow(/^ollama\.model is not set/)
+  })
+})
+
+// A server that stalls mid-reply used to hang the run with no error: the
+// stream stayed open and nothing arrived. The silence is now bounded, and
+// reported as a cut-off reply, since a partial reply is what it left.
+describe('a local server that goes silent', () => {
+  // Sends `first`, then holds the stream open forever, honouring an abort the
+  // way a real fetch does.
+  function stalling(first: string[]) {
+    const signals: AbortSignal[] = []
+    const fn = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      if (init?.signal) signals.push(init.signal)
+      const encoder = new TextEncoder()
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (const c of first) controller.enqueue(encoder.encode(c))
+          init?.signal?.addEventListener('abort', () => controller.error(new DOMException('aborted', 'AbortError')))
+        },
+      })
+      return new Response(body, { status: 200 })
+    })
+    return { fetch: fn as unknown as typeof fetch, signals }
+  }
+
+  // Never answers at all, not even with headers.
+  function silent() {
+    const fn = vi.fn(
+      (_url: string | URL | Request, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+        }),
+    )
+    return { fetch: fn as unknown as typeof fetch }
+  }
+
+  const ollama = { kind: 'ollama' as const, baseUrl: 'http://localhost:11434', model: 'qwen3.8:27b-mlx' }
+  const compatible = { kind: 'openai-compatible' as const, baseUrl: 'http://localhost:1234', model: 'qwen/qwen3-8b' }
+
+  it('gives up on an Ollama stream that stalls mid-reply, as a truncated reply naming the wait', async () => {
+    const { fetch, signals } = stalling(['{"message":{"content":"{\\"a\\""}}\n'])
+    const run = createLocalChat(ollama, { fetch, idleTimeoutMs: 30 })(request)
+    await expect(run).rejects.toBeInstanceOf(LocalReplyTruncatedError)
+    await expect(run).rejects.toThrow(/sent nothing for 0\.03s/)
+    expect(signals[0]!.aborted).toBe(true)
+  })
+
+  it('gives up on an SSE stream that stalls mid-reply', async () => {
+    const { fetch } = stalling([`data: ${JSON.stringify({ choices: [{ delta: { content: '{' } }] })}\n\n`])
+    await expect(createLocalChat(compatible, { fetch, idleTimeoutMs: 30 })(request)).rejects.toBeInstanceOf(
+      LocalReplyTruncatedError,
+    )
+  })
+
+  it('gives up on a server that never sends headers', async () => {
+    await expect(createLocalChat(ollama, { ...silent(), idleTimeoutMs: 30 })(request)).rejects.toBeInstanceOf(
+      LocalReplyTruncatedError,
+    )
+  })
+
+  // The limit is on silence, not on the whole reply: a slow model that keeps
+  // talking is never cut off.
+  it('lets a reply that keeps arriving take longer than the limit in total', async () => {
+    const encoder = new TextEncoder()
+    const parts = ['{"message":{"content":"{"}}\n', '{"message":{"content":"}"}}\n', '{"done":true,"done_reason":"stop"}\n']
+    const fetch = (async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          async start(controller) {
+            for (const p of parts) {
+              await new Promise((r) => setTimeout(r, 25))
+              controller.enqueue(encoder.encode(p))
+            }
+            controller.close()
+          },
+        }),
+      )) as unknown as typeof globalThis.fetch
+    expect(await createLocalChat(ollama, { fetch, idleTimeoutMs: 50 })(request)).toBe('{}')
+  })
+
+  it('defaults to three minutes of silence, set in seconds', () => {
+    expect(DEFAULT_CONFIG.localIdleTimeout).toBe(180)
+    expect(localIdleTimeoutMs(DEFAULT_CONFIG)).toBe(180_000)
+    expect(localIdleTimeoutMs({ localIdleTimeout: 600 })).toBe(600_000)
   })
 })

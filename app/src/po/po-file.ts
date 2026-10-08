@@ -209,6 +209,17 @@ export class PoFile {
    */
   requirePluralForms(locale: Locale): void {
     if (this.declaredNplurals !== undefined || !this.hasPlurals()) return
+    // A template carries the header with placeholders in it: xgettext and wp
+    // i18n make-pot both write nplurals=INTEGER. Running on a fresh .pot is the
+    // first thing a new user tries, and telling them the header is missing
+    // when it is right there in the file sends them looking for the wrong
+    // thing. The refusal stands, since a template knows no more about the
+    // locale than a file with no header, but it says what is actually wrong.
+    if (/nplurals\s*=\s*INTEGER\b/.test(this.pluralForms ?? '')) {
+      throw new Error(
+        `${this.path} still has the template's Plural-Forms placeholder (nplurals=INTEGER); set the header for ${locale}, or start from the ${locale} .po on translate.wordpress.org`,
+      )
+    }
     throw new Error(
       `${this.path} has plural entries but no Plural-Forms header; polyglots will not guess how many forms ${locale} uses`,
     )

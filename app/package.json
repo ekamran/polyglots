@@ -2,10 +2,37 @@
   "name": "polyglots",
   "version": "0.25.0",
   "description": "Translate and review WordPress .po files with machine drafts and AI review",
+  "keywords": [
+    "wordpress",
+    "gettext",
+    "po",
+    "pot",
+    "translation",
+    "i18n",
+    "l10n",
+    "glotpress",
+    "translate.wordpress.org",
+    "cli",
+    "tui"
+  ],
+  "homepage": "https://ada.tools/polyglots/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/emreerkan/polyglots.git",
+    "directory": "app"
+  },
+  "bugs": {
+    "url": "https://github.com/emreerkan/polyglots/issues"
+  },
   "type": "module",
   "bin": {
     "polyglots": "./dist/cli.js"
   },
+  "files": [
+    "dist/",
+    "i18n/",
+    "CHANGELOG.md"
+  ],
   "engines": {
     "node": ">=24"
   },
@@ -14,8 +41,8 @@
     "typecheck": "tsc -p tsconfig.test.json && tsc -p tsconfig.client.json",
     "test": "vitest run",
     "dev": "tsx src/cli.ts",
-    "prepare": "node scripts/no-live-run.mjs && node scripts/update-locales.mjs && node scripts/stats-i18n.mjs && node scripts/stats-client.mjs && tsc",
-    "prebuild": "node scripts/no-live-run.mjs && node scripts/update-locales.mjs && node scripts/stats-i18n.mjs && node scripts/stats-client.mjs",
+    "prepare": "npm run build",
+    "prebuild": "node scripts/no-live-run.mjs && node scripts/stats-i18n.mjs && node scripts/stats-client.mjs",
     "update-locales": "node scripts/update-locales.mjs",
     "stats-pot": "tsx scripts/stats-pot.ts",
     "stats-i18n": "node scripts/stats-i18n.mjs",
@@ -25,7 +52,7 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "better-sqlite3": "^13.0.3",
     "cheerio": "^1.2.0",
     "commander": "^15.0.0",

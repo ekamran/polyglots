@@ -28,7 +28,7 @@ afterEach(async () => {
   await home.cleanup()
 })
 
-const CTRL_C = ''
+const CTRL_C = '\x03'
 
 function start(commands = fakeCommands(), extra: Partial<RunTuiOptions> = {}) {
   const stdin = new FakeStdin()

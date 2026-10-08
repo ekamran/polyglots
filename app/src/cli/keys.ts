@@ -16,7 +16,7 @@ export interface WatchKeysOptions {
   onInterrupt: () => void
 }
 
-const CTRL_C = ''
+const CTRL_C = '\x03'
 
 // Reads single keys while a long run is going, and returns a function that puts
 // the terminal back. Only ever on a real terminal: a piped or scheduled run has

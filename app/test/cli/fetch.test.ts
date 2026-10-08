@@ -10,6 +10,7 @@ import type { ReviewOptions } from '../../src/commands/review.js'
 import type { TranslateOptions, TranslateSummary } from '../../src/commands/translate.js'
 import type { ProjectRef } from '../../src/wporg/projects.js'
 import type { ReviewSummary } from '../../src/types.js'
+import type { ModelCheck } from '../../src/draft/discover.js'
 
 function sink() {
   return {
@@ -282,6 +283,101 @@ describe('fetch', () => {
       reviewFile: async (opts) => reviewSummary(opts.file),
     })
     expect(r.stderr).toMatch(/asked to slow down.*waiting 15s/)
+  })
+})
+
+// review and translate say these things before a run; fetch runs the same
+// jobs, so it has to say them too, and before the first request to wp.org
+// rather than after the downloads.
+describe('fetch, before anything is downloaded', () => {
+  async function writeConfig(config: Record<string, unknown>): Promise<void> {
+    await writeFile(join(home, 'config', 'config.json'), JSON.stringify({ defaultLocale: 'tr', ...config }))
+  }
+
+  // Never the real check: no test may send a request to a real local server.
+  function fakeCheck(state: ModelCheck['state'] = 'installed') {
+    const calls: Array<{ kind?: string; baseUrl: string; model: string }> = []
+    const fn: NonNullable<CliDeps['checkLocalModel']> = async (o) => {
+      calls.push(o)
+      return {
+        state,
+        kind: o.kind ?? 'ollama',
+        baseUrl: o.baseUrl,
+        model: o.model,
+        ...(state === 'installed' ? {} : { message: `${o.model} is not pulled; run ollama pull ${o.model}` }),
+      }
+    }
+    return { fn, calls }
+  }
+
+  // Records what stderr held when wp.org was first asked, so "before" is
+  // checked rather than assumed.
+  async function runWatched(argv: string[], deps: Omit<CliDeps, 'streams'>) {
+    const stdout = sink()
+    const stderr = sink()
+    const wporg = fakeWporg()
+    const seen: string[] = []
+    const resolveProjects: CliDeps['resolveProjects'] = async (refs, opts) => {
+      seen.push(stderr.text)
+      return wporg.resolveProjects!(refs, opts)
+    }
+    const code = await main(argv, {
+      env: {},
+      ...wporg,
+      resolveProjects,
+      ...deps,
+      streams: { stdin: stdinWith(undefined, false), stdout, stderr },
+    })
+    return { code, stderr: stderr.text, seen }
+  }
+
+  it('says when only the universal checks will run', async () => {
+    const r = await runWatched(['fetch', 'koji', '--get', 'waiting', '--out-dir', home, '--locale', 'de'], {
+      reviewFile: async (opts) => reviewSummary(opts.file),
+    })
+    expect(r.seen[0]).toContain('No locale rules for de; only the universal checks run')
+  })
+
+  it('checks the local reviewer model and warns when it is missing', async () => {
+    await writeConfig({ reviewProvider: 'local' })
+    const check = fakeCheck('missing')
+    const r = await runWatched(['fetch', 'koji', '--get', 'waiting', '--out-dir', home], {
+      reviewFile: async (opts) => reviewSummary(opts.file),
+      checkLocalModel: check.fn,
+    })
+    expect(check.calls).toHaveLength(1)
+    expect(r.seen[0]).toContain('Local review is experimental')
+    expect(r.seen[0]).toContain('is not pulled')
+  })
+
+  it('does not check a local model for a rules-only review', async () => {
+    await writeConfig({ reviewProvider: 'local' })
+    const check = fakeCheck()
+    await runWatched(['fetch', 'koji', '--get', 'waiting', '--out-dir', home, '--no-ai'], {
+      reviewFile: async (opts) => reviewSummary(opts.file),
+      checkLocalModel: check.fn,
+    })
+    expect(check.calls).toHaveLength(0)
+  })
+
+  it('checks a local draft model before translating, once when it also reviews', async () => {
+    await writeConfig({ reviewProvider: 'local' })
+    const check = fakeCheck('missing')
+    const r = await runWatched(['fetch', 'koji', '--get', 'untranslated', '--out-dir', home, '--draft-engine', 'local'], {
+      translate: async (opts) => translateSummary(opts.file),
+      checkLocalModel: check.fn,
+    })
+    expect(check.calls).toHaveLength(1)
+    expect(r.seen[0]).toContain('is not pulled')
+  })
+
+  it('does not check anything local when an agent reviews', async () => {
+    const check = fakeCheck()
+    await runWatched(['fetch', 'koji', '--get', 'waiting', '--out-dir', home], {
+      reviewFile: async (opts) => reviewSummary(opts.file),
+      checkLocalModel: check.fn,
+    })
+    expect(check.calls).toHaveLength(0)
   })
 })
 

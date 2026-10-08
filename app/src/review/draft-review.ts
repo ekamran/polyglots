@@ -40,7 +40,7 @@ export function buildReviewArgs(opts: ReviewOptions): string[] {
 }
 
 // Results are matched by the 1-based id assigned in the prompt, so the model
-// never has to echo a gettext key (msgctxt keys contain ).
+// never has to echo a gettext key (msgctxt keys contain \x04).
 export function mapResults(inputs: ReviewInput[], payload: unknown, nplurals: number): ReviewResult[] {
   const parsed = reviewBatchSchema.safeParse(payload)
   if (!parsed.success) {

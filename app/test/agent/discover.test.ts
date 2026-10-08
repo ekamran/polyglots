@@ -260,6 +260,31 @@ describe('antigravity sign-in and setup', () => {
     expect(agy.reason).toContain('https://ada.tools/polyglots/docs/antigravity/')
   })
 
+  // antigravity matches each token of a rule's target as an anchored regular
+  // expression (notes/antigravity.md), so these all permit the three tools.
+  // Whitespace inside a rule is deliberately not here: nothing says antigravity
+  // trims it, and a check that passes a rule the CLI then ignores is the silent
+  // failure this check exists to catch.
+  it.each([
+    ['one alternation', ['mcp(polyglots/(glossary|consistency|tm)_lookup)']],
+    ['a wildcard tool', ['mcp(polyglots/.*_lookup)']],
+    ['split across rules', ['mcp(polyglots/glossary_lookup)', 'mcp(polyglots/(consistency|tm)_lookup)']],
+  ])('accepts an equivalent spelling: %s', async (_name, allow) => {
+    agySettings({ permissions: { allow } })
+    expect(statusOf(await discover(fakeExec()), 'antigravity').setup.state).toBe('ok')
+  })
+
+  it.each([
+    ['server-wide, which antigravity does not honour', ['mcp(polyglots)']],
+    ['a partial match, since tokens are anchored', ['mcp(polyglots/tm)', 'mcp(poly/.*)']],
+    ['a pattern that covers only one', ['mcp(polyglots/tm_.*)']],
+    ['a pattern that is not a valid expression', ['mcp(polyglots/(tm_lookup)']],
+    ['another kind of rule', ['command(polyglots/tm_lookup)']],
+  ])('still reports missing for %s', async (_name, allow) => {
+    agySettings({ permissions: { allow } })
+    expect(statusOf(await discover(fakeExec()), 'antigravity').setup.state).toBe('missing')
+  })
+
   it('reads an unreadable settings file as setup unknown, and stays usable', async () => {
     agySettings('{ not json')
     const agy = statusOf(await discover(fakeExec()), 'antigravity')

@@ -19,7 +19,7 @@ export const glossaryHtml = here('../fixtures/wporg/glossary-tr.html')
 export const cliEntry = here('../../src/cli.ts')
 export const tsxCli = createRequire(import.meta.url).resolve('tsx/cli')
 
-export const CTX = ''
+export const CTX = '\x04'
 
 export const SAMPLE_PENDING_KEYS = [
   'Save Changes',

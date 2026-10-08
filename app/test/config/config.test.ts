@@ -66,7 +66,18 @@ describe('loadConfig', () => {
       // server has no model until one is chosen.
       localServerKind: 'ollama',
       openaiCompatible: { baseUrl: 'http://localhost:1234', model: '' },
+      // Added deliberately with the idle limit (#9): a local server that says
+      // nothing for three minutes is given up on.
+      localIdleTimeout: 180,
     })
+  })
+
+  it('refuses a local idle limit that is not a positive whole number of seconds', async () => {
+    for (const bad of [0, -5, 1.5, '60']) {
+      await mkdir(configDir(), { recursive: true })
+      await writeFile(join(configDir(), 'config.json'), JSON.stringify({ localIdleTimeout: bad }))
+      expect(() => loadConfig()).toThrow(/localIdleTimeout/)
+    }
   })
 
   it('merges a partial file over defaults and ignores unknown keys', async () => {
