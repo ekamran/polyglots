@@ -9,6 +9,8 @@ let home: Home
 
 beforeEach(async () => {
   home = await makeHome()
+  // Named rather than assumed: polyglots has no default locale (no-locale.test.tsx).
+  saveConfig({ defaultLocale: 'tr' })
 })
 
 afterEach(async () => {

@@ -119,7 +119,9 @@ const round = (n: number) => Math.round(n * 100) / 100
 export function LocaleRules({ onBack }: LocaleRulesProps) {
   const { config } = useConfig()
   const [stage, setStage] = useState<Stage>('pick')
-  const [input, setInput] = useState(config.defaultLocale)
+  // Empty when no locale is configured: prefilling one would open someone
+  // else's rules on enter.
+  const [input, setInput] = useState(config.defaultLocale ?? '')
   const [draft, setDraft] = useState<RulesDraft>()
   const [value, setValue] = useState<RulesValue>({ mistakes: [], patterns: [] })
   const [error, setError] = useState<string>()

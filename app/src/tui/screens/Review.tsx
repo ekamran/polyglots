@@ -6,6 +6,7 @@ import { resolveLocale } from '../../wporg/locales.js'
 import type { ReviewEvent, ReviewSummary } from '../../types.js'
 import { agentBinOverride } from '../../agent/providers.js'
 import { initialBatchSize, providerLabel, screenBatchAdvice } from '../local.js'
+import { headerLocaleOf } from '../../cli/locale.js'
 import { useCommands, useConfig } from '../commands.js'
 import { poEntryCount } from '../../po/count.js'
 import { FilePicker } from '../components/FilePicker.js'
@@ -43,7 +44,9 @@ export function Review({ cwd, onBack }: ReviewProps) {
   const { config, error: configError } = useConfig()
   const [phase, setPhase] = useState<Phase>('pick')
   const [file, setFile] = useState('')
-  const [locale, setLocale] = useState(config.defaultLocale)
+  // Empty with no locale configured, and then filled from the picked file's
+  // Language header when that names one locale for certain (headerLocaleOf).
+  const [locale, setLocale] = useState(config.defaultLocale ?? '')
   const [noAi, setNoAi] = useState(false)
   const [fresh, setFresh] = useState(false)
   const [batchSize, setBatchSize] = useState(initialBatchSize(config))
@@ -154,6 +157,7 @@ export function Review({ cwd, onBack }: ReviewProps) {
             annotate={poEntryCount}
             onPick={(path) => {
               setFile(path)
+              if (config.defaultLocale === undefined) void headerLocaleOf(path).then((found) => found && setLocale(found))
               setPhase('options')
             }}
           />
@@ -171,6 +175,9 @@ export function Review({ cwd, onBack }: ReviewProps) {
               <Text>{locale}</Text>
             )}
           </Box>
+          {locale.trim() === '' && (
+            <Text color="yellow">  No locale set: type the one you translate into, or choose it once in Setup.</Text>
+          )}
           {/* Dimmed under "skip AI checks", where there are no batches to size.
               It still steps, so the choice survives toggling the AI back on. */}
           <Text dimColor={noAi}>

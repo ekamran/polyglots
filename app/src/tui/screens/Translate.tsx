@@ -7,6 +7,7 @@ import { resolveLocale } from '../../wporg/locales.js'
 import type { DraftEngineChoice } from '../../types.js'
 import { kindLabel, type ModelCheck } from '../../draft/discover.js'
 import { resolveLocalTarget, type LocalTarget } from '../../draft/local-chat.js'
+import { headerLocaleOf } from '../../cli/locale.js'
 import { useCommands, useConfig } from '../commands.js'
 import { poEntryCount } from '../../po/count.js'
 import { FilePicker } from '../components/FilePicker.js'
@@ -52,7 +53,9 @@ export function Translate({ cwd, onBack }: TranslateProps) {
   const [file, setFile] = useState('')
   const [mode, setMode] = useState<Mode>('pending')
   const [engine, setEngine] = useState<Engine>(config.defaultDraftEngine)
-  const [locale, setLocale] = useState(config.defaultLocale)
+  // Empty with no locale configured, and then filled from the picked file's
+  // Language header when that names one locale for certain (headerLocaleOf).
+  const [locale, setLocale] = useState(config.defaultLocale ?? '')
   const [batchSize, setBatchSize] = useState(initialBatchSize(config))
   const [focus, setFocus] = useState(FIELD_MODE)
   const [events, setEvents] = useState<TranslateEvent[]>([])
@@ -197,6 +200,7 @@ export function Translate({ cwd, onBack }: TranslateProps) {
             annotate={poEntryCount}
             onPick={(path) => {
               setFile(path)
+              if (config.defaultLocale === undefined) void headerLocaleOf(path).then((found) => found && setLocale(found))
               setPhase('options')
             }}
           />
@@ -231,6 +235,9 @@ export function Translate({ cwd, onBack }: TranslateProps) {
             <Text>{marker(FIELD_LOCALE)}Locale:        </Text>
             {typing ? <TextInput value={locale} onChange={setLocale} onSubmit={() => setFocus(FIELD_BATCH)} /> : <Text>{locale}</Text>}
           </Box>
+          {locale.trim() === '' && (
+            <Text color="yellow">  No locale set: type the one you translate into, or choose it once in Setup.</Text>
+          )}
           <Text>
             {marker(FIELD_BATCH)}Batch size:    {batchSize} entries per draft and review call
           </Text>

@@ -45,8 +45,9 @@ async function modeOf(path: string): Promise<number> {
 describe('loadConfig', () => {
   it('returns defaults when no file exists', () => {
     expect(loadConfig()).toEqual(DEFAULT_CONFIG)
+    // No defaultLocale: nothing is assumed until the person names one.
+    expect(loadConfig().defaultLocale).toBeUndefined()
     expect(DEFAULT_CONFIG).toEqual({
-      defaultLocale: 'tr',
       defaultDraftEngine: 'deepl',
       reviewProvider: 'claude',
       // Empty by default: until a reviewer says who they are on wp.org, the
@@ -301,6 +302,25 @@ describe('maskSecret', () => {
   it('shows first 4 and last 2 chars of longer values', () => {
     expect(maskSecret('123456789012')).toBe('1234…12')
     expect(maskSecret('sk-abcdefghijklmnop')).toBe('sk-a…op')
+  })
+})
+
+describe('loadConfig and the locale', () => {
+  // Written by an install that relied on the implicit tr. It must still parse:
+  // the commands that need a locale refuse on their own, with a message.
+  it('parses a config with no defaultLocale and leaves it unset', async () => {
+    await writeConfigRaw(JSON.stringify({ defaultDraftEngine: 'deepl', batchSize: 25, consistencyTtlDays: 30, properNouns: {} }))
+    expect(loadConfig().defaultLocale).toBeUndefined()
+  })
+
+  it('keeps a configured locale exactly as it was', async () => {
+    await writeConfigRaw(JSON.stringify({ defaultLocale: 'tr', batchSize: 25 }))
+    expect(loadConfig().defaultLocale).toBe('tr')
+  })
+
+  it('still refuses an empty one', async () => {
+    await writeConfigRaw(JSON.stringify({ defaultLocale: '' }))
+    expect(() => loadConfig()).toThrow(/defaultLocale/)
   })
 })
 

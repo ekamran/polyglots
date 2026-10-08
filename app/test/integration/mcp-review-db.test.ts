@@ -50,7 +50,8 @@ describe('E. the MCP server the review subprocess launches reads the same DB the
     const tmxPath = await writeTmx(ws.home, 'poedit.tmx', [{ source: 'Save Changes', target: 'Değişiklikleri Kaydet' }])
     await importTmx([tmxPath], { locale: 'tr' })
 
-    const configPath = await writeMcpConfig()
+    // As review writes it: the run's locale in the server's environment.
+    const configPath = await writeMcpConfig({ env: { POLYGLOTS_LOCALE: 'tr' } })
     const { mcpServers } = JSON.parse(await readFile(configPath, 'utf8')) as McpJson
     expect(mcpServers.polyglots?.env.POLYGLOTS_HOME).toBe(ws.home)
     expect(dbFile()).toBe(join(ws.home, 'data', 'polyglots.db'))
@@ -76,7 +77,8 @@ describe('E. the MCP server the review subprocess launches reads the same DB the
   })
 
   it('sees writes that happen after the server started (no stale snapshot)', async () => {
-    const configPath = await writeMcpConfig()
+    // As review writes it: the run's locale in the server's environment.
+    const configPath = await writeMcpConfig({ env: { POLYGLOTS_LOCALE: 'tr' } })
     session = await connectMcp(configPath)
     expect(await callJson<GlossaryEntry[]>(session, 'glossary_lookup', { term: 'settings' })).toEqual([])
 

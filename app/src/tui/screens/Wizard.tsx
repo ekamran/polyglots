@@ -75,16 +75,21 @@ export function matchLocales(query: string, limit = 8): Array<{ id: string; wp: 
 function LocaleStep({ onChosen, onSkip }: { onChosen: (id: string) => void; onSkip: () => void }) {
   const commands = useCommands()
   const glyphs = useGlyphs()
+  // The configured locale when there is one, so re-running setup starts from
+  // it. Otherwise empty: this used to open on tr, and enter, the key that
+  // moves a wizard on, quietly made a stranger a Turkish translator.
   const [query, setQuery] = useState(() => {
     try {
-      return commands.loadConfig().defaultLocale
+      return commands.loadConfig().defaultLocale ?? ''
     } catch {
       return ''
     }
   })
   const [at, setAt] = useState(0)
   const [error, setError] = useState<string>()
-  const matches = matchLocales(query)
+  // Nothing listed, and so nothing to choose, until something is typed: an
+  // unfiltered list would put a cursor on whichever locale sorts first.
+  const matches = query.trim() === '' ? [] : matchLocales(query)
   const chosen = Math.min(at, Math.max(0, matches.length - 1))
   // Enter is the search field's own submit.
   useKeys({
@@ -124,7 +129,11 @@ function LocaleStep({ onChosen, onSkip }: { onChosen: (id: string) => void; onSk
           <Text {...TOKENS.muted.ink}>{m.wp}</Text>
         </Text>
       ))}
-      {matches.length === 0 && <Text {...TOKENS.warn.ink}>translate.wordpress.org lists no locale like that.</Text>}
+      {query.trim() === '' ? (
+        <Text {...TOKENS.muted.ink}>Type the locale's code: de, pt_BR, nl_NL_formal, es_ES…</Text>
+      ) : (
+        matches.length === 0 && <Text {...TOKENS.warn.ink}>translate.wordpress.org lists no locale like that.</Text>
+      )}
       {error && <Text {...TOKENS.error.ink}>Could not save that: {error}</Text>}
     </Box>
   )

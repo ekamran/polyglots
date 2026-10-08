@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
@@ -66,6 +66,9 @@ beforeEach(async () => {
   savedEnv = { ...process.env }
   home = await mkdtemp(join(tmpdir(), 'polyglots-cli-fetch-'))
   process.env.POLYGLOTS_HOME = home
+  // Named rather than assumed: polyglots has no default locale.
+  await mkdir(join(home, 'config'), { recursive: true })
+  await writeFile(join(home, 'config', 'config.json'), JSON.stringify({ defaultLocale: 'tr' }))
   process.env.DEEPL_API_KEY = 'dpl-test-key-0123456789:fx'
 })
 

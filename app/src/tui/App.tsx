@@ -165,13 +165,17 @@ function Shell({ cwd = process.cwd(), onExit }: AppProps) {
 
   // Counted at launch and after the screens that can change it, not on
   // every navigation like the cheaper facts below: it opens polyglots.db.
-  const countGlossary = () =>
-    tryOr(() => commands.glossaryCount(tryOr(() => commands.loadConfig(), DEFAULT_CONFIG).defaultLocale), undefined)
+  // With no locale there is no glossary to count, and the step reads as missing.
+  const countGlossary = () => {
+    const locale = tryOr(() => commands.loadConfig(), DEFAULT_CONFIG).defaultLocale
+    return locale === undefined ? undefined : tryOr(() => commands.glossaryCount(locale), undefined)
+  }
   const [glossary, setGlossary] = useState<number | undefined>(countGlossary)
   const refreshGlossary = () => setGlossary(countGlossary())
 
   const status: SetupStatus = useMemo(() => {
     const config: PolyglotsConfig = tryOr(() => commands.loadConfig(), DEFAULT_CONFIG)
+    const locale = config.defaultLocale
     return setupStatus({
       config,
       secrets: tryOr<Secrets>(() => commands.loadSecrets(), {}),
@@ -179,7 +183,7 @@ function Shell({ cwd = process.cwd(), onExit }: AppProps) {
       ...(agents === undefined ? {} : { agents }),
       localeConfigured: tryOr(() => commands.localeConfigured(), false),
       ...(glossary === undefined ? {} : { glossaryCount: glossary }),
-      hasLocaleRules: tryOr(() => commands.hasLocaleRules(config.defaultLocale), false),
+      hasLocaleRules: locale === undefined ? false : tryOr(() => commands.hasLocaleRules(locale), false),
     })
   }, [commands, tuiState, agents, setupEpoch, provider, glossary])
 
@@ -213,6 +217,14 @@ function Shell({ cwd = process.cwd(), onExit }: AppProps) {
     setScreen(next)
   }
   const back = () => go(screen === 'setup' ? wizardReturn : parentOf(screen))
+  // From a screen that stopped for want of a locale: the wizard at its locale
+  // step, coming back to that screen once it is done or left.
+  const openLocaleSetup = () => {
+    setSetupEpoch((e) => e + 1)
+    setWizardReturn(screen)
+    setWizardStart('locale')
+    setScreen('setup')
+  }
   const quit = () => {
     onExit?.()
     exit()
@@ -324,13 +336,13 @@ function Shell({ cwd = process.cwd(), onExit }: AppProps) {
       case 'review':
         return <Review cwd={cwd} onBack={back} />
       case 'fetch':
-        return <Fetch onBack={back} />
+        return <Fetch onBack={back} onSetup={openLocaleSetup} />
       case 'split':
         return <Split cwd={cwd} onBack={back} />
       case 'import-tm':
-        return <ImportTm cwd={cwd} onBack={back} />
+        return <ImportTm cwd={cwd} onBack={back} onSetup={openLocaleSetup} />
       case 'export-tm':
-        return <ExportTm onBack={back} />
+        return <ExportTm onBack={back} onSetup={openLocaleSetup} />
       case 'stats':
         return <Stats cwd={cwd} onBack={back} />
       case 'sync-glossary':

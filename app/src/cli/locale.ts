@@ -111,14 +111,45 @@ export async function resolveFileLocale(raw: string | undefined, config: Polyglo
     const said = [...new Set(declared)].join(', ')
     throw new UsageError(`The files declare ${said}, not one locale polyglots can use. ${noLocaleMessage({ flag: true })}`)
   }
-  const row = resolved[0]!
-  const siblings = WPORG_LOCALES.filter((l) => l.slug === row.slug)
-  if (row.set === 'default' && siblings.length > 1) {
-    const choices = siblings.map((l) => (l.set === 'default' ? l.slug : `${l.slug}/${l.set}`))
+  const read = readLanguage(declared[0]!)
+  if (read !== undefined && 'choices' in read) {
+    const choices = [...read.choices]
     const last = choices.pop()
     throw new UsageError(`The file says ${declared[0]}, and ${declared[0]} could be ${choices.join(', ')} or ${last}. ${noLocaleMessage({ flag: true })}`)
   }
-  return { locale: row.id, fromHeader: true }
+  return { locale: ids[0]!, fromHeader: true }
+}
+
+/**
+ * What a Language header names: one locale, the several it could be, or
+ * nothing translate.wordpress.org lists. Several when the header resolves to
+ * a default translation set whose language has others (de_DE: de, de/formal),
+ * because GlotPress writes the same code for all of them.
+ */
+export function readLanguage(language: string): { locale: Locale } | { choices: Locale[] } | undefined {
+  const row = resolveLocale(language)
+  if (!row) return undefined
+  const siblings = WPORG_LOCALES.filter((l) => l.slug === row.slug)
+  if (row.set === 'default' && siblings.length > 1) {
+    return { choices: siblings.map((l) => (l.set === 'default' ? l.slug : `${l.slug}/${l.set}`)) }
+  }
+  return { locale: row.id }
+}
+
+/**
+ * The locale a .po's header names unambiguously, for the menu to offer in its
+ * locale field. Undefined for anything less certain, or a file that cannot be
+ * read: the field is shown and editable, so an empty one costs a few keys and
+ * a wrong one could cost a review.
+ */
+export async function headerLocaleOf(file: string): Promise<Locale | undefined> {
+  try {
+    const language = (await loadPo(file)).headers['Language']?.trim()
+    const read = language ? readLanguage(language) : undefined
+    return read !== undefined && 'locale' in read ? read.locale : undefined
+  } catch {
+    return undefined
+  }
 }
 
 export const headerLocaleNotice = (locale: Locale): string =>

@@ -41,8 +41,10 @@ export function setupStatus(f: SetupFacts): SetupStatus {
   const confirmed = (s: SetupStep) => f.state.wizard.confirmed.includes(s)
   const skipped = (s: SetupStep) => f.state.wizard.skipped.includes(s)
   const steps: Record<SetupStep, StepState> = {
-    // Whether the person chose a locale, not whether there is one: the
-    // defaults name tr, so a fresh install would otherwise read as done.
+    // Whether the person chose a locale, read off config.json itself. The
+    // defaults used to name tr, which made a fresh install read as done; they
+    // name none now, but the file stays the authority, since the config here
+    // falls back to the defaults when the file cannot be read.
     locale: f.localeConfigured || confirmed('locale') ? 'done' : 'missing',
     // The local reviewer is only ever chosen on purpose, by config set, so it
     // counts as configured. An agent counts once discovery says it is usable;

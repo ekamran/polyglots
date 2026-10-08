@@ -5,7 +5,7 @@ import React from 'react'
 import { stripVTControlCharacters } from 'node:util'
 import { App } from '../../src/tui/App.js'
 import { MAX_FRAME_COLUMNS } from '../../src/tui/size.js'
-import { DEFAULT_CONFIG } from '../../src/config.js'
+import { DEFAULT_CONFIG, saveConfig } from '../../src/config.js'
 import type { PolyglotsConfig } from '../../src/types.js'
 import { HOME, RESERVED_KEYS, walk } from '../../src/tui/menu.js'
 import { nextProvider } from '../../src/tui/screens/Home.js'
@@ -31,6 +31,8 @@ let cwd: string
 
 beforeEach(async () => {
   home = await makeHome()
+  // Named rather than assumed: polyglots has no default locale (no-locale.test.tsx).
+  saveConfig({ defaultLocale: 'tr' })
   cwd = join(home.path, 'work')
   await mkdir(cwd)
   await writeFile(join(cwd, 'plugin.po'), '')
@@ -227,7 +229,8 @@ describe('Home', () => {
 describe('the header', () => {
   it('shows the version, the provider with its model, and the setup count', async () => {
     const commands = fakeCommands({
-      loadConfig: () => ({ ...DEFAULT_CONFIG, reviewProvider: 'antigravity' }),
+      // A locale, or there is nothing for the rules step to have rules for.
+      loadConfig: () => ({ ...DEFAULT_CONFIG, defaultLocale: 'tr', reviewProvider: 'antigravity' }),
       discoverAgents: async () => [agentStatus('claude'), agentStatus('antigravity', { model: 'Gemini 3.8 Flash (Low)' })],
       hasLocaleRules: () => true,
     })
