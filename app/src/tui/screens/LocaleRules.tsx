@@ -131,6 +131,10 @@ export function LocaleRules({ onBack }: LocaleRulesProps) {
   const [copyResult, setCopyResult] = useState<{ ok: boolean; lines: string[] }>()
 
   const dirty = draft !== undefined && JSON.stringify(value) !== JSON.stringify(draft.value)
+  // A locale with no file can be saved as it stands: that is how someone
+  // content with the built-in rules says so, and what the setup step counts.
+  // The defaults are written commented out, so nothing is re-reviewed.
+  const savable = dirty || (draft !== undefined && !draft.exists)
   const id = draft?.locale ?? ''
 
   const activeRules = (): Set<string> =>
@@ -264,7 +268,7 @@ export function LocaleRules({ onBack }: LocaleRulesProps) {
       }
       setStage(next)
     }
-    else if (ch === 's' && dirty) void save()
+    else if (ch === 's' && savable) void save()
   })
 
   const marker = (selected: boolean) => (selected ? '❯ ' : '  ')
@@ -290,7 +294,7 @@ export function LocaleRules({ onBack }: LocaleRulesProps) {
       )}
 
       {draft && stage !== 'pick' && (
-        <Text dimColor>{draft.exists ? draft.path : `No file yet: built-in defaults apply. Saving creates ${basename(draft.path)}.`}</Text>
+        <Text dimColor>{draft.exists ? draft.path : `No file yet: built-in defaults apply. s saves them as ${basename(draft.path)}, which completes this setup step.`}</Text>
       )}
 
       {draft && (stage === 'overview' || stage === 'leave') && (
@@ -321,7 +325,13 @@ export function LocaleRules({ onBack }: LocaleRulesProps) {
           {stage === 'leave' ? (
             <Text color="yellow">Unsaved changes. s save · d discard and leave · esc keep editing</Text>
           ) : (
-            <Hint>{dirty ? '↑↓ move · enter open · s save · esc back' : '↑↓ move · enter open · esc back'}</Hint>
+            <Hint>
+              {dirty
+                ? '↑↓ move · enter open · s save · esc back'
+                : savable
+                  ? '↑↓ move · enter open · s save these rules · esc back'
+                  : '↑↓ move · enter open · esc back'}
+            </Hint>
           )}
         </>
       )}

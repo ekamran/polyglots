@@ -16,6 +16,17 @@ export const MIN_SIZE: Size = { columns: 60, rows: 20 }
 // is exactly 24 rows with the footer. Two 38-column cards and their gap need 80.
 const GRID: Size = { columns: 80, rows: 24 }
 
+// The widest the frame grows: two 56-column home cards and the column
+// between them. A wider terminal centres the frame instead of stretching it,
+// so every screen shares the home grid's edges and the eye does not jump
+// between a centred home and screens pinned to the far left.
+export const MAX_FRAME_COLUMNS = 113
+
+/** The size the frame lays out in: the window, capped at the frame's widest. */
+export function frameSize(window: Size): Size {
+  return { columns: Math.min(window.columns, MAX_FRAME_COLUMNS), rows: window.rows }
+}
+
 export interface FrameLayout {
   fits: boolean
   menu: 'grid' | 'list'

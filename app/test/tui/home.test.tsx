@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import React from 'react'
+import { stripVTControlCharacters } from 'node:util'
 import { App } from '../../src/tui/App.js'
+import { MAX_FRAME_COLUMNS } from '../../src/tui/size.js'
 import { DEFAULT_CONFIG } from '../../src/config.js'
 import type { PolyglotsConfig } from '../../src/types.js'
 import { HOME, RESERVED_KEYS, walk } from '../../src/tui/menu.js'
@@ -65,6 +67,23 @@ describe('Home', () => {
     // Two cards on one line is what makes it a grid.
     expect(lastFrame()).toMatch(/Translate a \.po file.*Review a submitted \.po/)
     expect(frame).toMatch(/› t Translate/)
+  })
+
+  // Every screen shares the home grid's width and its left edge, so the eye
+  // does not jump between a centred home and screens pinned to the left.
+  it('keeps the whole frame in one column as wide as the home grid on a wide terminal', async () => {
+    const { lastFrame } = render(<App commands={fakeCommands()} cwd={cwd} />, { columns: 200, rows: 40 })
+    await tick()
+    const lines = stripVTControlCharacters(lastFrame()).split('\n').filter((l) => l.trim() !== '')
+    const left = Math.min(...lines.map((l) => l.length - l.trimStart().length))
+    const right = Math.max(...lines.map((l) => l.trimEnd().length))
+    expect(right - left).toBe(MAX_FRAME_COLUMNS)
+    // Centred; an odd margin rounds whichever way the layout engine likes.
+    expect(Math.abs(left - (200 - MAX_FRAME_COLUMNS) / 2)).toBeLessThanOrEqual(0.5)
+    const wordmark = lines.find((l) => l.includes('▛▌▛▌'))!
+    const footer = lines.find((l) => l.includes('quit'))!
+    expect(wordmark.length - wordmark.trimStart().length).toBe(left)
+    expect(footer.length - footer.trimStart().length).toBe(left)
   })
 
   it('fits the grid exactly at 80x24', async () => {

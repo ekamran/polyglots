@@ -13,9 +13,9 @@ import { InputGate, TypingProvider, useGlobalInput, useTyping } from './input.js
 import { footerKeys } from './keys.js'
 import { CONFIGURATION, HOME, parentOf, TOOLS, type ScreenId } from './menu.js'
 import { providerLabel } from './local.js'
-import { createServices, ServicesProvider, useStatsError, useStatsUrl, type Services } from './services.js'
+import { createServices, ServicesProvider, useServices, useStatsError, useStatsUrl, type Services } from './services.js'
 import { setupStatus, type SetupStatus } from './setup.js'
-import { frameLayout, MIN_SIZE, SizeProvider, useSize } from './size.js'
+import { frameLayout, frameSize, MIN_SIZE, SizeProvider, useSize } from './size.js'
 import { SETUP_STEPS, type SetupStep, type TuiState } from './state.js'
 import { Agents } from './screens/Agents.js'
 import { ConfigureKeys } from './screens/ConfigureKeys.js'
@@ -113,10 +113,12 @@ function Shell({ cwd = process.cwd(), onExit }: AppProps) {
   // exit line: read through the context the App just provided, not the prop.
   const commands = useCommands()
   const { exit } = useApp()
-  const size = useSize()
+  const terminal = useSize()
+  const size = frameSize(terminal)
   const layout = frameLayout(size)
   const typing = useTyping()
   const busy = useBusy()
+  const services = useServices()
   const statsUrl = useStatsUrl()
   const statsError = useStatsError()
 
@@ -250,6 +252,9 @@ function Shell({ cwd = process.cwd(), onExit }: AppProps) {
     if (typing.current()) return
     if (input === '?') setOverlay('help')
     else if (input === ':') setOverlay('palette')
+    // Stops the stats server from anywhere, since it keeps serving after its
+    // screen is left. The stats screen binds x itself, to show that it stopped.
+    else if (input === 'x' && statsUrl !== undefined && screen !== 'stats') void services.stopStats()
   })
 
   const switchProvider = (next: ReviewChoice) => {
@@ -362,6 +367,7 @@ function Shell({ cwd = process.cwd(), onExit }: AppProps) {
   // it, and a resize that dips under the minimum must not cost a review.
   const hidden = overlay !== undefined || !layout.fits
   return (
+    <Box width={terminal.columns} height={size.rows} justifyContent="center">
     <Box flexDirection="column" width={size.columns} height={size.rows}>
       {layout.fits ? (
         <Header
@@ -370,6 +376,8 @@ function Shell({ cwd = process.cwd(), onExit }: AppProps) {
           {...(model === undefined ? {} : { model })}
           status={status}
           {...(statusFocus === undefined ? {} : { focusedStep: statusFocus })}
+          {...(statsUrl === undefined ? {} : { statsUrl })}
+          {...(statsError === undefined ? {} : { statsError })}
         />
       ) : null}
       <Box flexDirection="column" flexGrow={1} marginTop={layout.fits ? 1 : 0} overflow="hidden">
@@ -412,13 +420,9 @@ function Shell({ cwd = process.cwd(), onExit }: AppProps) {
         {overlay === 'quit' && <QuitPrompt onQuit={quit} onCancel={() => setOverlay(undefined)} />}
       </Box>
       {layout.fits ? (
-        <Footer
-          keys={footerKeys(screen)}
-          busy={busy}
-          {...(statsUrl === undefined ? {} : { statsUrl })}
-          {...(statsError === undefined ? {} : { statsError })}
-        />
+        <Footer keys={footerKeys(screen, statsUrl !== undefined)} busy={busy} />
       ) : null}
+    </Box>
     </Box>
   )
 }

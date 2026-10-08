@@ -18,10 +18,14 @@ Entries say what changed. For why and how, read the commit.
 - Review statistics in the interactive mode serves the stats page locally; `w` still writes a standalone copy.
 - The interactive mode prints the last run's output path after quitting; switch it off under Configuration › Interface settings.
 - Locale Rules shows the plain name and description of the rule under the cursor.
+- In the interactive mode, `x` stops the stats server from any screen; its address sits in the header as a link.
+- Locale Rules can save the built-in rules as the locale's file with `s`, which completes the setup step.
+- The stats share image names ada.tools/polyglots.
 - `polyglots stats --no-open` serves the dashboard without opening a browser.
 
 ### Changed
 
+- The interactive mode is never wider than the home grid, and is centred on a wide terminal.
 - Interactive menu keys: Tools is `o`, API keys is `k`. Ctrl+C asks before stopping a run in progress.
 - A run stopped by Ctrl+C, SIGINT or SIGTERM, or by quitting the interactive mode, is recorded as stopped, not abandoned, so stats no longer counts it as a failure.
 - `polyglots stats` serves a live dashboard on localhost and opens it; `--out`, or running off a terminal, writes a standalone HTML copy.

@@ -224,7 +224,7 @@ describe('setup facts', () => {
 })
 
 describe('the stats server reporting trouble', () => {
-  it('shows a server error in the footer after its screen is left', async () => {
+  it('shows a server error in the header after its screen is left', async () => {
     let onError: ((err: Error) => void) | undefined
     const commands = fakeCommands({
       startStatsServer: vi.fn(async (opts?: { onError?: (err: Error) => void }) => {

@@ -19,6 +19,8 @@ export interface HeaderProps {
   status: SetupStatus
   // The step the setup status has focus on, when home has moved focus there.
   focusedStep?: SetupStep
+  statsUrl?: string
+  statsError?: string
 }
 
 function StepMark({ step, status, focused }: { step: SetupStep; status: SetupStatus; focused: boolean }) {
@@ -57,13 +59,41 @@ function SetupLine({ status, focusedStep }: { status: SetupStatus; focusedStep?:
   )
 }
 
+// An OSC 8 hyperlink: terminals that support it make the text clickable, and
+// the rest print the text alone. The whole address is the target because the
+// server's token is in its path; the label is only host and port.
+const link = (url: string, text: string) => `\u001b]8;;${url}\u0007${text}\u001b]8;;\u0007`
+
+function StatsLine({ url, error }: { url?: string | undefined; error?: string | undefined }) {
+  const glyphs = useGlyphs()
+  if (!url && !error) return null
+  // An error can come while the server is still up, from one bad request, so
+  // the two are shown side by side rather than one in place of the other.
+  return (
+    <Text wrap="truncate-end">
+      {url ? (
+        <Text>
+          <Text {...TOKENS.success.ink}>{glyphs.bullet}</Text> <Text {...TOKENS.muted.ink}>stats</Text>{' '}
+          {link(url, url.replace(/^https?:\/\//, '').replace(/\/.*$/, ''))}
+        </Text>
+      ) : null}
+      {url && error ? '  ' : ''}
+      {error ? (
+        <Text>
+          <Text {...TOKENS.warn.ink}>{glyphs.warn}</Text> <Text {...TOKENS.muted.ink}>stats: {error}</Text>
+        </Text>
+      ) : null}
+    </Text>
+  )
+}
+
 const Version = () => (
   <Text>
     <Text {...TOKENS.heading.ink}>polyglots</Text> <Text {...TOKENS.muted.ink}>{VERSION}</Text>
   </Text>
 )
 
-export function Header({ wordmark, provider, model, status, focusedStep }: HeaderProps) {
+export function Header({ wordmark, provider, model, status, focusedStep, statsUrl, statsError }: HeaderProps) {
   const glyphs = useGlyphs()
   // Narrow terminals stack the status under the name: side by side, the
   // setup line alone is wider than the space beside the wordmark.
@@ -74,7 +104,10 @@ export function Header({ wordmark, provider, model, status, focusedStep }: Heade
           <Version />
           <ProviderLine provider={provider} model={model} />
         </Box>
-        <SetupLine status={status} focusedStep={focusedStep} />
+        <Box justifyContent="space-between">
+          <SetupLine status={status} focusedStep={focusedStep} />
+          <StatsLine url={statsUrl} error={statsError} />
+        </Box>
       </Box>
     )
   }
@@ -91,6 +124,7 @@ export function Header({ wordmark, provider, model, status, focusedStep }: Heade
         <Version />
         <ProviderLine provider={provider} model={model} />
         <SetupLine status={status} focusedStep={focusedStep} />
+        <StatsLine url={statsUrl} error={statsError} />
       </Box>
     </Box>
   )
@@ -99,11 +133,9 @@ export function Header({ wordmark, provider, model, status, focusedStep }: Heade
 export interface FooterProps {
   keys: KeyHelp[]
   busy: boolean
-  statsUrl?: string
-  statsError?: string
 }
 
-export function Footer({ keys, busy, statsUrl, statsError }: FooterProps) {
+export function Footer({ keys, busy }: FooterProps) {
   const glyphs = useGlyphs()
   return (
     <Box width="100%" justifyContent="space-between" flexShrink={0}>
@@ -116,18 +148,6 @@ export function Footer({ keys, busy, statsUrl, statsError }: FooterProps) {
         ))}
       </Text>
       <Box flexShrink={0}>
-        {statsUrl ? (
-          <Text>
-            {' '}
-            <Text {...TOKENS.success.ink}>{glyphs.bullet}</Text> <Text {...TOKENS.muted.ink}>stats {statsUrl.replace(/^https?:\/\//, '').replace(/\/.*$/, '')}</Text>
-          </Text>
-        ) : null}
-        {statsError ? (
-          <Text>
-            {' '}
-            <Text {...TOKENS.warn.ink}>{glyphs.warn}</Text> <Text {...TOKENS.muted.ink}>stats: {statsError}</Text>
-          </Text>
-        ) : null}
         {busy ? (
           <Text>
             {' '}

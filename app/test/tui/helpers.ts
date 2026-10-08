@@ -185,7 +185,10 @@ export async function waitForText(frame: () => string | undefined, text: string 
   await tick()
 }
 
-export const flat = (frame: string | undefined): string => (frame ?? '').replace(/\s+/g, ' ')
+// Whitespace collapsed, and terminal hyperlinks reduced to their text, so a
+// label that is also a link still reads as the label.
+export const flat = (frame: string | undefined): string =>
+  (frame ?? '').replace(/\u001b\]8;;[^\u0007]*\u0007/g, '').replace(/\s+/g, ' ')
 
 export interface Home {
   path: string

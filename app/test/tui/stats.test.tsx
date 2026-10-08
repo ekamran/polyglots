@@ -105,6 +105,55 @@ describe('the live statistics page', () => {
     expect(flat(view.lastFrame())).not.toContain('stats 127.0.0.1')
   })
 
+  // In the header's right column, under the setup line, as a terminal
+  // hyperlink to the full address: the token is in the path, so the short
+  // label alone could not be pasted into a browser.
+  it('names the server in the header as a link, and not in the footer', async () => {
+    const view = await openLive()
+    await waitForText(view.lastFrame, 'Serving at')
+    view.stdin.write(keys.esc)
+    await tick(ESC_DELAY)
+    await waitForText(view.lastFrame, 'About')
+    const lines = view.lastFrame()!.split('\n')
+    const header = lines.slice(0, 4).join('\n')
+    expect(flat(header)).toContain('stats 127.0.0.1:4321')
+    expect(header).toContain('\u001b]8;;http://127.0.0.1:4321/t0k3n/\u0007')
+    expect(lines.at(-1)).not.toContain('127.0.0.1')
+  })
+
+  it('stops serving with x from another screen, and says so in the footer while it serves', async () => {
+    const close = vi.fn(async () => {})
+    const commands = fakeCommands({ startStatsServer: vi.fn(async () => ({ url: 'http://127.0.0.1:9/x/', port: 9, close })) })
+    const view = await openLive(commands)
+    await waitForText(view.lastFrame, 'Serving at')
+    view.stdin.write(keys.esc)
+    await tick(ESC_DELAY)
+    await waitForText(view.lastFrame, 'About')
+    expect(view.lastFrame()!.split('\n').at(-1)).toMatch(/x stop stats/)
+    view.stdin.write('x')
+    await tick()
+    await tick()
+    expect(close).toHaveBeenCalledTimes(1)
+    expect(flat(view.lastFrame())).not.toContain('stats 127.0.0.1')
+    expect(view.lastFrame()!.split('\n').at(-1)).not.toMatch(/stop stats/)
+  })
+
+  it('leaves x to a text field that has focus', async () => {
+    const close = vi.fn(async () => {})
+    const commands = fakeCommands({ startStatsServer: vi.fn(async () => ({ url: 'http://127.0.0.1:9/x/', port: 9, close })) })
+    const view = await openLive(commands)
+    await waitForText(view.lastFrame, 'Serving at')
+    view.stdin.write(keys.esc)
+    await tick(ESC_DELAY)
+    await waitForText(view.lastFrame, 'About')
+    await openFromHome(view.stdin, 'locale-rules')
+    await waitForText(view.lastFrame, 'Locale:')
+    view.stdin.write('x')
+    await tick()
+    expect(close).not.toHaveBeenCalled()
+    expect(flat(view.lastFrame())).toContain('Locale: trx')
+  })
+
   it('says why it could not start, and still offers the standalone copy', async () => {
     const commands = fakeCommands({ startStatsServer: vi.fn(async () => Promise.reject(new Error('jobs.db is locked'))) })
     const view = await openLive(commands)

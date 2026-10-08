@@ -1,6 +1,7 @@
 import { Box, Text } from 'ink'
 import { ASCII_GLYPHS } from '../../ui/glyphs.js'
 import { TOKENS } from '../../ui/tokens.js'
+import { MAX_FRAME_COLUMNS } from '../size.js'
 import type { MenuNode } from '../menu.js'
 import { useGlyphs } from '../theme.js'
 
@@ -14,8 +15,9 @@ export interface MenuGridProps {
 
 // The widest a card gets. Beyond this a wide terminal only buys air around
 // the grid, which reads better than two cards stretched to the edges.
-const MAX_CARD = 56
 const GAP = 1
+// As wide as the frame lets two cards and the gap be.
+const MAX_CARD = (MAX_FRAME_COLUMNS - GAP) / 2
 
 export const GRID_COLUMNS = 2
 

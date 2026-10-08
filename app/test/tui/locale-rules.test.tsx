@@ -3,7 +3,8 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import React from 'react'
 import { profileFor } from '../../src/audit/rules/profiles.js'
-import { localeRulesFile, loadLocaleRules } from '../../src/rules/load.js'
+import { localeRulesFile, loadLocaleRules, rulesFingerprint } from '../../src/rules/load.js'
+import { hasLocaleRules } from '../../src/tui/setup.js'
 import { App } from '../../src/tui/App.js'
 import { CommandsProvider } from '../../src/tui/commands.js'
 import { LocaleRules } from '../../src/tui/screens/LocaleRules.js'
@@ -121,6 +122,40 @@ describe('LocaleRules: picking a locale', () => {
     await waitForText(view.lastFrame, /Locale/)
     view.stdin.write(keys.enter)
     await waitForText(view.lastFrame, /nope/)
+  })
+})
+
+// Someone content with the built-in rules has to be able to say so: without
+// a file the setup step can never be done, and an unchanged draft is not
+// dirty, so s used to do nothing.
+describe('LocaleRules: accepting the built-in rules', () => {
+  it('offers s on a locale with no file, and saving it finishes the setup step', async () => {
+    const view = mount()
+    await openLocale(view)
+    expect(hasLocaleRules('tr')).toBe(false)
+    expect(flat(view.lastFrame())).toMatch(/s save these rules/)
+    view.stdin.write('s')
+    await waitForText(view.lastFrame, /Saved/)
+    expect(hasLocaleRules('tr')).toBe(true)
+  })
+
+  // The defaults are written commented out, which fingerprints as no file:
+  // accepting them must not re-review every file of the locale.
+  it('writes the defaults without moving the rules fingerprint', async () => {
+    const view = mount()
+    await openLocale(view)
+    view.stdin.write('s')
+    await waitForText(view.lastFrame, /Saved/)
+    expect(rulesFingerprint(loadLocaleRules('tr'))).toBe('')
+    expect(flat(view.lastFrame())).not.toMatch(/next review of every tr file starts over/)
+  })
+
+  it('does not offer s again once the file exists and nothing changed', async () => {
+    const view = mount()
+    await openLocale(view)
+    view.stdin.write('s')
+    await waitForText(view.lastFrame, /Saved/)
+    expect(flat(view.lastFrame())).not.toMatch(/s save/)
   })
 })
 

@@ -19,6 +19,7 @@ export const GLOBAL_KEYS: KeyHelp[] = [
   { keys: 'esc', does: 'back' },
   { keys: 'q', does: 'back; quits from home; stops a run' },
   { keys: 'ctrl+c', does: 'quit, asking first while a run is going' },
+  { keys: 'x', does: 'stop the stats server while it serves' },
 ]
 
 export const RUN_KEYS: KeyHelp[] = [
@@ -67,9 +68,13 @@ export const SCREEN_KEYS: Record<ScreenId, KeyHelp[]> = {
 
 // What the footer has room for: the screen's first few keys, then the
 // globals that matter most. The `?` overlay has the rest.
-export function footerKeys(screen: ScreenId): KeyHelp[] {
+export function footerKeys(screen: ScreenId, serving = false): KeyHelp[] {
+  // While the stats server runs, x stops it from any screen; the stats screen
+  // lists x among its own keys already.
+  const stats = serving && screen !== 'stats' ? [{ keys: 'x', does: 'stop stats' }] : []
   if (screen === 'home') {
     return [
+      ...stats,
       { keys: '←↑↓→', does: 'move' },
       { keys: 'enter', does: 'open' },
       { keys: 'tab', does: 'setup' },
@@ -80,5 +85,5 @@ export function footerKeys(screen: ScreenId): KeyHelp[] {
     ]
   }
   const own = SCREEN_KEYS[screen].slice(0, 3)
-  return [...own, { keys: '?', does: 'help' }, ...(own.some((k) => k.keys === 'esc') ? [] : [{ keys: 'esc', does: 'back' }])]
+  return [...stats, ...own, { keys: '?', does: 'help' }, ...(own.some((k) => k.keys === 'esc') ? [] : [{ keys: 'esc', does: 'back' }])]
 }
