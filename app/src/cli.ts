@@ -9,9 +9,9 @@ import { exportGlossary } from './commands/glossary-export.js'
 import { exportTm, type TmExportFormat } from './commands/tm-export.js'
 import { fetchProjects, resolveProjects } from './commands/fetch.js'
 import { runFetch, type FetchFlags } from './cli/fetch.js'
+import { warnAboutLocalModel, warnAboutLocalReview, warnUniversalOnly } from './cli/run-notices.js'
 import { copyRules, describeRules, editRules, openInEditor, type OpenEditor } from './cli/rules.js'
 import { loadLocaleRules, localeRulesFile } from './rules/load.js'
-import { supportNotice } from './rules/support.js'
 import { syncGlossary } from './commands/glossary-sync.js'
 import { reviewFile } from './commands/review.js'
 import { splitPo } from './commands/split.js'
@@ -61,8 +61,7 @@ import { createPainter, type Painter } from './ui/paint.js'
 import { errorLine, header, hintLine, nextLine, okLine, warnLine } from './ui/messages.js'
 import { table } from './ui/layout.js'
 import { reviewSummary, statsServingSummary, statsSummary, translateSummary } from './cli/summaries.js'
-import { LOCAL_REVIEW_NOTICE, localBatchAdvice, localReviewBatchSize } from './review/local.js'
-import { engineId } from './jobs/hash.js'
+import { LOCAL_REVIEW_NOTICE, localReviewBatchSize } from './review/local.js'
 import type { RunTuiOptions } from './tui/index.js'
 import type { Locale, PolyglotsConfig } from './types.js'
 import { VERSION } from './version.js'
@@ -358,16 +357,6 @@ async function runTranslate(cli: Cli, patterns: string[], flags: TranslateFlags)
   return failed > 0 ? EXIT_ERROR : EXIT_OK
 }
 
-// Before the run, on stderr, and never a refusal: the universal checks are
-// worth running on their own, but whoever reads the result should know an
-// absent finding is not a passed language check.
-function warnUniversalOnly(cli: Cli, locale: Locale): void {
-  const notice = supportNotice(locale)
-  // The notice is bare text and the glyph marks it. It used to carry a "Note: "
-  // prefix that this, its only caller, stripped again with a regex.
-  if (notice) cli.err(warnLine(cli.ui.err, notice))
-}
-
 /**
  * The batch size a run uses: the flag, or the configured one, or for the
  * experimental local reviewer the smaller of that and its own default. A
@@ -378,44 +367,6 @@ function warnUniversalOnly(cli: Cli, locale: Locale): void {
 function resolveBatchSize(config: PolyglotsConfig, flag: string | undefined): number {
   if (flag !== undefined) return parsePositiveInt('--batch-size', flag)
   return config.reviewProvider === 'local' ? localReviewBatchSize(config.batchSize) : config.batchSize
-}
-
-async function warnAboutLocalModel(cli: Cli, target: LocalTarget): Promise<ModelCheck | undefined> {
-  try {
-    const check = await cli.checkLocalModel(target)
-    if (check.state !== 'installed') cli.err(warnLine(cli.ui.err, check.message ?? `${check.model} is ${check.state}`))
-    return check
-  } catch (error) {
-    // A throw here is a bug rather than a probe failure, since a probe never
-    // rejects. It still must not be the reason a translate fails.
-    cli.err(warnLine(cli.ui.err, `could not check the local model: ${errorMessage(error)}`))
-    return undefined
-  }
-}
-
-/**
- * Before a run with the local reviewer: say it is experimental, check its
- * model, and warn when the batch will not fit the context. The context is the
- * configured one, or failing that what the server's listing reported.
- */
-async function warnAboutLocalReview(
-  cli: Cli,
-  target: LocalTarget,
-  batchSize: number,
-  locale: Locale,
-  check: 'check' | 'skip-check' = 'check',
-): Promise<void> {
-  cli.err(warnLine(cli.ui.err, LOCAL_REVIEW_NOTICE))
-  const result = check === 'check' ? await warnAboutLocalModel(cli, target) : undefined
-  const contextLength = target.contextLength ?? result?.contextLength
-  const advice = localBatchAdvice({
-    batchSize,
-    locale,
-    model: engineId(localModelId(target), 'local'),
-    kind: target.kind,
-    ...(contextLength === undefined ? {} : { contextLength }),
-  })
-  if (advice) cli.err(warnLine(cli.ui.err, advice))
 }
 
 // defaultLocale named first and by hand: it has no default, so it is not a key
@@ -904,6 +855,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
             reviewFile: cli.reviewFile,
             translate: cli.translate,
             stopRunsOnSignal: cli.stopRunsOnSignal,
+            checkLocalModel: cli.checkLocalModel,
             out: cli.out,
             err: cli.err,
             ui: cli.ui,

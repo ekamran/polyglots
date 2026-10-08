@@ -1,5 +1,5 @@
 import { text } from 'node:stream/consumers'
-import { LOCAL_REVIEW_NOTICE, localReviewBatchSize } from '../review/local.js'
+import { localReviewBatchSize } from '../review/local.js'
 import { agentBinOverride, batchAdvice } from '../agent/providers.js'
 import { runProjects, withSharedDbs, MAX_PARALLEL } from '../commands/batch.js'
 import { defaultOutDir, type fetchProjects, type resolveProjects, type Fetched, type Resolution } from '../commands/fetch.js'
@@ -26,6 +26,9 @@ import type { Painter } from '../ui/paint.js'
 import { warnLine } from '../ui/messages.js'
 import { table } from '../ui/layout.js'
 import { fetchTally, tallyCell } from './summaries.js'
+import type { checkLocalModel } from '../draft/discover.js'
+import { localModelId, resolveLocalTarget } from '../draft/local-chat.js'
+import { warnAboutLocalModel, warnAboutLocalReview, warnUniversalOnly } from './run-notices.js'
 
 export interface FetchFlags {
   get?: string
@@ -48,6 +51,7 @@ export interface FetchCli {
   translate: typeof translateFile
   // Records the batch's runs as stopped if a signal ends it; see stopOnSignal.
   stopRunsOnSignal: () => () => void
+  checkLocalModel: typeof checkLocalModel
   ui: { out: Painter; err: Painter }
   out(line: string): void
   err(line: string): void
@@ -94,6 +98,7 @@ export async function runFetch(cli: FetchCli, names: string[], flags: FetchFlags
   const config = cli.config()
   const locale = requireLocale(flags.locale, config)
   loadLocaleRules(locale)
+  warnUniversalOnly(cli, locale)
   // The experimental local reviewer gets its own small default, as on review
   // and translate; see resolveBatchSize in cli.ts.
   const batchSize =
@@ -123,7 +128,17 @@ export async function runFetch(cli: FetchCli, names: string[], flags: FetchFlags
     const advice = batchAdvice(config.reviewProvider, batchSize)
     if (advice) cli.err(warnLine(cli.ui.err, advice))
   }
-  if (config.reviewProvider === 'local' && !(review && flags.ai === false)) cli.err(warnLine(cli.ui.err, LOCAL_REVIEW_NOTICE))
+  // Checked here, as translate and review check them, rather than left to the
+  // first batch: by then every export has been downloaded, and with several
+  // projects queued the same failure would be met once per project. Warned,
+  // never refused, for the reasons given where translate does it in cli.ts.
+  const draftTarget = !review && draftEngine === 'local' ? resolveLocalTarget(config) : undefined
+  if (draftTarget) await warnAboutLocalModel(cli, draftTarget)
+  if (config.reviewProvider === 'local' && !(review && flags.ai === false)) {
+    const reviewTarget = resolveLocalTarget(config)
+    const same = draftTarget !== undefined && localModelId(draftTarget) === localModelId(reviewTarget)
+    await warnAboutLocalReview(cli, reviewTarget, batchSize, locale, same ? 'skip-check' : 'check')
+  }
 
   cli.err(`Checking ${refs.length} ${refs.length === 1 ? 'project' : 'projects'} on translate.wordpress.org...`)
   const onWait = (ms: number) => cli.err(waitNotice(ms))
