@@ -25,7 +25,8 @@ At most once a week, one small JSON payload:
   `{"glossary": 12, "placeholder": 3}`. Only the fixed list of check names
   polyglots ships; custom rules are never named. Checks that run only for
   some locales (apostrophes, title case, ampersands, number formats) are sent
-  as one `locale-rule` count, since their names would hint at the locale.
+  as one `locale-rule` count, since their names would hint at the locale. So
+are the AI reviewer's title-case findings, for the same reason.
 
 Never sent: your locale, project names or slugs, file names, source strings,
 translations, your WordPress.org username, the review provider or the model.

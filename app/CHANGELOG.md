@@ -10,6 +10,10 @@ Entries say what changed. For why and how, read the commit.
 
 ## [Unreleased]
 
+### Fixed
+
+- Usage statistics count the AI reviewer's title-case findings inside `locale-rule`, since that count hints at the locale.
+
 ## [0.26.0] - 2026-10-08
 
 ### Added

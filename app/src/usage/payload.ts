@@ -50,8 +50,15 @@ const KNOWN_FINDINGS = new Set(FINDING_KEYS)
 // They are summed under one key; the universal rules and the AI categories
 // run the same for every locale and keep their names.
 const LOCALE_RULE = 'locale-rule'
+//
+// The reviewer's own title-case category goes the same way: it is asked about
+// capitalization only where title-case is on (audit/prompt.ts), so its count
+// hints at the locale exactly as the rule's does.
+const LOCALE_AI_CATEGORIES = new Set(['ai:title-case'])
 const sentAs = (key: string): string =>
-  BUILT_IN_RULES.includes(key as BuiltInRule) && !UNIVERSAL_RULES.includes(key) ? LOCALE_RULE : key
+  (BUILT_IN_RULES.includes(key as BuiltInRule) && !UNIVERSAL_RULES.includes(key)) || LOCALE_AI_CATEGORIES.has(key)
+    ? LOCALE_RULE
+    : key
 
 type Totals = Omit<UsagePayload, 'installId' | 'version'>
 

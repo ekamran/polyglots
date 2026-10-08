@@ -101,6 +101,15 @@ describe('buildUsagePayload', () => {
     expect(findings).toEqual({ 'locale-rule': 4, glossary: 1 })
   })
 
+  // The reviewer is told about capitalization only where title-case is on,
+  // so its title-case category hints at the locale exactly as the rule did.
+  it('sends the AI title-case category in the same locale-rule count', () => {
+    run({ command: 'review', project: 'wp-plugins/akismet' }, { entries: 10, repaired: 0, byCategory: { 'ai:title-case': 3, 'title-case': 1, 'ai:meaning': 2 } })
+    db.close()
+    const { findings } = buildUsagePayload({ installId: ID, version: '1.2.3', jobsPath: path })
+    expect(findings).toEqual({ 'locale-rule': 4, 'ai:meaning': 2 })
+  })
+
   it('gives zeros when there is no job store, and creates none', async () => {
     db.close()
     await rm(path)
