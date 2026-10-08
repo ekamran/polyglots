@@ -1,3 +1,4 @@
+import { saveConfig } from '../../src/config.js'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -93,6 +94,42 @@ describe('Review with no locale', () => {
     stdin.write(keys.enter)
     // The header is read after the form appears, so wait for the value itself.
     await waitForText(() => flat(lastFrame()), /Locale: +sv\b/)
+  })
+})
+
+describe('the header locale in Review', () => {
+  async function pick(commandsConfig?: Partial<import('../../src/types.js').PolyglotsConfig>) {
+    if (commandsConfig) saveConfig(commandsConfig)
+    const cwd = join(home.path, 'work')
+    await mkdir(cwd, { recursive: true })
+    await writeFile(
+      join(cwd, 'x-sv.po'),
+      ['msgid ""', 'msgstr ""', '"Content-Type: text/plain; charset=UTF-8\\n"', '"Language: sv_SE\\n"', '', 'msgid "A"', 'msgstr "B"', ''].join('\n'),
+    )
+    const view = render(
+      <CommandsProvider value={fakeCommands()}>
+        <Review cwd={cwd} onBack={() => undefined} />
+      </CommandsProvider>,
+    )
+    await waitForText(view.lastFrame, 'x-sv.po')
+    view.stdin.write(keys.down)
+    await tick()
+    view.stdin.write(keys.enter)
+    await waitForText(view.lastFrame, 'Locale:')
+    return view
+  }
+
+  it('says the locale came from the file', async () => {
+    const view = await pick()
+    await waitForText(() => flat(view.lastFrame()), /Locale: +sv\b/)
+    expect(flat(view.lastFrame())).toMatch(/From the file's Language header/)
+  })
+
+  it('does not prefill from the header for Antigravity, whose lookup server never hears it', async () => {
+    const view = await pick({ reviewProvider: 'antigravity' })
+    await tick(50)
+    expect(flat(view.lastFrame())).not.toMatch(/Locale: +sv\b/)
+    expect(flat(view.lastFrame())).toMatch(/Antigravity/)
   })
 })
 

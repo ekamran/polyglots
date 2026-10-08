@@ -173,6 +173,15 @@ describe('no default locale', () => {
     expect(syncGlossary).toHaveBeenCalledWith({ locale: 'pt-br' })
   })
 
+  // Someone who wants each file's Language header to decide has to be able
+  // to take the configured locale away again without editing config.json.
+  it('unsets the locale with an empty value', async () => {
+    expect(await run(['config', 'set', 'defaultLocale', 'pt_BR'])).toBe(0)
+    expect(await run(['config', 'set', 'defaultLocale', ''])).toBe(0)
+    expect(stdout.text).toContain('defaultLocale unset')
+    expect(JSON.parse(await readFile(join(home, 'config', 'config.json'), 'utf8'))).not.toHaveProperty('defaultLocale')
+  })
+
   it('says in help that there is no default yet', async () => {
     await run(['glossary', 'sync', '--help'])
     expect(stdout.text.replace(/\s+/g, ' ')).toContain('(default: defaultLocale, none set yet)')
@@ -237,6 +246,34 @@ describe('the Language header', () => {
     const review = fakeReview()
     expect(await run(['review', file, '--no-ai', '--locale', 'de'], { reviewFile: review.fn })).toBe(0)
     expect(review.locales).toEqual(['de'])
+  })
+
+  // Antigravity's lookup server is registered once and reads its locale from
+  // POLYGLOTS_LOCALE or config when it starts; it never hears the locale a run
+  // read from a header, and would answer glossary and memory lookups in
+  // another language.
+  it('does not take the header for an Antigravity review, which its lookup server never hears', async () => {
+    await setConfig({ reviewProvider: 'antigravity' })
+    const file = await poFile('x-sv.po', 'sv_SE')
+    const review = fakeReview()
+    expect(await run(['review', file], { reviewFile: review.fn })).toBe(2)
+    expect(stderr.text).toMatch(/Antigravity/)
+    expect(review.locales).toEqual([])
+  })
+
+  it('still takes the header for an Antigravity setup when no agent runs', async () => {
+    await setConfig({ reviewProvider: 'antigravity' })
+    const file = await poFile('x-sv.po', 'sv_SE')
+    const review = fakeReview()
+    expect(await run(['review', file, '--no-ai'], { reviewFile: review.fn })).toBe(0)
+    expect(review.locales).toEqual(['sv'])
+  })
+
+  it('names the file with no Language header when several are given', async () => {
+    const a = await poFile('a-sv.po', 'sv_SE')
+    const b = await poFile('b.po', undefined)
+    expect(await run(['translate', a, b], { translate: vi.fn() })).toBe(2)
+    expect(stderr.text).toContain('b.po')
   })
 
   it('refuses a file with no Language header', async () => {

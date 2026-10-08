@@ -26,7 +26,8 @@ Entries say what changed. For why and how, read the commit.
 - `polyglots stats --no-open` serves the dashboard without opening a browser.
 - Review and translate run screens list the most recent entries as each batch lands, with their outcome and rule hits.
 - TUI screens taller than the window scroll to keep the cursor and a run's keys in view; page up and page down scroll a screen with no cursor.
-- `review` and `translate` take the locale from the file's Language header when nothing else names one.
+- `review` and `translate` take the locale from the file's Language header when nothing else names one, except when Antigravity reviews.
+- `config set defaultLocale ""` unsets the locale.
 
 ### Changed
 
@@ -49,7 +50,8 @@ Entries say what changed. For why and how, read the commit.
 - The TUI's key hints match the keys every screen binds; Export TM's footer showed keys it does not have.
 - The review, translate and fetch footers list the keys of the stage they are in, not the options form's during a run.
 - Emoji and other wide characters no longer shift box borders, and truncated cells keep their colour.
-- Boxes and the live progress line never run wider than the terminal, including under `tee`.
+- Boxes and the live progress line never run wider than the terminal; a piped summary keeps at least 80 columns, so a saved log loses nothing.
+- The TUI file picker keeps its cursor in view on a short terminal.
 - The TUI no longer waits more than a second on a stalled stream when it exits.
 - The stats page keeps focus, sort, filter and open lists on the right table after a refresh.
 - The Locale Rules trial reads the glossary without writing to polyglots.db.

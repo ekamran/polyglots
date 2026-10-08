@@ -149,6 +149,17 @@ export function loadConfig(): PolyglotsConfig {
   return validate({ ...DEFAULT_CONFIG, ...readConfigFile() })
 }
 
+/**
+ * Removes a key from config.json, for a setting whose absence means
+ * something: no defaultLocale lets each file's Language header decide.
+ */
+export function unsetConfig(key: 'defaultLocale'): PolyglotsConfig {
+  const { [key]: _gone, ...rest } = readConfigFile()
+  const merged = validate({ ...DEFAULT_CONFIG, ...rest })
+  writePrivate(configFile(), JSON.stringify(rest, null, 2) + '\n')
+  return merged
+}
+
 export function saveConfig(patch: Partial<PolyglotsConfig>): PolyglotsConfig {
   const fromFile = readConfigFile()
   const merged = validate({ ...DEFAULT_CONFIG, ...fromFile, ...patch })

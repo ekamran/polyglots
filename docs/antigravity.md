@@ -40,7 +40,9 @@ agy mcp add --env POLYGLOTS_LOCALE=de polyglots \
 
 - The options come before the name `polyglots`; `agy` rejects them after it.
 - `POLYGLOTS_LOCALE` is the locale the lookups use. Antigravity has no way to
-  pass it per run, so run the command again if you change locale.
+  pass it per run, so run the command again if you change locale. For the
+  same reason, a review with Antigravity never takes its locale from the
+  file's `Language` header: set `defaultLocale` or pass `--locale`.
 - If you use a Node version manager (nvm, fnm, asdf), `command -v node` may
   print a path that only exists while that shell is open. Use the stable
   path of the Node installation instead; with fnm it is

@@ -46,11 +46,17 @@ const columnsOf = (stream: PaintStream | undefined): number | undefined =>
 // `review x.po | tee log` that is still the terminal stderr is drawn on: a box
 // sized to a fixed 80 there wrapped into a mess on a narrower window. So width
 // falls back to the sibling stream, then to COLUMNS, and only then to 80.
+// The sibling can only widen a pipe, never narrow it below 80: a pipe cannot
+// say whether it is tee or > file, and a box cut to a narrow window loses text
+// in a saved log for good, where a wrapped one under tee is only untidy.
 export function createPainter(stream: PaintStream, env: NodeJS.ProcessEnv = process.env, sibling?: PaintStream): Painter {
   const color = colorEnabled(stream, env)
   const fromEnv = Number(env.COLUMNS)
+  const beside = columnsOf(sibling)
   const width =
-    columnsOf(stream) ?? columnsOf(sibling) ?? (Number.isInteger(fromEnv) && fromEnv > 0 ? fromEnv : DEFAULT_WIDTH)
+    columnsOf(stream) ??
+    (beside === undefined ? undefined : Math.max(beside, DEFAULT_WIDTH)) ??
+    (Number.isInteger(fromEnv) && fromEnv > 0 ? fromEnv : DEFAULT_WIDTH)
   return {
     color,
     glyphs: asciiOnly(env) ? ASCII_GLYPHS : UNICODE_GLYPHS,

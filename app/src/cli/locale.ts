@@ -1,3 +1,4 @@
+import { basename } from 'node:path'
 import { existsSync } from 'node:fs'
 import Database from 'better-sqlite3'
 import { dbFile, jobsDbFile } from '../paths.js'
@@ -97,12 +98,32 @@ export interface FileLocale {
  * without a word. Either failure refuses with the same message as having no
  * header at all, plus what the files did say.
  */
-export async function resolveFileLocale(raw: string | undefined, config: PolyglotsConfig, files: string[]): Promise<FileLocale> {
+export async function resolveFileLocale(
+  raw: string | undefined,
+  config: PolyglotsConfig,
+  files: string[],
+  opts: { antigravity?: boolean } = {},
+): Promise<FileLocale> {
   if (raw !== undefined || config.defaultLocale !== undefined) return { locale: requireLocale(raw, config) }
+  // Antigravity's lookup server is registered once, outside any run, and
+  // takes its locale from POLYGLOTS_LOCALE or config when it starts. A locale
+  // read from a header never reaches it, so its glossary and memory lookups
+  // would answer in whatever language it was started with. Passing the run's
+  // locale through the prompt would fix that, at the cost of every cached
+  // verdict; refusing the header costs one flag.
+  if (opts.antigravity) {
+    throw new UsageError(
+      `With Antigravity reviewing, the locale has to come from --locale or defaultLocale: its lookup server never hears a locale read from the file. ${noLocaleMessage({ flag: true })}`,
+    )
+  }
   const declared: string[] = []
   for (const file of files) {
     const language = (await loadPo(file)).headers['Language']?.trim()
-    if (!language) throw new UsageError(noLocaleMessage({ flag: true }))
+    if (!language) {
+      // With several files, say which one stopped it.
+      const which = files.length > 1 ? `${basename(file)} has no Language header. ` : ''
+      throw new UsageError(`${which}${noLocaleMessage({ flag: true })}`)
+    }
     declared.push(language)
   }
   const resolved = declared.map((language) => resolveLocale(language))

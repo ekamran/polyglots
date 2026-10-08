@@ -132,7 +132,10 @@ describe('per-stream colour', () => {
 })
 
 describe('per-stream width', () => {
-  it('sizes a piped summary to the terminal stderr is on, as under tee', async () => {
+  // A pipe cannot say whether it is tee or > file, so a narrow terminal on
+  // stderr does not narrow a piped summary below 80: cut to 30 columns, a
+  // saved log would lose its values for good.
+  it('keeps a piped summary at least 80 wide beside a narrow terminal', async () => {
     const h = harness()
     const stderr = h.stderr as Sink & { columns?: number }
     stderr.columns = 30
@@ -141,7 +144,8 @@ describe('per-stream width', () => {
     expect(code).toBe(0)
     const boxLines = h.stdout.text.split('\n').filter((l) => /^[╭│╰]/.test(l))
     expect(boxLines.length).toBeGreaterThan(0)
-    for (const l of boxLines) expect(displayWidth(l)).toBeLessThanOrEqual(30)
+    expect(Math.max(...boxLines.map(displayWidth))).toBeGreaterThan(30)
+    for (const l of boxLines) expect(displayWidth(l)).toBeLessThanOrEqual(80)
   })
 })
 

@@ -15,7 +15,7 @@ polyglots config set batchSize 50
 
 | Setting | Default | What it does |
 |---|---|---|
-| `defaultLocale` | not set | The locale a command uses when `--locale` is not given. `review` and `translate` then fall back to the file's `Language` header; every other command that needs a locale stops and asks for one. |
+| `defaultLocale` | not set | The locale a command uses when `--locale` is not given. `review` and `translate` then fall back to the file's `Language` header; every other command that needs a locale stops and asks for one. `config set defaultLocale ""` unsets it. |
 | `defaultDraftEngine` | `deepl` | The draft engine for `translate`: `deepl`, `openai` or `local`. |
 | `reviewProvider` | `claude` | Which agent reviews: `claude` or `antigravity`. `local` is the experimental local reviewer; see [local models](local-models.md). |
 | `wporgUsername` | empty | Your translate.wordpress.org login. Used only to link the requester message to the contributor's strings. |

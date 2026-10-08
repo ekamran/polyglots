@@ -58,6 +58,12 @@ export function Translate({ cwd, onBack }: TranslateProps) {
   // Empty with no locale configured, and then filled from the picked file's
   // Language header when that names one locale for certain (headerLocaleOf).
   const [locale, setLocale] = useState(config.defaultLocale ?? '')
+  // The locale read from the picked file, kept to say so beside the field.
+  const [headerLocale, setHeaderLocale] = useState<string | undefined>(undefined)
+  // Antigravity's lookup server takes its locale from config when it starts
+  // and never hears one read from a file (resolveFileLocale says why), so the
+  // header is not offered for it.
+  const headerAllowed = config.defaultLocale === undefined && config.reviewProvider !== 'antigravity'
   const [batchSize, setBatchSize] = useState(initialBatchSize(config))
   const [focus, setFocus] = useState(FIELD_MODE)
   const [events, setEvents] = useState<TranslateEvent[]>([])
@@ -203,7 +209,15 @@ export function Translate({ cwd, onBack }: TranslateProps) {
             annotate={poEntryCount}
             onPick={(path) => {
               setFile(path)
-              if (config.defaultLocale === undefined) void headerLocaleOf(path).then((found) => found && setLocale(found))
+              if (headerAllowed) {
+                void headerLocaleOf(path).then((found) => {
+                  if (!found) return
+                  setHeaderLocale(found)
+                  // Only into an empty field: the header is read after the
+                  // form opens, and must not overwrite what was typed since.
+                  setLocale((current) => (current.trim() === '' ? found : current))
+                })
+              }
               setPhase('options')
             }}
           />
@@ -238,7 +252,11 @@ export function Translate({ cwd, onBack }: TranslateProps) {
             <Text>{marker(FIELD_LOCALE)}Locale:        </Text>
             {typing ? <TextInput value={locale} onChange={setLocale} onSubmit={() => setFocus(FIELD_BATCH)} /> : <Text>{locale}</Text>}
           </Box>
-          {locale.trim() === '' && (
+          {headerLocale !== undefined && locale === headerLocale && <Text dimColor>  From the file's Language header.</Text>}
+          {locale.trim() === '' && config.reviewProvider === 'antigravity' && config.defaultLocale === undefined && (
+            <Text color="yellow">  With Antigravity reviewing, type the locale: its lookup server never hears one read from the file.</Text>
+          )}
+          {locale.trim() === '' && !(config.reviewProvider === 'antigravity' && config.defaultLocale === undefined) && (
             <Text color="yellow">  No locale set: type the one you translate into, or choose it once in Setup.</Text>
           )}
           <Text>

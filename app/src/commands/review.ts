@@ -181,9 +181,14 @@ const MSGID_DISPLAY_MAX = 80
  * otherwise push every line below it down a row, in a panel whose height is
  * fixed.
  */
+// Counted and cut by grapheme, not by UTF-16 unit, so an emoji's surrogate
+// pair or a joined family sequence is kept whole or left out whole.
+const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+
 export function shortMsgid(msgid: string): string {
   const flat = msgid.replace(/\s+/g, ' ').trim()
-  return flat.length <= MSGID_DISPLAY_MAX ? flat : `${flat.slice(0, MSGID_DISPLAY_MAX - 1).trimEnd()}…`
+  const parts = Array.from(graphemes.segment(flat), (g) => g.segment)
+  return parts.length <= MSGID_DISPLAY_MAX ? flat : `${parts.slice(0, MSGID_DISPLAY_MAX - 1).join('').trimEnd()}…`
 }
 
 // The order matters: a failed batch's entries are also problems, and a repair is

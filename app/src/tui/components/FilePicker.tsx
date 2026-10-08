@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { Box, Text } from 'ink'
 import { useKeys } from '../hooks/useKeys.js'
 import { SelectInput } from '../input.js'
+import { ScrollTarget } from './Viewport.js'
 
 /**
  * How the listing is ordered.
@@ -198,10 +199,14 @@ export function FilePicker({ dir, extensions, onPick, limit = 15, annotate, choo
     const kinds = new Map(listing.items.map((i) => [i.label, i.value.kind]))
     return function Item({ isSelected, label }: { isSelected?: boolean; label: string }) {
       const selected = isSelected === true
+      // Followed by the body: the picker is taller than the body on a short
+      // terminal, and its cursor would otherwise walk off the bottom.
       return (
-        <Text color={itemColor(kinds.get(label), selected)} bold={selected}>
-          {label}
-        </Text>
+        <ScrollTarget active={selected}>
+          <Text color={itemColor(kinds.get(label), selected)} bold={selected}>
+            {label}
+          </Text>
+        </ScrollTarget>
       )
     }
   }, [listing])

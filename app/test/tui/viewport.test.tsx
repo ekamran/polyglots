@@ -176,3 +176,24 @@ describe('a tall screen with no cursor', () => {
     await waitForText(() => flat(view.lastFrame()), /pgup pgdn/)
   })
 })
+
+// The file picker is taller than the body at 80x24 (title, browsing line,
+// sort line, fifteen rows, hint), so its cursor has to be followed too.
+describe('the file picker on a short terminal', () => {
+  it.each([
+    { columns: 80, rows: 24 },
+    { columns: 60, rows: 20 },
+  ])('keeps the selected file in view at $columns x $rows', async (size) => {
+    for (let i = 0; i < 20; i++) await writeFile(join(cwd, `file-${String(i).padStart(2, '0')}.po`), '')
+    const view = render(<App commands={fakeCommands()} cwd={cwd} />, size)
+    await openFromHome(view.stdin, 'review')
+    await waitForText(view.lastFrame, 'file-19.po')
+    // Fifteen rows down from "..": the last row of the picker's window, which
+    // sits below the body's bottom edge on both sizes.
+    for (let i = 0; i < 15; i++) {
+      view.stdin.write(keys.down)
+      await tick()
+    }
+    await waitForText(view.lastFrame, /❯ \S+\.po/)
+  })
+})

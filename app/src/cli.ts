@@ -24,7 +24,7 @@ import { openJobsDb } from './jobs/db.js'
 import { stopOwnRuns } from './jobs/runs.js'
 import { stopOnSignal } from './jobs/stop-on-signal.js'
 import { portInUseWarning } from './stats/server.js'
-import { DEFAULT_CONFIG, isHttpUrl, loadConfig, loadSecrets, maskSecret, saveConfig, saveSecret } from './config.js'
+import { DEFAULT_CONFIG, isHttpUrl, loadConfig, loadSecrets, maskSecret, saveConfig, saveSecret, unsetConfig } from './config.js'
 import {
   UsageError,
   expandFileArgs,
@@ -266,7 +266,9 @@ interface ReviewFlags {
 async function runTranslate(cli: Cli, patterns: string[], flags: TranslateFlags): Promise<number> {
   const files = expandFileArgs(patterns)
   const config = cli.config()
-  const { locale, fromHeader } = await resolveFileLocale(flags.locale, config, files)
+  const { locale, fromHeader } = await resolveFileLocale(flags.locale, config, files, {
+    antigravity: config.reviewProvider === 'antigravity',
+  })
   if (fromHeader) cli.err(hintLine(cli.ui.err, headerLocaleNotice(locale)))
   loadLocaleRules(locale)
   warnUniversalOnly(cli, locale)
@@ -609,6 +611,12 @@ async function configSet(cli: Cli, key: string, raw: string): Promise<void> {
     return
   }
   if (!isConfigKey(key)) throw new UsageError(`Unknown config key "${key}"; expected one of ${SETTABLE_KEYS}`)
+  // An empty locale is no locale: each file's Language header decides again.
+  if (key === 'defaultLocale' && raw.trim() === '') {
+    unsetConfig('defaultLocale')
+    cli.out(okLine(cli.ui.out, 'defaultLocale unset'))
+    return
+  }
   const saved = saveConfig({ [key]: coerceConfigValue(key, raw) })
   cli.out(okLine(cli.ui.out, `${key} = ${formatConfigValue(key, saved[key])}`))
   // The one door to the experimental reviewer, so the warning is said here.
@@ -918,7 +926,9 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
     .action(async (raw: string, flags: ReviewFlags) => {
       const [target] = expandFileArgs([raw])
       const config = cli.config()
-      const { locale, fromHeader } = await resolveFileLocale(flags.locale, config, [target!])
+      const { locale, fromHeader } = await resolveFileLocale(flags.locale, config, [target!], {
+        antigravity: config.reviewProvider === 'antigravity' && flags.ai !== false,
+      })
       if (fromHeader) cli.err(hintLine(cli.ui.err, headerLocaleNotice(locale)))
       // Before anything else: a review must not run on rules the person
       // believes are in force when the file that says so cannot be read.

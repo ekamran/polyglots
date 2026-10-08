@@ -44,11 +44,18 @@ describe('createPainter', () => {
     expect(off.paint('error', 'x')).toBe('x')
   })
 
-  it('sizes a piped stream to the terminal beside it, as under tee', () => {
+  it('sizes a piped stream to a wider terminal beside it, as under tee', () => {
     // review x.po | tee log: stdout is a pipe, but what it carries is still
     // read on the terminal stderr is drawn on.
-    expect(createPainter(pipe, {}, { isTTY: true, columns: 60 }).width).toBe(60)
+    expect(createPainter(pipe, {}, { isTTY: true, columns: 120 }).width).toBe(120)
     expect(createPainter({ isTTY: true, columns: 100 }, {}, { isTTY: true, columns: 60 }).width).toBe(100)
+  })
+
+  // A pipe cannot say whether it is tee or > file, and a box cut to a narrow
+  // window loses text in a saved log for good; a wrapped one under tee is
+  // only untidy. So a terminal beside a pipe can widen it, never narrow it.
+  it('never sizes a piped stream narrower than 80, so a saved log keeps its text', () => {
+    expect(createPainter(pipe, {}, { isTTY: true, columns: 60 }).width).toBe(80)
   })
 
   it('falls back to COLUMNS when neither stream is a terminal', () => {

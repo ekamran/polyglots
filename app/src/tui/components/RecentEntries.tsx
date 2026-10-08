@@ -75,9 +75,9 @@ const MAX_ROWS = 12
  * How many entries the panel lists at this terminal size.
  *
  * Worked out from the frame the App lays out (the header is two rows taller
- * where the wordmark shows) rather than left to the body to clip, because the
- * body clips from the bottom and the bottom is where the pause and stop keys
- * are named. Never below three: a smaller panel is a flicker, not a list.
+ * where the wordmark shows), so the panel and the pause and stop keys below it
+ * fit on one page without the body having to scroll to keep the keys in view.
+ * Never below three: a smaller panel is a flicker, not a list.
  */
 export function panelRows(window: Size): number {
   const size = frameSize(window)
