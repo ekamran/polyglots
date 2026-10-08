@@ -139,12 +139,17 @@ function LocaleStep({ onChosen, onSkip }: { onChosen: (id: string) => void; onSk
   )
 }
 
-/** The providers worth offering: agents discovery found usable, and the local reviewer when a server answers. */
+/** The providers worth offering: agents discovery found usable, the local reviewer when a server answers, and no AI once both have been asked. */
 export function offeredProviders(agents: AgentStatus[] | undefined, servers: ModelServer[] | undefined): ProviderOption[] {
   return REVIEW_PROVIDERS.filter((p) =>
-    p.needs === 'agent'
-      ? (agents ?? []).some((a) => a.provider === p.id && a.usable)
-      : (servers ?? []).some((s) => s.state === 'up'),
+    // Only once discovery has answered both questions. Offered earlier, it
+    // would be the only row on screen while discovery runs, and an impatient
+    // enter would turn a person with a working agent into a rules-only one.
+    p.needs === 'nothing'
+      ? agents !== undefined && servers !== undefined
+      : p.needs === 'agent'
+        ? (agents ?? []).some((a) => a.provider === p.id && a.usable)
+        : (servers ?? []).some((s) => s.state === 'up'),
   )
 }
 
@@ -285,7 +290,9 @@ export function Wizard({ start, status, agents, onRecord, onAdvance, onDone }: W
           onPick={(e) => {
             if (!save({ defaultDraftEngine: e.id })) return
             record('confirmed')
-            setEngine(e.id)
+            // Nothing to configure for no engine: no key, no server.
+            if (e.id === 'none') advance()
+            else setEngine(e.id)
           }}
           onSkip={skip}
         />

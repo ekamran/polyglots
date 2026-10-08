@@ -101,6 +101,10 @@ export interface TranslateSummary {
   translated: number
   fuzzy: number
   skipped: number
+  // Entries left as they were because nothing was asked to draft them: set
+  // only by --draft-engine none, which fills from the memory alone. Absent on
+  // every other run, so their summaries read exactly as before.
+  untranslated?: number
   stopped?: string
 }
 
@@ -412,7 +416,9 @@ async function reviewDrafts(
           // Agent options only: a local reviewer has none, and `local` must
           // never reach an agent spawn as a provider name.
           ...(!local && opts.bin ? { bin: opts.bin } : {}),
-          ...(opts.provider !== 'local' ? { provider: opts.provider } : {}),
+          // Never `none` in practice, which skips this pass, but narrowed
+          // here so it cannot reach a spawn as a provider name either.
+          ...(opts.provider !== 'local' && opts.provider !== 'none' ? { provider: opts.provider } : {}),
           ...(!local && opts.model ? { model: opts.model } : {}),
         })
       : []
@@ -488,8 +494,18 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
     // must not outlive the instructions that produced it.
     const config = translateConfigHash(locale)
     const draftConfig = draftConfigHash(locale)
-    pruneStaleConfigs(jobs, 'draft_verdict', locale, config)
-    pruneStaleConfigs(jobs, 'draft', locale, draftConfig)
+    const draftChoice = normalizeDraftEngine(opts.draftEngine)
+    // No engine: the memory fills what it can and nothing else is asked. An
+    // injected engine wins, as it does everywhere else here, so a test that
+    // hands one over is never quietly turned into a memory-only run.
+    const memoryOnly = draftChoice === 'none' && !opts.engine
+    // Only a run that reads or writes these caches prunes them. One that drafts
+    // nothing would otherwise delete drafts a paid engine wrote under an
+    // earlier prompt, rows it never had any use for.
+    if (!memoryOnly) {
+      pruneStaleConfigs(jobs, 'draft_verdict', locale, config)
+      pruneStaleConfigs(jobs, 'draft', locale, draftConfig)
+    }
 
     // Derived rather than read off the engine, which does not exist yet: it is
     // built only once there is a batch to translate, so a fully cached run
@@ -500,14 +516,21 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
     // The configured provider unless the caller named one. Read once: a run
     // must not change agent part way because the setting moved underneath it.
     const provider = opts.provider ?? settings.reviewProvider
-    const draftChoice = normalizeDraftEngine(opts.draftEngine)
+    // With no reviewer, the engine's drafts are written for a human to check
+    // rather than judged: fuzzy, after the same mechanical repairs and checks a
+    // reviewed draft gets, and with no verdict cached, since none was formed.
+    const unreviewed = provider === 'none'
     // Both local targets are resolved before the run row exists, so an
     // OpenAI-compatible server with no model is refused, not recorded as a
     // run that failed. The draft engine and the reviewer may use different
     // models: --local-model is the one, --model the other.
     const localDraft = draftChoice === 'local' && !opts.engine ? resolveLocalTarget(settings, opts.localModel) : undefined
-    const localReview = provider === 'local' ? resolveLocalTarget(settings, opts.model) : undefined
-    const engineName = opts.engine?.name ?? (localDraft ? localModelId(localDraft) : draftEngineId(opts.draftEngine))
+    // Not resolved when nothing is drafted: there is nothing for it to review,
+    // and a reviewer with no model chosen must not refuse a run that never
+    // asks it anything.
+    const localReview = provider === 'local' && !memoryOnly ? resolveLocalTarget(settings, opts.model) : undefined
+    const engineName =
+      opts.engine?.name ?? (memoryOnly ? 'none' : localDraft ? localModelId(localDraft) : draftEngineId(opts.draftEngine))
     // Without --model, antigravity runs whatever its own settings file names,
     // so the bare provider let a switch from Flash to Pro serve Flash's
     // verdicts as Pro's on every entry already seen. The same fallback review
@@ -515,7 +538,7 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
     // below still passes opts.model alone, and antigravity keeps choosing.
     const reviewEngine = localReview
       ? engineId(localModelId(localReview), 'local')
-      : engineId(opts.model ?? (provider === 'local' ? undefined : configuredModel(provider)), provider)
+      : engineId(opts.model ?? (provider === 'local' || provider === 'none' ? undefined : configuredModel(provider)), provider)
     const { draftCache, reviewCache } = buildCaches(jobs, {
       nplurals: po.nplurals,
       ...(pluralForms === undefined ? {} : { pluralForms }),
@@ -567,7 +590,8 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
     }
     if (savedHits) emit({ type: 'saved' })
 
-    const batches = chunk(rest, batchSize)
+    if (memoryOnly) summary.untranslated = rest.length
+    const batches = memoryOnly ? [] : chunk(rest, batchSize)
     if (batches.length > 0) {
       const engine =
         opts.engine ??
@@ -582,9 +606,10 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
       const review =
         opts.review ??
         (localReview ? createLocalDraftReviewer(opts.localChat ?? createLocalChat(localReview), reviewEngine) : reviewBatch)
-      // A local reviewer has no MCP, so nothing would read the file.
+      // A local reviewer has no MCP, so nothing would read the file, and with
+      // no reviewer there is nothing to start it.
       const mcpConfigPath =
-        opts.mcpConfigPath ?? (localReview ? '' : await writeMcpConfig({ env: { [MCP_ENV.locale]: locale } }))
+        opts.mcpConfigPath ?? (localReview || unreviewed ? '' : await writeMcpConfig({ env: { [MCP_ENV.locale]: locale } }))
 
       // Review's rules, on translate's own drafts: built once for the file.
       const checker = createDraftChecker({
@@ -629,6 +654,20 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
             const prepared = new Map(batch.map((u) => [u.key, checker.prepare(u, drafts!.get(u.key) ?? [])]))
             const fixedDrafts: Drafts = new Map([...prepared].map(([k, p]) => [k, p.drafts]))
             const checks = new Map([...prepared].map(([k, p]) => [k, p.checks]))
+            if (unreviewed) {
+              // Nothing judged these, so every one is written for a human to
+              // confirm, and finalize still applies the fix patterns and names
+              // whatever check the draft fails.
+              results = batch.map((u) =>
+                checker.finalize(u, {
+                  key: u.key,
+                  text: fixedDrafts.get(u.key) ?? [],
+                  fuzzy: true,
+                  reason: 'Not reviewed: no review provider is set.',
+                }),
+              )
+              break
+            }
             emit({ type: 'batch-phase', index, phase: 'reviewing', at: Date.now() })
             results = (
               await reviewDrafts(batch, fixedDrafts, review, { ...opts, provider }, locale, po.nplurals, pluralForms, mcpConfigPath, reviewCache, checks, localAsk)

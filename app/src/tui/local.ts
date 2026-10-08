@@ -7,8 +7,9 @@ import type { Locale, PolyglotsConfig, ReviewChoice } from '../types.js'
 // What the review, translate and fetch screens share about the experimental
 // local reviewer, so the three cannot word it or size it differently.
 
-/** The provider as a screen names it. The local reviewer always says what it is. */
+/** The provider as a screen names it. The local reviewer and no reviewer always say what they are. */
 export function providerLabel(provider: ReviewChoice): string {
+  if (provider === 'none') return 'none (rules only, no AI)'
   return provider === 'local' ? 'local (experimental)' : provider
 }
 

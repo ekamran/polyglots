@@ -462,6 +462,35 @@ describe('Review screen', () => {
     })
   })
 
+  // With reviewProvider none there is no AI to skip to or from: the field is
+  // fixed on, says why, and the run is rules-only without anyone toggling it.
+  it('fixes rules-only on when the review provider is none, and says why', async () => {
+    saveConfig({ defaultLocale: 'tr', reviewProvider: 'none' })
+    const reviewFile = vi.fn<ReviewFile>(async (opts) => {
+      opts.onProgress?.({ type: 'done', summary: reviewSummaryOf(opts.file) })
+      return reviewSummaryOf(opts.file)
+    })
+    const view = await openReview(fakeCommands({ reviewFile }))
+    await pickFile(view)
+    const { lastFrame, stdin } = view
+    await waitForText(lastFrame, /Skip AI checks:\s*yes/i)
+    expect(flat(lastFrame())).toContain('No AI is set up as the review provider')
+    for (let i = 0; i < 2; i++) {
+      stdin.write(keys.down)
+      await tick()
+    }
+    stdin.write(' ')
+    await tick()
+    expect(flat(lastFrame())).toMatch(/Skip AI checks:\s*yes/i)
+    for (let i = 0; i < 2; i++) {
+      stdin.write(keys.down)
+      await tick()
+    }
+    stdin.write(keys.enter)
+    await waitFor(() => reviewFile.mock.calls.length > 0)
+    expect(reviewFile.mock.calls[0]?.[0]).toMatchObject({ noAi: true })
+  })
+
   /**
    * The reducer could always describe a pending stop; nothing ever told it one
    * had been asked for. Pressing q set the run control to stopping and the

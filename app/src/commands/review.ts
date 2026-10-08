@@ -232,13 +232,18 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
   // Read once, at the top: a run must not change agent part way because the
   // setting moved underneath it, and every verdict it caches is keyed by this.
   const provider = opts.provider ?? loadConfig().reviewProvider
+  // `none` is a standing choice to review without AI, so it is --no-ai
+  // without having to say so on every run. Folded in here rather than at each
+  // caller, so the CLI, both TUI screens and fetch cannot disagree about it,
+  // and so nothing below can reach for an agent the person never set up.
+  const noAi = opts.noAi === true || provider === 'none'
   // A local model has no CLI and no MCP. It gets its own adjudicator, its own
   // prompt variant in every key, and an engine id that names the server and
   // model (`local:ollama:<model>`), so its verdicts can never be served as an
   // agent's or the other way round. Resolved here, before the run row exists,
   // so a target with no model is refused rather than recorded as a failure.
-  const local = provider === 'local' && !opts.noAi ? resolveLocalTarget(loadConfig(), opts.model) : undefined
-  const agent = provider === 'local' ? undefined : provider
+  const local = provider === 'local' && !noAi ? resolveLocalTarget(loadConfig(), opts.model) : undefined
+  const agent = provider === 'local' || provider === 'none' ? undefined : provider
   // What the engine id records. An explicit --model settles it; otherwise ask
   // the provider what it is configured to run, because antigravity chooses its
   // own from its own settings file and a verdict Flash formed must not be
@@ -265,7 +270,7 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
   const reviewable = all.filter(submitted)
   const emit = opts.onProgress ?? (() => {})
 
-  const target = outputPath(opts.file, opts)
+  const target = outputPath(opts.file, { ...(opts.outDir === undefined ? {} : { outDir: opts.outDir }), noAi })
   const properNouns = opts.properNouns ?? configuredProperNouns(opts.locale)
   const batchSize = opts.batchSize ?? DEFAULT_BATCH_SIZE
 
@@ -293,7 +298,13 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
   try {
     const config = computeConfigHash({ locale: opts.locale, glossary, properNouns })
     // The cache holds verdicts for the current configuration and nothing else.
-    pruneStaleConfigs(jobs, 'audit_verdict', opts.locale, config)
+    //
+    // Not on a rules-only run, which neither reads nor writes a verdict. The
+    // rows it would delete are an agent's, formed under a glossary or rule set
+    // that has since changed, and they come back into use if that change is
+    // undone. A run that judged nothing is not the one to decide they are
+    // garbage; the next run that does judge prunes them exactly as before.
+    if (!noAi) pruneStaleConfigs(jobs, 'audit_verdict', opts.locale, config)
 
     // A marker written by 0.2.0 through 0.4.0 no longer means anything, and this
     // run will review the file from the top. Saying nothing would look like a
@@ -310,7 +321,7 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
     }
 
     // --no-ai reaches no model, so there is nothing to cache and nothing to reuse.
-    const store: VerdictCache | undefined = opts.noAi
+    const store: VerdictCache | undefined = noAi
       ? undefined
       : {
           get: (key) => (opts.fresh ? undefined : getAuditVerdict(jobs, key)),
@@ -327,7 +338,7 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
       // --no-ai reaches no model, so nothing in this run was judged by one.
       // History cannot be backfilled, and a per-engine quality breakdown built
       // on it later would be reading rule findings as Claude's opinions.
-      engine: opts.noAi ? 'rules' : engine,
+      engine: noAi ? 'rules' : engine,
     })
     recordEntries(
       jobs,
@@ -344,7 +355,7 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
 
     // Nothing reads it on --no-ai or for a local model, which has no MCP.
     const mcpConfigPath =
-      opts.mcpConfigPath ?? (opts.noAi || local ? '' : await writeMcpConfig({ env: { [MCP_ENV.locale]: opts.locale } }))
+      opts.mcpConfigPath ?? (noAi || local ? '' : await writeMcpConfig({ env: { [MCP_ENV.locale]: opts.locale } }))
 
     const marker: ReviewMarker = {
       done: 0,
@@ -410,7 +421,7 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
       engine,
       configHash: config,
       ...(local ? { promptVariant: auditPromptVariant(opts.locale) } : {}),
-      ...(opts.noAi === undefined ? {} : { noAi: opts.noAi }),
+      ...(noAi ? { noAi: true } : opts.noAi === undefined ? {} : { noAi: opts.noAi }),
       ...(store ? { store } : {}),
       ...(opts.control ? { control: opts.control } : {}),
       onStopped: (info) => {

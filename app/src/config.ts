@@ -58,13 +58,14 @@ const configSchema = z.object({
   // has to know the old one. The cost: a downgrade after that save rejects the
   // file, which the changelog says.
   defaultDraftEngine: z
-    .enum(['deepl', 'openai', 'local', 'qwen'])
+    .enum(['deepl', 'openai', 'local', 'none', 'qwen'])
     .transform((engine) => (engine === 'qwen' ? 'local' : engine)),
   // Defaulted rather than required, so a config written before there was a
   // second provider still parses, and keeps the provider its verdicts were
   // formed under. `local` is the experimental local reviewer, which only an
-  // explicit `config set reviewProvider local` writes.
-  reviewProvider: z.enum(['claude', 'antigravity', 'local']).default('claude'),
+  // explicit `config set reviewProvider local` writes. `none` is rules only,
+  // with no AI at all.
+  reviewProvider: z.enum(['claude', 'antigravity', 'local', 'none']).default('claude'),
   // Defaulted rather than required, so a config written before the requester
   // message had a link still parses. Trimmed, because a stray space would be
   // pasted straight into a URL.

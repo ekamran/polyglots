@@ -35,7 +35,7 @@ type Engine = DraftEngineChoice
 
 const PO_EXTENSIONS = ['.po']
 const MODES: Mode[] = ['pending', 'all']
-const ENGINES: Engine[] = ['deepl', 'openai', 'local']
+const ENGINES: Engine[] = ['deepl', 'openai', 'local', 'none']
 const FIELD_MODE = 0
 const FIELD_ENGINE = 1
 const FIELD_LOCALE = 2
@@ -245,6 +245,12 @@ export function Translate({ cwd, onBack }: TranslateProps) {
             </Text>
           )}
           {engine === 'local' && 'error' in local && <Text color="yellow">   {local.error}</Text>}
+          {engine === 'none' && (
+            <Text dimColor>   Fills from the translation memory only; the rest is left untranslated, and no AI is asked.</Text>
+          )}
+          {engine !== 'none' && config.reviewProvider === 'none' && (
+            <Text color="yellow">   No review provider: drafts are written fuzzy for you to check.</Text>
+          )}
           {engine === 'local' && modelCheck && modelCheck.state !== 'installed' && modelCheck.message && (
             <Text color="yellow">   {modelCheck.message}</Text>
           )}

@@ -55,7 +55,12 @@ export function Review({ cwd, onBack }: ReviewProps) {
   // and never hears one read from a file (resolveFileLocale says why), so the
   // header is not offered for it.
   const headerAllowed = config.defaultLocale === undefined && config.reviewProvider !== 'antigravity'
-  const [noAi, setNoAi] = useState(false)
+  // With no review provider there is no AI to choose, so rules-only is fixed
+  // on rather than offered: a toggle that could be turned off would start a
+  // run that reaches for an agent nobody set up.
+  const noReviewer = config.reviewProvider === 'none'
+  const [skipAi, setNoAi] = useState(false)
+  const noAi = noReviewer || skipAi
   const [fresh, setFresh] = useState(false)
   const [batchSize, setBatchSize] = useState(initialBatchSize(config))
   const [focus, setFocus] = useState(FIELD_LOCALE)
@@ -124,7 +129,9 @@ export function Review({ cwd, onBack }: ReviewProps) {
       change: options
         ? (input, key) => {
             if (input === ' ' && typing) return false
-            if (focus === FIELD_NO_AI) setNoAi((v) => !v)
+            if (focus === FIELD_NO_AI) {
+              if (!noReviewer) setNoAi((v) => !v)
+            }
             else if (focus === FIELD_FRESH) setFresh((v) => !v)
             else if (focus === FIELD_BATCH) {
               setBatchSize((n) => step(batchSizeChoices(initialBatchSize(config)), n, key.leftArrow ? -1 : 1))
@@ -212,6 +219,9 @@ export function Review({ cwd, onBack }: ReviewProps) {
           <Text>
             {marker(FIELD_NO_AI)}Skip AI checks:  {noAi ? 'yes (rules only, fast)' : 'no (rules, then AI review)'}
           </Text>
+          {noReviewer && (
+            <Text dimColor>  No AI is set up as the review provider, so this runs the rules only. Setup changes it.</Text>
+          )}
           {/* A review that was interrupted picks up from the marker in its
               problems file. This is the way to make it forget that and start
               from the first batch again. */}
