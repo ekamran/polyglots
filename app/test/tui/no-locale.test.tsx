@@ -91,8 +91,8 @@ describe('Review with no locale', () => {
     stdin.write(keys.down)
     await tick()
     stdin.write(keys.enter)
-    await waitForText(lastFrame, 'Locale:')
-    expect(flat(lastFrame())).toMatch(/Locale: +sv\b/)
+    // The header is read after the form appears, so wait for the value itself.
+    await waitForText(() => flat(lastFrame()), /Locale: +sv\b/)
   })
 })
 

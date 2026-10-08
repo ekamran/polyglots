@@ -26,9 +26,12 @@ Entries say what changed. For why and how, read the commit.
 - `polyglots stats --no-open` serves the dashboard without opening a browser.
 - Review and translate run screens list the most recent entries as each batch lands, with their outcome and rule hits.
 - TUI screens taller than the window scroll to keep the cursor and a run's keys in view.
+- `review` and `translate` take the locale from the file's Language header when nothing else names one.
 
 ### Changed
 
+- polyglots no longer assumes tr when no locale is set; set one with `config set defaultLocale` or `--locale`.
+- The setup wizard and Locale Rules no longer prefill tr; Fetch and the memory screens ask for setup without a locale.
 - The interactive mode is never wider than the home grid, and is centred on a wide terminal.
 - The stats server listens on port 29117, and warns and takes another port when that one is in use.
 - Interactive menu keys: Tools is `o`, API keys is `k`. Ctrl+C asks before stopping a run in progress.

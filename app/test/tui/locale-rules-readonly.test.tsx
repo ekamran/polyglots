@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { saveConfig } from '../../src/config.js'
 import { existsSync } from 'node:fs'
 import Database from 'better-sqlite3'
 import { dbFile } from '../../src/paths.js'
@@ -12,6 +13,8 @@ let home: Home
 
 beforeEach(async () => {
   home = await makeHome()
+  // Named rather than assumed: polyglots has no default locale (no-locale.test.tsx).
+  saveConfig({ defaultLocale: 'tr' })
 })
 
 afterEach(async () => {
