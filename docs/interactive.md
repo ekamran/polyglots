@@ -139,9 +139,7 @@ again once stopped.
 | `k` | Configure API keys | Stores your DeepL and OpenAI keys. A key set in your environment wins over a saved one. |
 | `w` | Setup wizard | The five setup steps, from wherever you left them. |
 | `i` | Interface settings | Settings for the app only, such as printing the last output path after you quit. |
-
-Configuration also has **Usage statistics**, which shows exactly what would
-be shared and turns it on or off; see [Usage statistics](usage-statistics.md).
+| `u` | Usage statistics | Shows exactly what would be shared for the website's totals, and turns it on or off. See [Usage statistics](usage-statistics.md). |
 
 Everything set here is the same configuration the commands read; see
 [Configuration](configuration.md).
