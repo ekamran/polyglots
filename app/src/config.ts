@@ -11,8 +11,11 @@ import type { PolyglotsConfig, Secrets } from './types.js'
 // other default discovery probes.
 export const DEFAULT_OPENAI_COMPATIBLE_BASE_URL = 'http://localhost:1234'
 
+// No defaultLocale: there is no locale that is a safe guess for a stranger.
+// Through 0.25 this said tr, and a German translator's first review ran Turkish
+// rules over German text without a word. A command that needs a locale and
+// is given none now refuses and says how to set one (src/cli/locale.ts).
 export const DEFAULT_CONFIG: PolyglotsConfig = {
-  defaultLocale: 'tr',
   defaultDraftEngine: 'deepl',
   reviewProvider: 'claude',
   wporgUsername: '',
@@ -46,7 +49,9 @@ export function isHttpUrl(value: string): boolean {
 const contextLength = z.number().int().positive().optional()
 
 const configSchema = z.object({
-  defaultLocale: z.string().min(1),
+  // Optional, so a config with no locale parses: a fresh install, and every
+  // install that relied on the old implicit tr. Empty is still refused.
+  defaultLocale: z.string().min(1).optional(),
   // `qwen` is read as `local`, the name it has had since 0.23, so a saved
   // config keeps drafting with the same engine. Normalised on read rather than
   // kept as typed, so the next save writes the new name and nothing after this

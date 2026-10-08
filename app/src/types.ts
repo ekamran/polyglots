@@ -209,7 +209,8 @@ export interface LocalServerSettings {
 }
 
 export interface PolyglotsConfig {
-  defaultLocale: Locale
+  // Absent until the person chooses one; nothing is assumed. See src/cli/locale.ts.
+  defaultLocale?: Locale
   defaultDraftEngine: DraftEngineChoice
   // Which agent CLI judges translations. `antigravity` needs the polyglots MCP
   // server registered with it first; notes/antigravity.md has the setup.

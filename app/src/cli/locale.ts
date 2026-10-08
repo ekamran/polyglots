@@ -1,0 +1,125 @@
+import { existsSync } from 'node:fs'
+import Database from 'better-sqlite3'
+import { dbFile, jobsDbFile } from '../paths.js'
+import { loadPo } from '../po/po-file.js'
+import type { Locale, PolyglotsConfig } from '../types.js'
+import { WPORG_LOCALES, resolveLocale } from '../wporg/locales.js'
+import { UsageError, parseLocaleArg } from './args.js'
+
+// polyglots once fell back to tr when no locale was set, because it was
+// written by and for one Turkish reviewer. For anyone else that fallback was
+// worse than an error: a German translator's first review ran Turkish rules
+// against German text and reported the result with full confidence. So there
+// is no default now, and a command that needs a locale and is given none
+// stops and says how to give one.
+
+/** How a command takes its locale, as the refusal should tell the person to pass it. */
+export type LocaleWay = { flag: true } | { argument: string }
+
+const SET_IT = 'or set one for every run: polyglots config set defaultLocale <code>'
+
+/**
+ * Whether this machine has Turkish work from before the default went.
+ *
+ * Asked only on the way to a refusal, so a new install pays nothing for it.
+ * Someone who has been running on the implicit tr is the one person for whom
+ * "no locale set" is a surprise, and the one line that gets them going again
+ * is worth two read-only opens. Evidence is a tr run in jobs.db or a tr
+ * glossary in the memory; either alone is enough, and any failure to read
+ * either counts as no evidence, since this only decides whether to add a hint.
+ */
+export function hasEarlierTurkishWork(paths: { jobs: string; memory: string } = { jobs: jobsDbFile(), memory: dbFile() }): boolean {
+  const any = (path: string, sql: string): boolean => {
+    if (!existsSync(path)) return false
+    let db: Database.Database | undefined
+    try {
+      db = new Database(path, { readonly: true, fileMustExist: true })
+      return db.prepare(sql).get() !== undefined
+    } catch {
+      return false
+    } finally {
+      db?.close()
+    }
+  }
+  return (
+    any(paths.jobs, "SELECT 1 FROM run WHERE locale = 'tr' LIMIT 1") ||
+    any(paths.memory, "SELECT 1 FROM glossary WHERE locale = 'tr' LIMIT 1")
+  )
+}
+
+const EARLIER_TURKISH =
+  'Earlier versions fell back to tr (Turkish) when no locale was set. To carry on as before: polyglots config set defaultLocale tr'
+
+/** The refusal for a command that needs a locale and was given none. */
+export function noLocaleMessage(way: LocaleWay, earlierTurkish = hasEarlierTurkishWork()): string {
+  const pass = 'flag' in way ? 'Pass --locale <code>' : `Name one, as in ${way.argument} <code>`
+  const first = `No locale set. ${pass}, ${SET_IT}`
+  return earlierTurkish ? `${first}\n${EARLIER_TURKISH}` : first
+}
+
+/**
+ * The locale a command runs in: what was typed, else the configured one, else
+ * a refusal. For the commands with no file to read a language from, and for
+ * those whose file must not be trusted to choose: a TMX imported under the
+ * wrong locale lands in the one database that cannot be regenerated.
+ */
+export function requireLocale(raw: string | undefined, config: PolyglotsConfig, way: LocaleWay = { flag: true }): Locale {
+  if (raw !== undefined) return parseLocaleArg(raw)
+  if (config.defaultLocale !== undefined) return parseLocaleArg(config.defaultLocale)
+  throw new UsageError(noLocaleMessage(way))
+}
+
+/** Help text for a --locale flag, saying what applies when it is left off. */
+export function localeDefaultHelp(config: PolyglotsConfig, header = false): string {
+  if (config.defaultLocale !== undefined) return `default: ${config.defaultLocale}`
+  return header ? "default: defaultLocale, else the file's Language header" : 'default: defaultLocale, none set yet'
+}
+
+export interface FileLocale {
+  locale: Locale
+  /** Set when the locale came from the files' Language header rather than from a flag or config. */
+  fromHeader?: true
+}
+
+/**
+ * The locale for a run over .po files: --locale, then config, then the files'
+ * own Language header.
+ *
+ * Config before the header, not after, so nobody who set a locale sees a
+ * change: their files are run exactly as before, whatever their headers say.
+ * The header is only reached by someone who has set nothing, for whom the
+ * alternative is a refusal.
+ *
+ * It is trusted only when it cannot be misread. Every file must declare the
+ * same language, and translate.wordpress.org must have one translation set
+ * for it: GlotPress writes de_DE for both de and de/formal, and guessing the
+ * informal one would review a formal submission against the wrong register
+ * without a word. Either failure refuses with the same message as having no
+ * header at all, plus what the files did say.
+ */
+export async function resolveFileLocale(raw: string | undefined, config: PolyglotsConfig, files: string[]): Promise<FileLocale> {
+  if (raw !== undefined || config.defaultLocale !== undefined) return { locale: requireLocale(raw, config) }
+  const declared: string[] = []
+  for (const file of files) {
+    const language = (await loadPo(file)).headers['Language']?.trim()
+    if (!language) throw new UsageError(noLocaleMessage({ flag: true }))
+    declared.push(language)
+  }
+  const resolved = declared.map((language) => resolveLocale(language))
+  const ids = [...new Set(resolved.map((r) => r?.id))]
+  if (resolved.some((r) => r === undefined) || ids.length !== 1) {
+    const said = [...new Set(declared)].join(', ')
+    throw new UsageError(`The files declare ${said}, not one locale polyglots can use. ${noLocaleMessage({ flag: true })}`)
+  }
+  const row = resolved[0]!
+  const siblings = WPORG_LOCALES.filter((l) => l.slug === row.slug)
+  if (row.set === 'default' && siblings.length > 1) {
+    const choices = siblings.map((l) => (l.set === 'default' ? l.slug : `${l.slug}/${l.set}`))
+    const last = choices.pop()
+    throw new UsageError(`The file says ${declared[0]}, and ${declared[0]} could be ${choices.join(', ')} or ${last}. ${noLocaleMessage({ flag: true })}`)
+  }
+  return { locale: row.id, fromHeader: true }
+}
+
+export const headerLocaleNotice = (locale: Locale): string =>
+  `Locale ${locale}, from the file's Language header. Pass --locale to choose another.`

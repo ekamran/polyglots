@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { spawn, type ChildProcess } from 'node:child_process'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
@@ -123,6 +123,10 @@ describe('mcp server (stdio, end-to-end)', () => {
   beforeEach(async () => {
     home = await mkdtemp(join(tmpdir(), 'polyglots-mcp-server-'))
     process.env.POLYGLOTS_HOME = home
+    // Named, because nothing is assumed: the calls below that pass no locale
+    // are served in the configured one.
+    await mkdir(join(home, 'config'), { recursive: true })
+    await writeFile(join(home, 'config', 'config.json'), JSON.stringify({ defaultLocale: 'tr' }))
     const db = openDb()
     replaceGlossary(db, 'tr', [{ locale: 'tr', sourceTerm: 'Settings', translation: 'Ayarlar' }])
     db.close()

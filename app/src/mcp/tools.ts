@@ -8,7 +8,9 @@ import { fetchConsistency as defaultFetchConsistency } from '../wporg/consistenc
 
 export interface ToolDeps {
   db: Database.Database
-  locale: Locale
+  // The run's locale. Absent for a server started with no POLYGLOTS_LOCALE
+  // and no configured locale, where every call must name its own.
+  locale?: Locale
   ttlDays: number
   fetchConsistency?: typeof defaultFetchConsistency
 }
@@ -54,8 +56,16 @@ function createConsistencyLookup(deps: ToolDeps, fetchConsistency: typeof defaul
 
 export function registerTools(server: McpServer, deps: ToolDeps): void {
   const lookupConsistency = createConsistencyLookup(deps, deps.fetchConsistency ?? defaultFetchConsistency)
-  const defaultLocale = normalizeLocale(deps.locale)
-  const resolveLocale = (locale?: string): Locale => (locale ? normalizeLocale(locale) : defaultLocale)
+  const defaultLocale = deps.locale === undefined ? undefined : normalizeLocale(deps.locale)
+  // Refused rather than guessed: a lookup in the wrong locale returns another
+  // language's approved wording, which the model would then hold up as
+  // authoritative. Thrown inside each handler, so it reaches the agent as a
+  // tool error it can act on rather than ending the server.
+  const resolveLocale = (locale?: string): Locale => {
+    if (locale) return normalizeLocale(locale)
+    if (defaultLocale !== undefined) return defaultLocale
+    throw new Error('No locale: pass the locale argument, or start the server with POLYGLOTS_LOCALE set')
+  }
 
   server.registerTool(
     'glossary_lookup',
@@ -67,7 +77,13 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         locale: localeArg,
       },
     },
-    ({ term, locale }) => json(lookupGlossary(deps.db, term, resolveLocale(locale))),
+    ({ term, locale }) => {
+      try {
+        return json(lookupGlossary(deps.db, term, resolveLocale(locale)))
+      } catch (error) {
+        return failure(error)
+      }
+    },
   )
 
   server.registerTool(
@@ -106,6 +122,12 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         limit: z.number().int().positive().max(50).optional().describe('Maximum matches to return (default 5).'),
       },
     },
-    ({ text, locale, limit }) => json(searchTm(deps.db, text, resolveLocale(locale), limit ?? 5)),
+    ({ text, locale, limit }) => {
+      try {
+        return json(searchTm(deps.db, text, resolveLocale(locale), limit ?? 5))
+      } catch (error) {
+        return failure(error)
+      }
+    },
   )
 }

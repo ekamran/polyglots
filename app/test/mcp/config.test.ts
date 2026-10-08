@@ -113,8 +113,17 @@ describe('serverLaunch', () => {
 
 describe('resolveServerOptions', () => {
   it('falls back to config values when no overrides are set', () => {
+    expect(resolveServerOptions({}, { ...DEFAULT_CONFIG, defaultLocale: 'sv' })).toEqual({
+      locale: 'sv',
+      ttlDays: DEFAULT_CONFIG.consistencyTtlDays,
+      dbPath: undefined,
+    })
+  })
+
+  // The server still starts: a globally registered server serves calls that
+  // name their locale, and only a call that does not is refused (tools.ts).
+  it('leaves the locale unset when neither the environment nor config names one', () => {
     expect(resolveServerOptions({}, DEFAULT_CONFIG)).toEqual({
-      locale: DEFAULT_CONFIG.defaultLocale,
       ttlDays: DEFAULT_CONFIG.consistencyTtlDays,
       dbPath: undefined,
     })
@@ -135,8 +144,9 @@ describe('resolveServerOptions', () => {
   })
 
   it('ignores blank or invalid overrides', () => {
-    expect(resolveServerOptions({ POLYGLOTS_LOCALE: '  ', POLYGLOTS_CONSISTENCY_TTL_DAYS: 'abc', POLYGLOTS_DB: '' }, DEFAULT_CONFIG)).toEqual({
-      locale: DEFAULT_CONFIG.defaultLocale,
+    const config = { ...DEFAULT_CONFIG, defaultLocale: 'sv' }
+    expect(resolveServerOptions({ POLYGLOTS_LOCALE: '  ', POLYGLOTS_CONSISTENCY_TTL_DAYS: 'abc', POLYGLOTS_DB: '' }, config)).toEqual({
+      locale: 'sv',
       ttlDays: DEFAULT_CONFIG.consistencyTtlDays,
       dbPath: undefined,
     })
