@@ -114,6 +114,16 @@ unless you turn it on. Nothing else.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Contributors
+
+Thank you to everyone who has improved polyglots:
+
+- [Kamran Abdul Aziz](https://github.com/ekamran): sentence marks beyond
+  `.!?` in the punctuation check, so Hindi, Japanese, Arabic and other
+  scripts' correct endings are no longer reported
+  ([#20](https://github.com/emreerkan/polyglots/issues/20),
+  [#21](https://github.com/emreerkan/polyglots/pull/21)).
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
