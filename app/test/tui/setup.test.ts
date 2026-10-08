@@ -36,8 +36,8 @@ describe('setupStatus', () => {
     expect(status.total).toBe(5)
   })
 
-  // DEFAULT_CONFIG names tr, so "has a locale" is true for everyone and
-  // would mark the step done before anyone chose anything.
+  // Read off config.json, not the loaded config: the defaults once named tr,
+  // and marked the step done before anyone chose anything.
   it('does not count the default locale as chosen', () => {
     expect(setupStatus(facts({ config: { ...DEFAULT_CONFIG, defaultLocale: 'tr' } })).steps.locale).toBe('missing')
     expect(setupStatus(facts({ localeConfigured: true })).steps.locale).toBe('done')

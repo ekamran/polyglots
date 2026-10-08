@@ -7,7 +7,7 @@ import { App } from '../../src/tui/App.js'
 import { ReviewProgress, reduceReviewProgress } from '../../src/tui/components/ReviewProgress.js'
 import {  } from '../../src/tui/screens/Review.js'
 import { batchSizeChoices } from '../../src/tui/batch-size.js'
-import { DEFAULT_CONFIG } from '../../src/config.js'
+import { DEFAULT_CONFIG, saveConfig } from '../../src/config.js'
 import { copyToClipboard } from '../../src/tui/clipboard.js'
 import { openInDefaultApp } from '../../src/tui/open-file.js'
 
@@ -47,6 +47,8 @@ let cwd: string
 
 beforeEach(async () => {
   home = await makeHome()
+  // Named rather than assumed: polyglots has no default locale (no-locale.test.tsx).
+  saveConfig({ defaultLocale: 'tr' })
   cwd = join(home.path, 'work')
   await mkdir(cwd)
   await writeFile(join(cwd, 'submission.po'), '')

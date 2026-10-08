@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { saveConfig } from '../../src/config.js'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import React from 'react'
@@ -14,6 +15,8 @@ let home: Home
 
 beforeEach(async () => {
   home = await makeHome()
+  // Named rather than assumed: polyglots has no default locale (no-locale.test.tsx).
+  saveConfig({ defaultLocale: 'tr' })
 })
 
 afterEach(async () => {

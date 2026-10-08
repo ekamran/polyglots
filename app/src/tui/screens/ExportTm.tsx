@@ -4,14 +4,18 @@ import { useState } from 'react'
 import { Box, Text } from 'ink'
 import type { ExportTmResult, TmExportFormat } from '../../commands/tm-export.js'
 import { useCommands, useConfig } from '../commands.js'
+import { NeedsLocale } from '../components/NeedsLocale.js'
 import { FilePicker } from '../components/FilePicker.js'
 import { DONE_HINT, Hint } from '../components/Hint.js'
 import { useBackKeys } from '../hooks/useBackKeys.js'
 import { useKeys } from '../hooks/useKeys.js'
 import { useTask } from '../hooks/useTask.js'
 import { TextInput } from '../input.js'
+import type { Locale } from '../../types.js'
 
 export interface ExportTmProps {
+  // Opens setup at the locale step; see NeedsLocale.
+  onSetup?: () => void
   onBack: () => void
 }
 
@@ -45,9 +49,24 @@ function target(dir: string, name: string, format: TmExportFormat): string {
  * person goes. Only the format the person picked decides the format: a typed
  * name with the other extension does not switch it behind their back.
  */
-export function ExportTm({ onBack }: ExportTmProps) {
+export function ExportTm(props: ExportTmProps) {
+  const { config } = useConfig()
+  if (config.defaultLocale === undefined) {
+    return (
+      <NeedsLocale
+        title="Export Translation Memory"
+        needs="Exporting the memory"
+        onBack={props.onBack}
+        {...(props.onSetup === undefined ? {} : { onSetup: props.onSetup })}
+      />
+    )
+  }
+  return <ExportTmInLocale {...props} locale={config.defaultLocale} />
+}
+
+function ExportTmInLocale({ onBack, locale }: ExportTmProps & { locale: Locale }) {
   const commands = useCommands()
-  const { config, error: configError } = useConfig()
+  const { error: configError } = useConfig()
   const [stage, setStage] = useState<'format' | 'target'>('format')
   const [format, setFormat] = useState<TmExportFormat>('tmx')
   const [dir, setDir] = useState(join(homedir(), 'Downloads'))
@@ -86,7 +105,7 @@ export function ExportTm({ onBack }: ExportTmProps) {
     const file = target(dir, name, format)
     setDir(dirname(file))
     setName(basename(file))
-    task.run(() => commands.exportTm({ locale: config.defaultLocale, file, format }))
+    task.run(() => commands.exportTm({ locale: locale, file, format }))
   }
 
   if (picking) {
@@ -109,7 +128,7 @@ export function ExportTm({ onBack }: ExportTmProps) {
 
   return (
     <Box flexDirection="column">
-      <Text bold>Export Translation Memory · locale {config.defaultLocale}</Text>
+      <Text bold>Export Translation Memory · locale {locale}</Text>
       {configError && <Text color="yellow">Config error, using defaults: {configError}</Text>}
 
       {stage === 'format' && (

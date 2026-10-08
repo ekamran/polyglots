@@ -17,7 +17,7 @@ export interface SyncGlossaryProps {
 export function SyncGlossary({ onBack }: SyncGlossaryProps) {
   const commands = useCommands()
   const { config, error: configError } = useConfig()
-  const [locale, setLocale] = useState(config.defaultLocale)
+  const [locale, setLocale] = useState(config.defaultLocale ?? '')
   const task = useTask<SyncGlossaryResult>()
 
   const editing = task.state.status === 'idle'

@@ -15,16 +15,19 @@ import {
   type ProjectEnd,
 } from '../../commands/fetch-report.js'
 import { createRunControl, type RunControl } from '../../run-control.js'
-import type { DraftEngineChoice } from '../../types.js'
+import type { DraftEngineChoice, Locale } from '../../types.js'
 import { parseProjectLines, type FetchStatus } from '../../wporg/projects.js'
 import { batchSizeChoices } from '../batch-size.js'
 import { useCommands, useConfig } from '../commands.js'
+import { NeedsLocale } from '../components/NeedsLocale.js'
 import { DONE_HINT, Hint } from '../components/Hint.js'
 import { useTask } from '../hooks/useTask.js'
 import { useKeys } from '../hooks/useKeys.js'
 import { useTypingWhile } from '../input.js'
 
 export interface FetchProps {
+  // Opens setup at the locale step; see NeedsLocale.
+  onSetup?: () => void
   onBack: () => void
 }
 
@@ -66,7 +69,22 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
  * on it: a plugin's branch is the one with more strings in that status, and a
  * project with nothing in it is skipped.
  */
-export function Fetch({ onBack }: FetchProps) {
+export function Fetch(props: FetchProps) {
+  const { config } = useConfig()
+  if (config.defaultLocale === undefined) {
+    return (
+      <NeedsLocale
+        title="Fetch from translate.wordpress.org"
+        needs="Fetching"
+        onBack={props.onBack}
+        {...(props.onSetup === undefined ? {} : { onSetup: props.onSetup })}
+      />
+    )
+  }
+  return <FetchInLocale {...props} locale={config.defaultLocale} />
+}
+
+function FetchInLocale({ onBack, locale }: FetchProps & { locale: Locale }) {
   const commands = useCommands()
   const { config, error: configError } = useConfig()
   const [stage, setStage] = useState<Stage>('list')
@@ -89,7 +107,6 @@ export function Fetch({ onBack }: FetchProps) {
   const control = useRef<RunControl | undefined>(undefined)
   const task = useTask<Finished>()
 
-  const locale = config.defaultLocale
   const review = status === 'waiting'
   const fields = review ? REVIEW_FIELDS : TRANSLATE_FIELDS
   const ready = resolutions.filter((r): r is Ready => r.state === 'ready')

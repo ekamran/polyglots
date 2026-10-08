@@ -12,7 +12,7 @@ async function main(): Promise<void> {
   const { locale, ttlDays, dbPath } = resolveServerOptions(process.env, loadConfig())
   const db = openDb(dbPath)
   const server = new McpServer({ name: 'polyglots', version: '0.1.0' })
-  registerTools(server, { db, locale, ttlDays })
+  registerTools(server, { db, ttlDays, ...(locale === undefined ? {} : { locale }) })
 
   let closing = false
   const shutdown = async (code: number): Promise<void> => {

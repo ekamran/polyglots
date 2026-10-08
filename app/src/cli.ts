@@ -39,6 +39,7 @@ import {
 } from './cli/args.js'
 import { createProgressReporter, createReviewProgressReporter } from './cli/progress.js'
 import { loadPo } from './po/po-file.js'
+import { headerLocaleNotice, localeDefaultHelp, requireLocale, resolveFileLocale } from './cli/locale.js'
 import { buildReport } from './review/message.js'
 import { agentBinOverride, batchAdvice, configuredModel } from './agent/providers.js'
 import { discoverAgents, type AgentStatus } from './agent/discover.js'
@@ -265,7 +266,8 @@ interface ReviewFlags {
 async function runTranslate(cli: Cli, patterns: string[], flags: TranslateFlags): Promise<number> {
   const files = expandFileArgs(patterns)
   const config = cli.config()
-  const locale = parseLocaleArg(flags.locale ?? config.defaultLocale)
+  const { locale, fromHeader } = await resolveFileLocale(flags.locale, config, files)
+  if (fromHeader) cli.err(hintLine(cli.ui.err, headerLocaleNotice(locale)))
   loadLocaleRules(locale)
   warnUniversalOnly(cli, locale)
   const draftEngine = parseDraftEngine(flags.draftEngine ?? config.defaultDraftEngine)
@@ -414,7 +416,9 @@ async function warnAboutLocalReview(
   if (advice) cli.err(warnLine(cli.ui.err, advice))
 }
 
-const CONFIG_KEYS = Object.keys(DEFAULT_CONFIG) as Array<keyof PolyglotsConfig>
+// defaultLocale named first and by hand: it has no default, so it is not a key
+// of DEFAULT_CONFIG, and leaving it out would make it impossible to set.
+const CONFIG_KEYS = ['defaultLocale', ...Object.keys(DEFAULT_CONFIG)] as Array<keyof PolyglotsConfig>
 // The parts of the two local server settings, settable on their own. Dotted
 // rather than a nested `config set ollama '{...}'`, because nobody should have
 // to type JSON to change a model name.
@@ -523,6 +527,7 @@ function formatConfigValue(key: keyof PolyglotsConfig, value: PolyglotsConfig[ke
     const servers = value as string[]
     return servers.length === 0 ? '(none)' : servers.join(', ')
   }
+  if (key === 'defaultLocale' && value === undefined) return '(not set)'
   if (key !== 'properNouns') return String(value)
   const byLocale = value as Record<string, string[]>
   const locales = Object.keys(byLocale).sort()
@@ -572,7 +577,9 @@ function configGet(cli: Cli, key: string | undefined): void {
   }
   if (isConfigKey(key)) {
     // The two server objects printed as a line rather than [object Object].
-    cli.out(key === 'ollama' || key === 'openaiCompatible' ? formatConfigValue(key, config[key]) : String(config[key]))
+    // An unset locale prints as an empty line rather than "undefined", so a
+    // script testing for one reads it as absent.
+    cli.out(key === 'ollama' || key === 'openaiCompatible' ? formatConfigValue(key, config[key]) : String(config[key] ?? ''))
     return
   }
   if (isSecretName(key)) {
@@ -808,7 +815,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
     .option('--dry-run', 'Run the pipeline without writing to the .po files')
     .option('--draft-engine <engine>', `Draft engine: deepl, openai or local (default: ${shown.defaultDraftEngine})`)
     .option('--local-model <name>', 'Model for the local draft engine on this run, instead of the configured one')
-    .option('--locale <locale>', `Target locale (default: ${shown.defaultLocale})`)
+    .option('--locale <locale>', `Target locale (${localeDefaultHelp(shown, true)})`)
     .option('--batch-size <n>', `Entries per draft/review batch (default: ${shown.batchSize})`)
     .option('--model <model>', 'Model for the review pass (the agent\'s, or the local reviewer\'s)')
     .option('--yes', 'Skip the --all confirmation prompt (required with --all when stdin is not a terminal)')
@@ -822,14 +829,14 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
     .command('edit [locale]')
     .description('Open the locale rules file in $VISUAL or $EDITOR, creating it with the defaults if needed')
     .action(async (raw: string | undefined) => {
-      const locale = parseLocaleArg(raw ?? cli.config().defaultLocale)
+      const locale = requireLocale(raw, cli.config(), { argument: 'polyglots rules edit' })
       for (const line of await editRules(locale, cli.openEditor, cli.ui.out)) cli.out(line)
     })
   rules
     .command('check [locale]')
     .description('Validate the locale rules file and summarise what it sets')
     .action((raw: string | undefined) => {
-      const locale = parseLocaleArg(raw ?? cli.config().defaultLocale)
+      const locale = requireLocale(raw, cli.config(), { argument: 'polyglots rules check' })
       for (const line of describeRules(locale, cli.ui.out)) cli.out(line)
     })
   rules
@@ -843,17 +850,17 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
     .command('path [locale]')
     .description('Print where the locale rules file lives')
     .action((raw: string | undefined) => {
-      cli.out(localeRulesFile(parseLocaleArg(raw ?? cli.config().defaultLocale)))
+      cli.out(localeRulesFile(requireLocale(raw, cli.config(), { argument: 'polyglots rules path' })))
     })
 
   const tm = program.command('tm').description('Translation memory')
   tm.command('import <files...>')
     .description('Import TMX or .po exports into the local translation memory (additive)')
-    .option('--locale <locale>', `Target locale to import (default: ${shown.defaultLocale})`)
+    .option('--locale <locale>', `Target locale to import (${localeDefaultHelp(shown)})`)
     .option('--project <name>', 'Tag imported entries with a project name')
     .action(async (patterns: string[], flags: { locale?: string; project?: string }) => {
       const files = expandFileArgs(patterns)
-      const locale = parseLocaleArg(flags.locale ?? cli.config().defaultLocale)
+      const locale = requireLocale(flags.locale, cli.config())
       const result = await cli.importTmx(files, {
         locale,
         project: flags.project,
@@ -869,7 +876,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
     .option('--parallel <n>', `Projects to run at once, 1 to 8 (default: 1)`)
     .option('--out-dir <dir>', 'Where to save the exports (default: ~/Downloads/polyglots)')
     .option('--force', 'With --get untranslated, replace a file that already exists instead of keeping it')
-    .option('--locale <locale>', `Locale (default: ${shown.defaultLocale})`)
+    .option('--locale <locale>', `Locale (${localeDefaultHelp(shown)})`)
     .option('--batch-size <n>', `Entries per batch (default: ${shown.batchSize})`)
     .option('--fresh', 'Ignore cached verdicts or drafts and ask again')
     .option('--no-ai', 'Review only: run the deterministic checks, skipping AI adjudication')
@@ -902,7 +909,7 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
   program
     .command('review <file>')
     .description('Audit a submitted .po and write out only the entries that need work')
-    .option('--locale <locale>', `Review locale (default: ${shown.defaultLocale})`)
+    .option('--locale <locale>', `Review locale (${localeDefaultHelp(shown, true)})`)
     .option('--out-dir <dir>', 'Where to write the problems file (default: beside the input)')
     .option('--no-ai', 'Run the deterministic checks only, skipping AI adjudication')
     .option('--batch-size <n>', `Entries per AI batch (default: ${shown.batchSize})`)
@@ -911,7 +918,8 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
     .action(async (raw: string, flags: ReviewFlags) => {
       const [target] = expandFileArgs([raw])
       const config = cli.config()
-      const locale = parseLocaleArg(flags.locale ?? config.defaultLocale)
+      const { locale, fromHeader } = await resolveFileLocale(flags.locale, config, [target!])
+      if (fromHeader) cli.err(hintLine(cli.ui.err, headerLocaleNotice(locale)))
       // Before anything else: a review must not run on rules the person
       // believes are in force when the file that says so cannot be read.
       loadLocaleRules(locale)
@@ -1022,10 +1030,10 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
 
   tm.command('export [file]')
     .description('Write the translation memory as TMX or .po (stdout when no file is given)')
-    .option('--locale <locale>', `Memory locale (default: ${shown.defaultLocale})`)
+    .option('--locale <locale>', `Memory locale (${localeDefaultHelp(shown)})`)
     .option('--format <format>', 'tmx or po (default: from the file name, else tmx)')
     .action(async (file: string | undefined, flags: { locale?: string; format?: string }) => {
-      const locale = parseLocaleArg(flags.locale ?? cli.config().defaultLocale)
+      const locale = requireLocale(flags.locale, cli.config())
       const format = parseTmExportFormat(flags.format)
       const result = await cli.exportTm({ locale, ...(file ? { file } : {}), ...(format ? { format } : {}) })
       if (!result.file) {
@@ -1042,19 +1050,19 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
   glossary
     .command('sync')
     .description('Download the WordPress.org glossary for a locale into the local cache')
-    .option('--locale <locale>', `Glossary locale (default: ${shown.defaultLocale})`)
+    .option('--locale <locale>', `Glossary locale (${localeDefaultHelp(shown)})`)
     .action(async (flags: { locale?: string }) => {
-      const locale = parseLocaleArg(flags.locale ?? cli.config().defaultLocale)
+      const locale = requireLocale(flags.locale, cli.config())
       const result = await cli.syncGlossary({ locale })
       cli.out(okLine(cli.ui.out, `Synced ${result.entries} glossary entries for ${locale}.`))
     })
   glossary
     .command('export [file]')
     .description('Write the cached glossary as a Poedit-compatible CSV (stdout when no file is given)')
-    .option('--locale <locale>', `Glossary locale (default: ${shown.defaultLocale})`)
+    .option('--locale <locale>', `Glossary locale (${localeDefaultHelp(shown)})`)
     .option('--delimiter <char>', 'Column separator, ";" or "," (default: ;)')
     .action(async (file: string | undefined, flags: { locale?: string; delimiter?: string }) => {
-      const locale = parseLocaleArg(flags.locale ?? cli.config().defaultLocale)
+      const locale = requireLocale(flags.locale, cli.config())
       const delimiter = parseCsvDelimiter(flags.delimiter ?? ';')
       const result = await cli.exportGlossary({ locale, file, delimiter })
       if (result.file) cli.out(okLine(cli.ui.out, `Exported ${result.entries} glossary terms (${locale}) to ${result.file}`))
@@ -1102,9 +1110,9 @@ function buildProgram(cli: Cli, setExitCode: (code: number) => void): Command {
   cfg
     .command('add-name <name>')
     .description('Add a proper noun the title-case check should never flag (places, people, institutions)')
-    .option('--locale <locale>', `Locale the name belongs to (default: ${shown.defaultLocale})`)
+    .option('--locale <locale>', `Locale the name belongs to (${localeDefaultHelp(shown)})`)
     .action((name: string, flags: { locale?: string }) => {
-      const locale = parseLocaleArg(flags.locale ?? cli.config().defaultLocale)
+      const locale = requireLocale(flags.locale, cli.config())
       setExitCode(configAddName(cli, name, locale))
     })
   cfg

@@ -19,7 +19,9 @@ export interface McpServerEntry {
 }
 
 export interface McpServerOptions {
-  locale: Locale
+  // Absent when neither POLYGLOTS_LOCALE nor config names one. The server
+  // starts anyway and refuses only the calls that do not name a locale.
+  locale?: Locale
   ttlDays: number
   dbPath: string | undefined
 }
@@ -43,8 +45,9 @@ export function resolveServerOptions(env: NodeJS.ProcessEnv, config: PolyglotsCo
   const locale = env[MCP_ENV.locale]?.trim()
   const ttl = Number(env[MCP_ENV.ttlDays]?.trim() || NaN)
   const dbPath = env[MCP_ENV.db]?.trim()
+  const chosen = locale || config.defaultLocale
   return {
-    locale: normalizeLocale(locale || config.defaultLocale),
+    ...(chosen ? { locale: normalizeLocale(chosen) } : {}),
     ttlDays: Number.isInteger(ttl) && ttl > 0 ? ttl : config.consistencyTtlDays,
     dbPath: dbPath || undefined,
   }

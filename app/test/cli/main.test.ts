@@ -102,6 +102,10 @@ beforeEach(async () => {
   file = join(home, 'sample.po')
   await copyFile(samplePo, file)
   process.env.POLYGLOTS_HOME = home
+  // Named rather than assumed: polyglots has no default locale, and these
+  // tests are about everything but choosing one (test/cli/locale.test.ts).
+  await mkdir(join(home, 'config'), { recursive: true })
+  await writeFile(join(home, 'config', 'config.json'), JSON.stringify({ defaultLocale: 'tr' }))
   process.env.DEEPL_API_KEY = 'dpl-test-key-0123456789:fx'
   delete process.env.OPENAI_API_KEY
 })
@@ -906,7 +910,8 @@ describe('corrupt config file', () => {
     expect(h.stdout.text).toMatch(/^\s+translate\b/m)
     const sub = harness()
     expect(await sub.run(['translate', '--help'])).toBe(0)
-    expect(sub.stdout.text).toContain('default: tr')
+    // The defaults stand in for the unreadable file, and they name no locale.
+    expect(sub.stdout.text.replace(/\s+/g, ' ')).toContain("default: defaultLocale, else the file's Language header")
     expect(sub.stdout.text).toContain('POLYGLOTS_AGENT_BIN')
     expect(sub.stdout.text).toContain('POLYGLOTS_CLAUDE_BIN')
   })

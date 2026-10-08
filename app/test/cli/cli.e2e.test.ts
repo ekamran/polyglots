@@ -188,7 +188,8 @@ describe('config', () => {
     const all = await runCli(['config', 'get'])
     expect(all.code).toBe(0)
     expect(all.stdout).toContain('dpl-…fx')
-    expect(all.stdout).toMatch(/defaultLocale.*tr/)
+    // Nothing is assumed until the person names a locale.
+    expect(all.stdout).toContain('defaultLocale = (not set)')
     expect(all.stdout).toMatch(/OPENAI_API_KEY.*\(not set\)/)
     expect(all.stdout + all.stderr).not.toContain(key)
 
@@ -244,7 +245,7 @@ describe('startup with a corrupt config file', () => {
 
 describe('tm import', () => {
   it('imports a TMX file and prints counts', async () => {
-    const res = await runCli(['tm', 'import', sampleTmx])
+    const res = await runCli(['tm', 'import', sampleTmx, '--locale', 'tr'])
     expect(res.code).toBe(0)
     expect(res.stdout).toMatch(/1 file/)
     expect(res.stdout).toMatch(/5 entries/)
@@ -262,7 +263,7 @@ describe('tm import', () => {
     // its parser by what the file holds, so that one imports now.
     const broken = join(home, 'broken.tmx')
     await writeFile(broken, 'not a catalogue of any kind', 'utf8')
-    const res = await runCli(['tm', 'import', broken])
+    const res = await runCli(['tm', 'import', broken, '--locale', 'tr'])
     expect(res.code).toBe(1)
     expect(res.stderr).toMatch(/broken\.tmx/)
   })

@@ -95,6 +95,10 @@ export const KEYS = {
   retry: {
     again: { keys: 'enter', does: 'try again after a failure', match: enter },
   },
+  // On a screen that needs a locale when none is configured.
+  needsLocale: {
+    setup: { keys: 'enter', does: 'open setup to choose a locale', match: enter },
+  },
   menu: {
     open: { keys: 'enter', does: 'open', match: enter },
     move: { keys: '←↑↓→', does: 'move', match: arrows },
@@ -307,6 +311,7 @@ export const SCREENS: Record<ScreenId, ScreenKeys> = {
       KEYS.fetchResolved.next,
       ...FORM,
       finished.close,
+      KEYS.needsLocale.setup,
     ],
   },
   stats: {
@@ -316,10 +321,10 @@ export const SCREENS: Record<ScreenId, ScreenKeys> = {
   help: { shown: [KEYS.helpPage.line], more: [KEYS.helpPage.page] },
   about: { shown: [], more: [KEYS.about.close] },
   split: { shown: [fields.pickAndSplit], more: [picker.sort, finished.close] },
-  'import-tm': { shown: [fields.importFile], more: [picker.sort, finished.close] },
+  'import-tm': { shown: [fields.importFile], more: [picker.sort, finished.close, KEYS.needsLocale.setup] },
   'export-tm': {
     shown: [KEYS.exportFormat.format, KEYS.exportFormat.next, KEYS.target.folder],
-    more: [fields.write, picker.sort, finished.close, retry.again],
+    more: [fields.write, picker.sort, finished.close, retry.again, KEYS.needsLocale.setup],
   },
   'sync-glossary': { shown: [fields.sync], more: [finished.close, retry.again] },
   'locale-rules': {

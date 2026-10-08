@@ -72,6 +72,8 @@ describe('opening at launch', () => {
     const commands = fakeCommands({
       ...memoryTuiState(fresh()),
       discoverAgents: () => new Promise(() => {}),
+      // The glossary and rules steps are counted for the configured locale.
+      loadConfig: () => ({ ...DEFAULT_CONFIG, defaultLocale: 'tr' }),
       localeConfigured: () => true,
       loadSecrets: () => ({ DEEPL_API_KEY: 'k' }),
       glossaryCount: () => 10,
@@ -89,11 +91,7 @@ describe('the steps', () => {
     const state = memoryTuiState(fresh())
     const { lastFrame, stdin } = render(<App commands={fakeCommands({ ...config, ...state })} />)
     await waitForText(lastFrame, 'Search:')
-    // The field starts with the configured locale; clear it first.
-    for (let i = 0; i < 4; i++) {
-      stdin.write(keys.backspace)
-      await tick()
-    }
+    // Nothing configured, so the field starts empty (no-locale.test.tsx).
     await type(stdin, 'de_DE')
     await waitForText(lastFrame, 'de_DE')
     stdin.write(keys.enter)

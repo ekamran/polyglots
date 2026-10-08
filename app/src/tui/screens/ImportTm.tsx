@@ -3,13 +3,17 @@ import { useState } from 'react'
 import { Box, Text } from 'ink'
 import type { TmImportProgress, TmImportResult } from '../../commands/tm-import.js'
 import { useCommands, useConfig } from '../commands.js'
+import { NeedsLocale } from '../components/NeedsLocale.js'
 import { FilePicker } from '../components/FilePicker.js'
 import { BACK_HINT, DONE_HINT, Hint } from '../components/Hint.js'
 import { useBackKeys } from '../hooks/useBackKeys.js'
 import { useKeys } from '../hooks/useKeys.js'
 import { useTask } from '../hooks/useTask.js'
+import type { Locale } from '../../types.js'
 
 export interface ImportTmProps {
+  // Opens setup at the locale step; see NeedsLocale.
+  onSetup?: () => void
   cwd: string
   onBack: () => void
 }
@@ -19,9 +23,24 @@ export interface ImportTmProps {
 const TM_EXTENSIONS = ['.tmx', '.po']
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 
-export function ImportTm({ cwd, onBack }: ImportTmProps) {
+export function ImportTm(props: ImportTmProps) {
+  const { config } = useConfig()
+  if (config.defaultLocale === undefined) {
+    return (
+      <NeedsLocale
+        title="Import Translation Memory"
+        needs="Importing a memory"
+        onBack={props.onBack}
+        {...(props.onSetup === undefined ? {} : { onSetup: props.onSetup })}
+      />
+    )
+  }
+  return <ImportTmInLocale {...props} locale={config.defaultLocale} />
+}
+
+function ImportTmInLocale({ cwd, onBack, locale }: ImportTmProps & { locale: Locale }) {
   const commands = useCommands()
-  const { config, error: configError } = useConfig()
+  const { error: configError } = useConfig()
   const [file, setFile] = useState<string>()
   const [progress, setProgress] = useState<TmImportProgress[]>([])
   const task = useTask<TmImportResult>()
@@ -37,7 +56,7 @@ export function ImportTm({ cwd, onBack }: ImportTmProps) {
     setProgress([])
     task.run(() =>
       commands.importTmx([path], {
-        locale: config.defaultLocale,
+        locale: locale,
         onProgress: (e) => setProgress((prev) => [...prev, e]),
       }),
     )
@@ -45,7 +64,7 @@ export function ImportTm({ cwd, onBack }: ImportTmProps) {
 
   return (
     <Box flexDirection="column">
-      <Text bold>Import Translation Memory (.tmx or .po) · locale {config.defaultLocale}</Text>
+      <Text bold>Import Translation Memory (.tmx or .po) · locale {locale}</Text>
       {configError && <Text color="yellow">Config error, using defaults: {configError}</Text>}
       {file === undefined && (
         <>

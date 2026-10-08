@@ -25,6 +25,9 @@ beforeEach(async () => {
   saved = { ...process.env }
   home = await mkdtemp(join(tmpdir(), 'polyglots-cli-rules-'))
   process.env.POLYGLOTS_HOME = home
+  // Named rather than assumed: polyglots has no default locale.
+  await mkdir(join(home, 'config'), { recursive: true })
+  await writeFile(join(home, 'config', 'config.json'), JSON.stringify({ defaultLocale: 'tr' }))
 })
 afterEach(async () => {
   for (const key of Object.keys(process.env)) if (!(key in saved)) delete process.env[key]

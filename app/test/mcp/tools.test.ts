@@ -237,6 +237,33 @@ describe('mcp tools', () => {
     }
   })
 
+  it('refuses a call with no locale when the server was started without one, and serves one that names it', async () => {
+    const bare = new McpServer({ name: 'bare', version: '0.0.0' })
+    const bareFetch = vi.fn<(text: string, locale: string) => Promise<ConsistencyEntry[]>>().mockResolvedValue([])
+    registerTools(bare, { db, ttlDays: 30, fetchConsistency: bareFetch })
+    const [ct, st] = InMemoryTransport.createLinkedPair()
+    await bare.connect(st)
+    const bareClient = new Client({ name: 'bare-client', version: '0.0.0' })
+    await bareClient.connect(ct)
+    try {
+      for (const [name, args] of [
+        ['glossary_lookup', { term: 'Settings' }],
+        ['tm_lookup', { text: 'Save changes' }],
+        ['consistency_lookup', { text: 'Settings' }],
+      ] as const) {
+        const result = (await bareClient.callTool({ name, arguments: args })) as TextResult
+        expect(result.isError).toBe(true)
+        expect(textOf(result)).toContain('No locale')
+      }
+      expect(bareFetch).not.toHaveBeenCalled()
+      const named = await bareClient.callTool({ name: 'glossary_lookup', arguments: { term: 'Settings', locale: 'de' } })
+      expect(JSON.parse(textOf(named))).toEqual([{ locale: 'de', sourceTerm: 'Settings', translation: 'Einstellungen' }])
+    } finally {
+      await bareClient.close()
+      await bare.close()
+    }
+  })
+
   it('consistency_lookup passes an explicit locale to the fetcher and cache', async () => {
     const entries: ConsistencyEntry[] = [{ translation: 'Einstellungen', count: 2 }]
     fetchConsistency.mockResolvedValueOnce(entries)

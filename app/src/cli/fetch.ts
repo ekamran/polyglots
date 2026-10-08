@@ -21,6 +21,7 @@ import type { PolyglotsConfig } from '../types.js'
 import { parseProjectLines, type FetchStatus } from '../wporg/projects.js'
 import { UsageError, parseDraftEngine, parseLocaleArg, parsePositiveInt, secretForEngine } from './args.js'
 import { watchKeys, type KeyStream } from './keys.js'
+import { requireLocale } from './locale.js'
 import type { Painter } from '../ui/paint.js'
 import { warnLine } from '../ui/messages.js'
 import { table } from '../ui/layout.js'
@@ -91,7 +92,7 @@ export async function runFetch(cli: FetchCli, names: string[], flags: FetchFlags
     )
   }
   const config = cli.config()
-  const locale = parseLocaleArg(flags.locale ?? config.defaultLocale)
+  const locale = requireLocale(flags.locale, config)
   loadLocaleRules(locale)
   // The experimental local reviewer gets its own small default, as on review
   // and translate; see resolveBatchSize in cli.ts.
