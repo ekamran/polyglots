@@ -107,7 +107,9 @@ const configSchema = z.object({
     .default({ baseUrl: DEFAULT_OPENAI_COMPATIBLE_BASE_URL, model: '' }),
   // Defaulted, so a config from before the limit existed parses. Whole
   // seconds and positive: zero would abandon every reply before it began.
-  localIdleTimeout: z.number().int().positive().default(DEFAULT_LOCAL_IDLE_TIMEOUT_SECONDS),
+  // Capped where setTimeout's 32-bit delay would overflow, which makes it fire
+  // at once and abandon every reply.
+  localIdleTimeout: z.number().int().positive().max(2_147_483).default(DEFAULT_LOCAL_IDLE_TIMEOUT_SECONDS),
   // Optional and never defaulted: absent means the question was never
   // answered, which the wizard needs to tell apart from an answered no.
   // Either way nothing is sent unless it is true (src/usage).

@@ -90,6 +90,17 @@ describe('buildUsagePayload', () => {
     })
   })
 
+  // The opt-in rules run only for the locales whose pack enables them
+  // (apostrophe for Turkish, title-case for Turkish and Swedish), so a count
+  // under their own names would say which locale an install reviews. They
+  // travel as one locale-rule count.
+  it('sends the locale-specific rules as one count, so no finding names the locale', () => {
+    run({ command: 'review', project: 'wp-plugins/akismet' }, { entries: 10, repaired: 0, byCategory: { apostrophe: 2, 'title-case': 1, ampersand: 1, glossary: 1 } })
+    db.close()
+    const { findings } = buildUsagePayload({ installId: ID, version: '1.2.3', jobsPath: path })
+    expect(findings).toEqual({ 'locale-rule': 4, glossary: 1 })
+  })
+
   it('gives zeros when there is no job store, and creates none', async () => {
     db.close()
     await rm(path)

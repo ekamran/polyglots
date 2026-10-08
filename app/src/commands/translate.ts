@@ -502,8 +502,10 @@ export async function translateFile(opts: TranslateOptions): Promise<TranslateSu
     // Only a run that reads or writes these caches prunes them. One that drafts
     // nothing would otherwise delete drafts a paid engine wrote under an
     // earlier prompt, rows it never had any use for.
+    // Review verdicts likewise: with no reviewer the run never touches them.
+    const noReviewer = (opts.provider ?? loadConfig().reviewProvider) === 'none'
     if (!memoryOnly) {
-      pruneStaleConfigs(jobs, 'draft_verdict', locale, config)
+      if (!noReviewer) pruneStaleConfigs(jobs, 'draft_verdict', locale, config)
       pruneStaleConfigs(jobs, 'draft', locale, draftConfig)
     }
 

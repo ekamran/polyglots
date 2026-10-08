@@ -23,7 +23,9 @@ At most once a week, one small JSON payload:
 - `projects`: how many different projects those runs covered. A number only.
 - `findings`: how often each built-in check fired, for example
   `{"glossary": 12, "placeholder": 3}`. Only the fixed list of check names
-  polyglots ships; custom rules are never named.
+  polyglots ships; custom rules are never named. Checks that run only for
+  some locales (apostrophes, title case, ampersands, number formats) are sent
+  as one `locale-rule` count, since their names would hint at the locale.
 
 Never sent: your locale, project names or slugs, file names, source strings,
 translations, your WordPress.org username, the review provider or the model.
@@ -42,9 +44,9 @@ statistics**.
 In the background when a working command starts (`review`, `translate`,
 `fetch`, `stats`, `tm`, `glossary`, `split`) or when the interactive app
 opens, with a five-second timeout. `config`, `usage-stats` and `--help` never
-send. It never delays
-or slows a command: if the command finishes first, the send is simply
-abandoned. Failures are dropped, nothing is queued, and after a failure it
+send. The send runs alongside the command and never holds it up: if the
+command finishes first, the send is simply abandoned, so short commands
+often send nothing. Failures are dropped, nothing is queued, and after a failure it
 does not try again for a day.
 
 ## What is kept

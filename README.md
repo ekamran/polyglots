@@ -42,6 +42,9 @@ yourself.
 - For machine translation drafts, optionally a DeepL or OpenAI API key, or the
   same local model server.
 
+None of these is required: choose No AI in setup and every mechanical check
+still runs, with nothing sent to a model.
+
 `polyglots doctor` reports which agents are installed and signed in, without
 sending a prompt. `polyglots models` lists local model servers and the models
 they hold.
@@ -68,8 +71,10 @@ npm link
 polyglots
 ```
 
-The setup wizard asks for your locale, your review agent, a draft engine and
-its key, then downloads your locale's glossary from translate.wordpress.org.
+The setup wizard asks for your locale, your review agent (or No AI), a draft
+engine and its key, then downloads your locale's glossary from
+translate.wordpress.org. Its last question is whether to share anonymous usage
+totals; the answer is no unless you say yes.
 Every step can be skipped and run again later from Configuration.
 
 The same from the command line:
@@ -101,7 +106,9 @@ Set `POLYGLOTS_HOME` to keep everything under one other directory.
 polyglots talks to translate.wordpress.org (glossaries, project downloads and
 approved translations for consistency checks) and to the services you choose:
 your review agent, and DeepL, OpenAI or your local model server for drafts.
-Nothing else.
+If you opt in to [usage statistics](https://ada.tools/polyglots/docs/usage-statistics/),
+a weekly count of strings reviewed goes to ada.tools/polyglots; it is off
+unless you turn it on. Nothing else.
 
 ## Contributing
 

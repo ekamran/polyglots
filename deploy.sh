@@ -17,7 +17,10 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 # in it is run. A variable already set in the environment wins.
 env_value() {
   [ -f "$ROOT/.env" ] || return 0
-  sed -n "s/^$1=//p" "$ROOT/.env" | tail -n 1 | sed -e 's/^["'"'"']//' -e 's/["'"'"']$//'
+  # An optional leading `export `, a CRLF line end, and one pair of matching
+  # quotes are allowed; anything else is taken as written and then checked.
+  tr -d '\r' < "$ROOT/.env" | sed -n -e "s/^export $1=//p" -e "s/^$1=//p" | tail -n 1 |
+    sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'$/\1/"
 }
 HOST="${POLYGLOTS_DEPLOY_HOST:-$(env_value POLYGLOTS_DEPLOY_HOST)}"
 REMOTE_PATH="${POLYGLOTS_DEPLOY_PATH:-$(env_value POLYGLOTS_DEPLOY_PATH)}"
@@ -48,6 +51,13 @@ esac
 case "$REMOTE_PATH" in
   *..*|*//*|*' '*) echo "POLYGLOTS_DEPLOY_PATH must not contain '..', '//' or spaces, got '$REMOTE_PATH'."; exit 1 ;;
 esac
+# Letters, digits, dot, underscore, hyphen and slash only. The path reaches a
+# remote shell twice, as rsync's destination and inside the quoted chown, so a
+# glob, a quote or a command substitution would be expanded on the server.
+if ! [[ "$REMOTE_PATH" =~ ^/[A-Za-z0-9._/-]+$ ]]; then
+  echo "POLYGLOTS_DEPLOY_PATH may only hold letters, digits, '.', '_', '-' and '/', got '$REMOTE_PATH'."
+  exit 1
+fi
 REMOTE_PATH="${REMOTE_PATH%/}/"
 case "$REMOTE_PATH" in
   */polyglots/) ;;

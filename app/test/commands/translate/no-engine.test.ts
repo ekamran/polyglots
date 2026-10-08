@@ -4,6 +4,7 @@ import type Database from 'better-sqlite3'
 import { openDb, upsertTm } from '../../../src/storage/index.js'
 import { openJobsDb } from '../../../src/jobs/db.js'
 import { putDraft } from '../../../src/jobs/index.js'
+import { putDraftVerdict } from '../../../src/jobs/drafts.js'
 import { saveConfig } from '../../../src/config.js'
 import { translateFile, type TranslateOptions } from '../../../src/commands/translate.js'
 import { CTX, collect, entryOf, fakeEngine, fakeReview, makeWorkspace, ofType, parseFile, type Workspace } from './helpers.js'
@@ -104,6 +105,14 @@ describe('translate with reviewProvider none', () => {
     const after = await parseFile(ws.file)
     expect(entryOf(after, 'Thank you for installing %s.').msgstr).toEqual(['[draft] Thank you for installing %s.'])
     expect(entryOf(after, 'Thank you for installing %s.').comments?.flag).toContain('fuzzy')
+  })
+
+  // The run never reads or writes a review verdict, so the ones an agent
+  // wrote under an earlier configuration are not this run's to delete.
+  it('prunes no review verdicts, which it never uses', async () => {
+    putDraftVerdict(jobsDb, { srcHash: 'x', draftHash: 'd', configHash: 'an-older-prompt', locale: 'tr', engine: 'claude' }, { text: ['eski'], fuzzy: false, reason: '' })
+    await translateFile(base({ draftEngine: 'deepl', engine: fakeEngine(), provider: 'none' }))
+    expect(jobsDb.prepare<[], { n: number }>("SELECT COUNT(*) AS n FROM draft_verdict WHERE config_hash = 'an-older-prompt'").get()!.n).toBe(1)
   })
 
   it('caches no review verdict', async () => {

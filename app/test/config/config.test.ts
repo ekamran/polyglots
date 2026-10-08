@@ -73,7 +73,9 @@ describe('loadConfig', () => {
   })
 
   it('refuses a local idle limit that is not a positive whole number of seconds', async () => {
-    for (const bad of [0, -5, 1.5, '60']) {
+    // 2,147,484 seconds overflows setTimeout, which then fires at once and
+    // would abandon every reply.
+    for (const bad of [0, -5, 1.5, '60', 2_147_484]) {
       await mkdir(configDir(), { recursive: true })
       await writeFile(join(configDir(), 'config.json'), JSON.stringify({ localIdleTimeout: bad }))
       expect(() => loadConfig()).toThrow(/localIdleTimeout/)

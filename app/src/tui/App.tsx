@@ -164,7 +164,18 @@ function Shell({ cwd = process.cwd(), onExit }: AppProps) {
       wanted = false
     }
   }
-  useEffect(() => check(false), [])
+  // With No AI chosen nothing will run an agent, so launch does not spawn
+  // each agent CLI to ask whether it is signed in (doctor skips it too).
+  // Setup asks when opened, since that is where someone switches to one.
+  const skippedDiscovery = useRef(false)
+  useEffect(() => {
+    if (tryOr(() => commands.loadConfig(), DEFAULT_CONFIG).reviewProvider === 'none') {
+      skippedDiscovery.current = true
+      setChecking(false)
+      return
+    }
+    return check(false)
+  }, [])
 
   // Counted at launch and after the screens that can change it, not on
   // every navigation like the cheaper facts below: it opens polyglots.db.
@@ -197,6 +208,12 @@ function Shell({ cwd = process.cwd(), onExit }: AppProps) {
   const [screen, setScreen] = useState<ScreenId>(() =>
     !tuiState.wizard.dismissed && SETUP_STEPS.some((s) => status.steps[s] === 'missing') ? 'setup' : 'home',
   )
+  // Discovery skipped at launch (No AI) runs once setup is on screen.
+  useEffect(() => {
+    if (screen !== 'setup' || !skippedDiscovery.current) return
+    skippedDiscovery.current = false
+    return check(false)
+  }, [screen])
   const [wizardStart, setWizardStart] = useState<SetupStep>(() => SETUP_STEPS.find((s) => status.steps[s] === 'missing') ?? 'locale')
   const [wizardReturn, setWizardReturn] = useState<ScreenId>('home')
   const [statusFocus, setStatusFocus] = useState<SetupStep | undefined>(undefined)

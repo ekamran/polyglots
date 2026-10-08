@@ -1,7 +1,8 @@
 import { basename } from 'node:path'
 import { parseTally } from '../jobs/json.js'
 import { jobsDbFile } from '../paths.js'
-import { FINDING_KEYS } from '../rules/names.js'
+import { UNIVERSAL_RULES } from '../audit/rules/profiles.js'
+import { BUILT_IN_RULES, FINDING_KEYS, type BuiltInRule } from '../rules/names.js'
 import { readOnly } from '../storage/read-only.js'
 
 /**
@@ -42,6 +43,16 @@ interface Row {
 
 const KNOWN_FINDINGS = new Set(FINDING_KEYS)
 
+// The built-in rules that are not universal run only where a locale's pack
+// or rules file turns them on: apostrophe for Turkish, title-case for Turkish
+// and Swedish. With few installs, a count under one of those names would say
+// which locale someone reviews, which the payload promises never to carry.
+// They are summed under one key; the universal rules and the AI categories
+// run the same for every locale and keep their names.
+const LOCALE_RULE = 'locale-rule'
+const sentAs = (key: string): string =>
+  BUILT_IN_RULES.includes(key as BuiltInRule) && !UNIVERSAL_RULES.includes(key) ? LOCALE_RULE : key
+
 type Totals = Omit<UsagePayload, 'installId' | 'version'>
 
 const ZERO: Totals = { reviewed: 0, drafted: 0, repaired: 0, projects: 0, findings: {} }
@@ -65,7 +76,8 @@ function total(rows: Row[]): Totals {
         // A hand-edited row can hold any finite number; the server takes only
         // whole counts, and one bad value must not lose the whole week.
         if (!Number.isInteger(n) || n < 0) continue
-        t.findings[key] = (t.findings[key] ?? 0) + n
+        const as = sentAs(key)
+        t.findings[as] = (t.findings[as] ?? 0) + n
       }
     } else if (row.command === 'translate') {
       // `repaired` on a translate run holds the entries the engine drafted;
