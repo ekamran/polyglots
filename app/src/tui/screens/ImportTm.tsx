@@ -6,6 +6,7 @@ import { useCommands, useConfig } from '../commands.js'
 import { FilePicker } from '../components/FilePicker.js'
 import { BACK_HINT, DONE_HINT, Hint } from '../components/Hint.js'
 import { useBackKeys } from '../hooks/useBackKeys.js'
+import { useKeys } from '../hooks/useKeys.js'
 import { useTask } from '../hooks/useTask.js'
 
 export interface ImportTmProps {
@@ -28,7 +29,8 @@ export function ImportTm({ cwd, onBack }: ImportTmProps) {
   const running = task.state.status === 'running'
   const finished = task.state.status === 'done' || task.state.status === 'error'
 
-  useBackKeys(onBack, { enabled: !running, onEnter: finished ? onBack : undefined })
+  useBackKeys(onBack, { enabled: !running })
+  useKeys({ finished: { close: finished ? onBack : undefined } })
 
   const pick = (path: string) => {
     setFile(path)

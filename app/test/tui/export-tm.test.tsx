@@ -53,6 +53,15 @@ describe('ExportTm', () => {
     expect(opts).toEqual({ locale: 'de', file: join(downloads, defaultTmName('tmx')), format: 'tmx' })
   })
 
+  // The format is named for the tools that read it, not for one editor: a
+  // team on OmegaT has as much use for the TMX as one on Poedit.
+  it('says TMX is for CAT tools in general, not one editor', async () => {
+    saveConfig({ defaultLocale: 'de' })
+    const view = mount()
+    await waitForText(view.lastFrame, /TMX/)
+    expect(flat(view.lastFrame())).toContain('(Poedit, OmegaT and other CAT tools)')
+  })
+
   // A .po holds one wording per source, so the person is told how many the
   // file could not carry; TMX is the default for that reason.
   it('writes .po when chosen and says how many wordings it dropped', async () => {

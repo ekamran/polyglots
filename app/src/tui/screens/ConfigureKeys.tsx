@@ -5,6 +5,7 @@ import type { Secrets } from '../../types.js'
 import { errorMessage, useCommands, type TuiCommands } from '../commands.js'
 import { DONE_HINT, Hint } from '../components/Hint.js'
 import { useBackKeys } from '../hooks/useBackKeys.js'
+import { useKeys } from '../hooks/useKeys.js'
 import { TextInput } from '../input.js'
 
 export interface ConfigureKeysProps {
@@ -41,7 +42,8 @@ export function ConfigureKeys({ onBack }: ConfigureKeysProps) {
   const current = SECRET_NAMES[index]
   const finished = current === undefined
 
-  useBackKeys(onBack, { allowQ: finished, onEnter: finished ? onBack : undefined })
+  useBackKeys(onBack, { allowQ: finished })
+  useKeys({ finished: { close: finished ? onBack : undefined } })
 
   const submit = (raw: string) => {
     if (!current) return

@@ -28,8 +28,8 @@ again.
    corrects them, and marks fuzzy the ones it is unsure of.
 
 The summary says how many came from memory, how many were drafted, and how
-many are fuzzy. Open the file in Poedit and read the fuzzy ones before you
-upload it.
+many are fuzzy. Read the fuzzy ones in your `.po` editor before you import
+the file into GlotPress.
 
 **A fuzzy entry is overwritten.** translate treats fuzzy as "not translated
 yet", which is what GlotPress means by it. If you marked an entry fuzzy as a
@@ -64,7 +64,8 @@ what a review of that many entries costs.
 
 The memory is your locale's approved translations, kept in a local database
 and used by both translate and review. Fill it from TMX or `.po` exports, such
-as Poedit's translation memory or GlotPress exports of finished projects:
+as a TMX from Poedit or another CAT tool, or GlotPress exports of finished
+projects:
 
 ```
 polyglots tm import exports/*.tmx
@@ -82,8 +83,8 @@ again, so it is worth backing up:
 
 `polyglots glossary sync` downloads your locale's glossary from
 translate.wordpress.org. Both commands use it, and review refuses to run
-without it. `polyglots glossary export glossary.csv` writes it as a CSV that
-Poedit can import.
+without it. `polyglots glossary export glossary.csv` writes it as a CSV with
+Term, Translation and Notes columns, the layout Poedit imports.
 
 ## Splitting a large file
 

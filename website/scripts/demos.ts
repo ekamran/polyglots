@@ -12,6 +12,11 @@ import type { ReviewEvent, ReviewSummary } from '../../app/src/types.js'
 //
 // Every project, file and number here is invented. The panels are public, and
 // a real submission would put a real contributor's work on show.
+//
+// Each panel runs in a different locale, set the way a person sets theirs, in
+// config.json. polyglots is for every locale team, and a site whose every demo
+// was one language would read as a tool for that language. The locale is
+// written down explicitly too: there is no default to fall back on.
 
 export interface Clock {
   /** Moves demo time on by `ms` (what the run would really take) and sets how long the panel lingers on the frame the next write makes. */
@@ -29,14 +34,17 @@ export interface Scenario {
   deps(clock: Clock): CliDeps
 }
 
-const PLUGIN_FILE = 'wp-plugins-lunar-forms-stable-tr.po'
-const THEME_FILE = 'wp-themes-harbor-tr.po'
+const PLUGIN_FILE = 'wp-plugins-lunar-forms-stable-de.po'
+const THEME_FILE = 'wp-themes-harbor-pt-br.po'
+const FETCH_LOCALE = 'nl'
 
 // Typed in full, so a field added to ReviewSummary breaks the snapshot's
 // typecheck here rather than printing `undefined` on the site.
-const reviewSummary = (file: string): ReviewSummary => ({
+// No title-case findings: German capitalises its nouns, so the check is off
+// for it, and a panel showing it fire would be showing a German team noise.
+const reviewSummary = (file: string, locale: string): ReviewSummary => ({
   file,
-  locale: 'tr',
+  locale,
   total: 412,
   skipped: 126,
   reviewed: 286,
@@ -47,15 +55,15 @@ const reviewSummary = (file: string): ReviewSummary => ({
   pending: 0,
   repaired: 21,
   written: 23,
-  byRule: { glossary: 9, 'title-case': 4, placeholder: 2, punctuation: 3 },
-  byGroup: { glossary: 9, meaning: 6, 'title-case': 4, other: 2 },
+  byRule: { glossary: 9, placeholder: 2, punctuation: 3, html: 1 },
+  byGroup: { glossary: 9, meaning: 9, other: 3 },
   problemsFile: file.replace(/\.po$/, '-repaired.po'),
 })
 
 const FLAGGED_PER_BATCH = [3, 1, 4, 0, 2, 5, 1, 3, 2, 1]
 
-function playReview(clock: Clock, emit: (e: ReviewEvent) => void, file: string): ReviewSummary {
-  const summary = reviewSummary(file)
+function playReview(clock: Clock, emit: (e: ReviewEvent) => void, file: string, locale: string): ReviewSummary {
+  const summary = reviewSummary(file, locale)
   emit({ type: 'start', file, total: summary.total, reviewable: summary.reviewed })
   clock.advance(1_800, 700)
   emit({ type: 'rules-done', flagged: 17, suspects: 41, memoryApproved: 38, memoryRepaired: 4 })
@@ -76,11 +84,12 @@ export const review: Scenario = {
   name: 'review',
   argv: ['review', PLUGIN_FILE],
   files: [PLUGIN_FILE],
-  // Set so the requester message carries the link it carries for a reviewer
-  // who has set theirs, which is how the message is meant to be used.
-  config: { wporgUsername: 'your-wporg-name' },
+  // The username is set so the requester message carries the link it carries
+  // for a reviewer who has set theirs, which is how the message is meant to be
+  // used.
+  config: { defaultLocale: 'de', wporgUsername: 'your-wporg-name' },
   deps: (clock) => ({
-    reviewFile: async (opts) => playReview(clock, (e) => opts.onProgress?.(e), opts.file),
+    reviewFile: async (opts) => playReview(clock, (e) => opts.onProgress?.(e), opts.file, opts.locale),
   }),
 }
 
@@ -88,6 +97,7 @@ export const translate: Scenario = {
   name: 'translate',
   argv: ['translate', THEME_FILE],
   files: [THEME_FILE],
+  config: { defaultLocale: 'pt-br' },
   deps: (clock) => ({
     translate: async (opts) => {
       const emit = (e: TranslateEvent) => opts.onProgress?.(e)
@@ -119,7 +129,7 @@ export const fetch: Scenario = {
   // A literal ~ rather than an expanded path: it is what the person would
   // type, and the downloads are faked, so nothing is written there.
   argv: ['fetch', '--get', 'waiting', '--out-dir', '~/Downloads/polyglots', 'lunar-forms', 'harbor', 'quiet-gallery'],
-  config: { wporgUsername: 'your-wporg-name' },
+  config: { defaultLocale: FETCH_LOCALE, wporgUsername: 'your-wporg-name' },
   deps: (clock) => ({
     resolveProjects: async (refs) => {
       clock.advance(4_500, 900)
@@ -134,7 +144,7 @@ export const fetch: Scenario = {
       return ready.map((r): Fetched => ({
         input: r.input,
         state: 'fetched',
-        file: r.type === 'wp-themes' ? `wp-themes-${r.slug}-tr.po` : `wp-plugins-${r.slug}-${r.branch}-tr.po`,
+        file: r.type === 'wp-themes' ? `wp-themes-${r.slug}-${FETCH_LOCALE}.po` : `wp-plugins-${r.slug}-${r.branch}-${FETCH_LOCALE}.po`,
       }))
     },
     reviewFile: async (opts) => {
@@ -142,10 +152,10 @@ export const fetch: Scenario = {
       if (opts.file.startsWith('wp-themes-')) {
         // Nothing flagged, so nothing written: the real run sets no
         // problemsFile then, and the table must not claim a file it lacks.
-        const { problemsFile: _none, ...clean } = reviewSummary(opts.file)
+        const { problemsFile: _none, ...clean } = reviewSummary(opts.file, opts.locale)
         return { ...clean, total: 64, skipped: 23, reviewed: 41, problems: 0, approvable: 41, repaired: 0, written: 0, byRule: {}, byGroup: {} }
       }
-      return reviewSummary(opts.file)
+      return reviewSummary(opts.file, opts.locale)
     },
   }),
 }

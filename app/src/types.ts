@@ -136,8 +136,31 @@ export interface ReviewSummary {
   problemsFile?: string
 }
 
+/**
+ * One entry as its batch lands, for the run screens' list of recent entries.
+ *
+ * `msgid` is shortened for display (see shortMsgid) and is never the key: the
+ * key carries the msgctxt glued on with a control character, which a terminal
+ * renders as nothing at all. Nothing here reaches a prompt or a cache key.
+ */
+export type ReviewEntryOutcome = 'approved' | 'flagged' | 'repaired' | 'unreviewed'
+
+export interface ReviewEntry {
+  key: string
+  msgid: string
+  outcome: ReviewEntryOutcome
+  // The rules that fired on it, and the categories the model named. Absent
+  // rather than empty on an entry nothing fired on.
+  rules?: string[]
+}
+
 export type ReviewEvent =
   | { type: 'start'; file: string; total: number; reviewable: number }
+  // Every entry a batch decided, emitted once per batch just before its
+  // batch-done or batch-failed. Per batch rather than per entry, so a
+  // seven-thousand-entry run is a few hundred events, not seven thousand. The
+  // CLI reporter ignores it: the line it prints is the same with or without.
+  | { type: 'entries'; index: number; entries: ReviewEntry[] }
   // What a previous run already judged, inherited from the job store before the
   // first batch. Resume is per entry, so without this a resumed run looks
   // exactly like a cold one: the same header, and a bar counting from zero out

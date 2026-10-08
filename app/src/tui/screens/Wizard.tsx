@@ -5,7 +5,8 @@ import type { ModelServer } from '../../draft/discover.js'
 import { TOKENS } from '../../ui/tokens.js'
 import { WPORG_LOCALES, localeId } from '../../wporg/locales.js'
 import { errorMessage, useCommands } from '../commands.js'
-import { TextInput, useInput } from '../input.js'
+import { useKeys } from '../hooks/useKeys.js'
+import { TextInput } from '../input.js'
 import { DRAFT_ENGINES, REVIEW_PROVIDERS, type DraftEngineOption, type ProviderOption } from '../providers.js'
 import { STEP_LABELS, type SetupStatus } from '../setup.js'
 import { SETUP_STEPS, type SetupStep, type TuiState } from '../state.js'
@@ -85,10 +86,13 @@ function LocaleStep({ onChosen, onSkip }: { onChosen: (id: string) => void; onSk
   const [error, setError] = useState<string>()
   const matches = matchLocales(query)
   const chosen = Math.min(at, Math.max(0, matches.length - 1))
-  useInput((_input, key) => {
-    if (key.escape) onSkip()
-    else if (key.upArrow) setAt(Math.max(0, chosen - 1))
-    else if (key.downArrow) setAt(Math.min(matches.length - 1, chosen + 1))
+  // Enter is the search field's own submit.
+  useKeys({
+    wizard: {
+      skip: onSkip,
+      move: (_input, key) => (key.upArrow ? setAt(Math.max(0, chosen - 1)) : setAt(Math.min(matches.length - 1, chosen + 1))),
+      choose: undefined,
+    },
   })
   const submit = () => {
     const pick = matches[chosen]
@@ -167,11 +171,12 @@ function PickStep<T extends { id: string; label: string; cost: string }>({
   onSkip: () => void
 }) {
   const [at, setAt] = useState(0)
-  useInput((_input, key) => {
-    if (key.escape) onSkip()
-    else if (key.upArrow) setAt((a) => Math.max(0, a - 1))
-    else if (key.downArrow) setAt((a) => Math.min(options.length - 1, a + 1))
-    else if (key.return && options[at]) onPick(options[at])
+  useKeys({
+    wizard: {
+      skip: onSkip,
+      move: (_input, key) => (key.upArrow ? setAt((a) => Math.max(0, a - 1)) : setAt((a) => Math.min(options.length - 1, a + 1))),
+      choose: () => options[at] && onPick(options[at]),
+    },
   })
   return (
     <Box flexDirection="column">

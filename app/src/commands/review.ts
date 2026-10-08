@@ -38,7 +38,15 @@ import { loadConfig } from '../config.js'
 import { languageOf } from '../wporg/locales.js'
 import { tmKey } from '../audit/rules/index.js'
 import { allGlossary, findMemory, openDb } from '../storage/index.js'
-import type { AuditEntry, Locale, ReviewChoice, ReviewEvent, ReviewSummary } from '../types.js'
+import type {
+  AuditEntry,
+  Locale,
+  ReviewChoice,
+  ReviewEntry,
+  ReviewEntryOutcome,
+  ReviewEvent,
+  ReviewSummary,
+} from '../types.js'
 
 export interface ReviewOptions extends Partial<Omit<AgentRunOptions, 'provider'>> {
   // An agent CLI, or the experimental local reviewer. Defaults to the
@@ -159,6 +167,40 @@ function groupTally(verdicts: Verdict[]): Record<string, number> {
     for (const group of groups) counts[group] = (counts[group] ?? 0) + 1
   }
   return counts
+}
+
+// Long enough for the widest frame (113 columns, less the outcome column), and
+// short enough that a batch of help-text paragraphs does not ship kilobytes of
+// prose to a screen that shows one line of each. The screen truncates again to
+// its own width.
+const MSGID_DISPLAY_MAX = 80
+
+/**
+ * A msgid as one display line: whitespace runs, newlines included, collapsed to
+ * a space, and an ellipsis where it was cut. A msgid holding a newline would
+ * otherwise push every line below it down a row, in a panel whose height is
+ * fixed.
+ */
+export function shortMsgid(msgid: string): string {
+  const flat = msgid.replace(/\s+/g, ' ').trim()
+  return flat.length <= MSGID_DISPLAY_MAX ? flat : `${flat.slice(0, MSGID_DISPLAY_MAX - 1).trimEnd()}…`
+}
+
+// The order matters: a failed batch's entries are also problems, and a repair is
+// the more useful thing to say about an entry than that it was wrong, since
+// the file already holds the fix.
+function landed(verdict: Verdict, msgid: string): ReviewEntry {
+  const outcome: ReviewEntryOutcome = verdict.unreviewed
+    ? 'unreviewed'
+    : verdict.text !== undefined
+      ? 'repaired'
+      : verdict.problem || verdict.needsReview
+        ? 'flagged'
+        : 'approved'
+  // `repaired` is the rules' note to themselves that they rewrote the text,
+  // not a fault anyone needs named.
+  const rules = [...new Set(verdict.findings.map((f) => f.rule))].filter((r) => r !== 'repaired')
+  return { key: verdict.key, msgid: shortMsgid(msgid), outcome, ...(rules.length > 0 ? { rules } : {}) }
 }
 
 function addTally(into: Record<string, number>, from: Record<string, number>): Record<string, number> {
@@ -347,6 +389,8 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
     }
 
     const remembered = readMemory(reviewable, opts.locale, opts.db)
+    // A verdict carries the key, which glues the msgctxt on; the list shows the msgid.
+    const msgidOf = new Map(reviewable.map((e) => [e.key, e.msgid]))
     const verdicts = await auditEntries({
       entries: reviewable,
       tm: remembered.memory,
@@ -405,6 +449,9 @@ export async function reviewFile(opts: ReviewOptions): Promise<ReviewSummary> {
         marker.repaired += b.verdicts.filter((v) => v.text !== undefined).length
         addTally(marker.byRule, tally(b.verdicts))
         await persist()
+        // Before the batch's terminal event, so a screen that redraws on that one
+        // already has the entries it is about to list.
+        emit({ type: 'entries', index: b.index, entries: b.verdicts.map((v) => landed(v, msgidOf.get(v.key) ?? v.key)) })
         // One terminal event per batch: the reducer counts either as progress, so
         // emitting both would advance the bar twice.
         if (b.failed) emit({ type: 'batch-failed', index: b.index, size: b.size, reason: b.failed, at: Date.now() })

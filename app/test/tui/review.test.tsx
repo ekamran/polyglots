@@ -19,7 +19,7 @@ vi.mock('../../src/tui/clipboard.js', () => ({
   clipboardCommands: vi.fn(() => []),
 }))
 
-// The real one launches a GUI application. A test run must not open PoEdit on
+// The real one launches a GUI application. A test run must not open a .po editor on
 // whoever is running it.
 vi.mock('../../src/tui/open-file.js', () => ({
   openInDefaultApp: vi.fn(() => true),
@@ -305,12 +305,12 @@ describe('ReviewProgress', () => {
   // Repaired entries are written fuzzy, and fuzzy is what `translate` selects, so
   // telling the user to run it over this file re-translates every repair the
   // review just made. The repair exists in no other file.
-  it('sends the user to PoEdit rather than back through translate', async () => {
+  it('sends the user to their .po editor rather than back through translate', async () => {
     const { lastFrame } = render(<ReviewProgress events={events} />)
     await tick()
     const frame = flat(lastFrame())
     expect(frame).not.toContain('polyglots translate')
-    expect(frame).toMatch(/PoEdit/i)
+    expect(frame).toMatch(/\.po editor/)
   })
 
   it('says the submission is clean when nothing was flagged', async () => {

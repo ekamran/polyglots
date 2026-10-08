@@ -101,7 +101,7 @@ describe('Translate run', () => {
     await tick()
     stdin.write(keys.enter)
     await waitForText(lastFrame, 'Done. 2 translated, 1 fuzzy, 1 from TM, 0 skipped.')
-    expect(flat(lastFrame())).toContain(`Open ${poFile} in PoEdit to review.`)
+    expect(flat(lastFrame())).toContain(`Open ${poFile} in your .po editor to review.`)
     await waitForText(lastFrame, 'enter/q back to menu')
 
     expect(calls).toHaveLength(1)

@@ -433,3 +433,70 @@ msgstr "Ayrıntıları Gizle"
     )
   }
 })
+
+/**
+ * What the run screens list as each batch lands. One event per batch rather
+ * than one per entry: a seven-thousand-entry run is then a few hundred events,
+ * not seven thousand re-renders.
+ */
+describe('reviewFile per-entry events', () => {
+  let home: string
+  let file: string
+  let db: Database.Database
+
+  beforeEach(async () => {
+    home = await mkdtemp(join(tmpdir(), 'polyglots-review-entries-'))
+    file = join(home, 'plugin-tr.po')
+    await writeFile(file, PO, 'utf8')
+    db = openDb(join(home, 'polyglots.db'))
+    replaceGlossary(db, 'tr', [{ locale: 'tr', sourceTerm: 'sidebar', translation: 'kenar çubuğu', partOfSpeech: 'noun' }])
+  })
+
+  afterEach(async () => {
+    db.close()
+    await rm(home, { recursive: true, force: true })
+  })
+
+  const entriesOf = (events: ReviewEvent[]) => events.flatMap((e) => (e.type === 'entries' ? e.entries : []))
+
+  it('names each entry of a batch with its outcome, before the batch closes', async () => {
+    const events: ReviewEvent[] = []
+    const adjudicate = vi.fn(async (batch: { id: number; msgid: string }[]) =>
+      batch.map((c) =>
+        c.msgid === 'Open the sidebar'
+          ? { id: c.id, problem: true, categories: ['glossary'] as never[], reason: 'wrong term' }
+          : c.msgid === '%s comments'
+            ? { id: c.id, problem: true, categories: ['placeholders'] as never[], reason: 'lost %s', fix: ['%s yorum'] }
+            : { id: c.id, problem: false, categories: [] as never[], reason: 'ok' },
+      ),
+    )
+    await reviewFile({ file, locale: 'tr', db, adjudicate, onProgress: (e) => events.push(e) })
+
+    const landed = entriesOf(events)
+    expect(landed.map((e) => e.msgid).sort()).toEqual(['%s comments', 'Open the sidebar', 'Save all changes'])
+    expect(landed.find((e) => e.msgid === 'Save all changes')).toEqual({
+      key: 'Save all changes',
+      msgid: 'Save all changes',
+      outcome: 'approved',
+    })
+    const sidebar = landed.find((e) => e.msgid === 'Open the sidebar')!
+    expect(sidebar.outcome).toBe('flagged')
+    expect(sidebar.rules).toContain('glossary')
+    expect(landed.find((e) => e.msgid === '%s comments')).toMatchObject({ outcome: 'repaired', rules: expect.any(Array) })
+
+    const types = events.map((e) => e.type)
+    expect(types.indexOf('entries')).toBeGreaterThan(types.indexOf('batch-start'))
+    expect(types.indexOf('entries')).toBeLessThan(types.indexOf('batch-done'))
+    expect(events.find((e) => e.type === 'entries')).toMatchObject({ index: 1 })
+  })
+
+  it('marks every entry of a failed batch unreviewed', async () => {
+    const events: ReviewEvent[] = []
+    const adjudicate = vi.fn().mockRejectedValue(new Error('claude exited with exit code 1'))
+    await reviewFile({ file, locale: 'tr', db, adjudicate, onProgress: (e) => events.push(e) })
+
+    const landed = entriesOf(events)
+    expect(landed).toHaveLength(3)
+    expect(new Set(landed.map((e) => e.outcome))).toEqual(new Set(['unreviewed']))
+  })
+})

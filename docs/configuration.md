@@ -15,7 +15,7 @@ polyglots config set batchSize 50
 
 | Setting | Default | What it does |
 |---|---|---|
-| `defaultLocale` | `tr` | The locale a command uses when `--locale` is not given. |
+| `defaultLocale` | not set | The locale a command uses when `--locale` is not given. `review` and `translate` then fall back to the file's `Language` header; every other command that needs a locale stops and asks for one. |
 | `defaultDraftEngine` | `deepl` | The draft engine for `translate`: `deepl`, `openai` or `local`. |
 | `reviewProvider` | `claude` | Which agent reviews: `claude` or `antigravity`. `local` is the experimental local reviewer; see [local models](local-models.md). |
 | `wporgUsername` | empty | Your translate.wordpress.org login. Used only to link the requester message to the contributor's strings. |
@@ -35,14 +35,14 @@ The two context lengths are cleared with an empty value:
 
 ## Names the checks should leave alone
 
-Where the `title-case` check runs (Turkish, and any locale whose
-[rules](locale-rules.md) turn it on), a capital in the middle of a sentence is
-flagged. Places, people and institutions are the exceptions no built-in list
-can cover, so add them per locale:
+Where the `title-case` check runs (in a language whose built-in pack turns it
+on, and in any locale whose [rules](locale-rules.md) do), a capital in the
+middle of a sentence is flagged. Places, people and institutions are the
+exceptions no built-in list can cover, so add them per locale:
 
 ```
-polyglots config add-name "Kadıköy"
-polyglots config add-name --locale de "Deutsche Bahn"
+polyglots config add-name --locale tr "Kadıköy"
+polyglots config add-name --locale sv "Riksdagen"
 ```
 
 A name may be several words. Names that belong to the language rather than to

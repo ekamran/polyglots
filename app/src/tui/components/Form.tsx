@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Box, Text } from 'ink'
 import { Hint } from './Hint.js'
-import { TextInput, useInput } from '../input.js'
+import { useKeys } from '../hooks/useKeys.js'
+import { TextInput } from '../input.js'
 
 export interface FormField {
   key: string
@@ -46,11 +47,12 @@ export function Form({ fields, initial = {}, onSubmit, onCancel }: FormProps) {
     onSubmit(values)
   }
 
-  useInput((_ch, key) => {
-    if (key.escape) onCancel()
-    else if (key.tab && key.shift) setFocus((f) => Math.max(0, f - 1))
-    else if (key.tab || key.downArrow) setFocus((f) => Math.min(fields.length - 1, f + 1))
-    else if (key.upArrow) setFocus((f) => Math.max(0, f - 1))
+  useKeys({
+    back: { esc: onCancel, q: undefined },
+    form: {
+      previous: () => setFocus((f) => Math.max(0, f - 1)),
+      next: () => setFocus((f) => Math.min(fields.length - 1, f + 1)),
+    },
   })
 
   const width = Math.max(...fields.map((f) => f.label.length)) + 2
