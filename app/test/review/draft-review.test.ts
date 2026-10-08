@@ -9,7 +9,7 @@ import type { ReviewInput } from '../../src/types.js'
 
 const fakeClaude = fileURLToPath(new URL('../fixtures/fake-claude/claude', import.meta.url))
 
-const CTX_KEY = 'post statusPublished'
+const CTX_KEY = 'post status\x04Published'
 
 const inputs: ReviewInput[] = [
   { key: 'Save changes', msgid: 'Save changes', comments: [], drafts: ['Değişiklikleri kaydet'] },

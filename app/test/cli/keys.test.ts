@@ -64,7 +64,7 @@ describe('watchKeys', () => {
     const onInterrupt = vi.fn()
     watchKeys(stdin, createRunControl(), { onInterrupt })
 
-    stdin.press('')
+    stdin.press('\x03')
     expect(onInterrupt).toHaveBeenCalledTimes(1)
   })
 

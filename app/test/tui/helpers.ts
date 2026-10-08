@@ -20,7 +20,7 @@ import type { ModelCheck, ModelServer } from '../../src/draft/discover.js'
 import type { ReviewProvider, ReviewSummary } from '../../src/types.js'
 import type { FetchStatus, ProjectRef } from '../../src/wporg/projects.js'
 
-const ANSI = /\[[0-9;]*m/g
+const ANSI = /\x1b\[[0-9;]*m/g
 const strip = (s: string | undefined): string => (s ?? '').replace(ANSI, '')
 const CSI = /\x1b\[[0-9;?]*[A-Za-z]/g
 const stripAll = (s: string | undefined): string => (s ?? '').replace(CSI, '')
@@ -134,13 +134,13 @@ export class FakeStdin extends EventEmitter {
 }
 
 export const keys = {
-  up: '[A',
-  down: '[B',
-  left: '[D',
-  right: '[C',
+  up: '\x1b[A',
+  down: '\x1b[B',
+  left: '\x1b[D',
+  right: '\x1b[C',
   enter: '\r',
-  backspace: '',
-  esc: '',
+  backspace: '\x7f',
+  esc: '\x1b',
   tab: '\t',
   pageUp: '\u001b[5~',
   pageDown: '\u001b[6~',

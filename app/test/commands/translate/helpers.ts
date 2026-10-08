@@ -11,7 +11,7 @@ import type { TranslateEvent } from '../../../src/commands/translate.js'
 export const samplePo = fileURLToPath(new URL('../../fixtures/po/sample.po', import.meta.url))
 export const fakeClaude = fileURLToPath(new URL('../../fixtures/fake-claude/claude', import.meta.url))
 
-export const CTX = ''
+export const CTX = '\x04'
 
 export const PENDING_KEYS = [
   'Save Changes',
