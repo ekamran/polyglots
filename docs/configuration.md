@@ -16,8 +16,8 @@ polyglots config set batchSize 50
 | Setting | Default | What it does |
 |---|---|---|
 | `defaultLocale` | not set | The locale a command uses when `--locale` is not given. `review` and `translate` then fall back to the file's `Language` header; every other command that needs a locale stops and asks for one. `config set defaultLocale ""` unsets it. |
-| `defaultDraftEngine` | `deepl` | The draft engine for `translate`: `deepl`, `openai` or `local`. |
-| `reviewProvider` | `claude` | Which agent reviews: `claude` or `antigravity`. `local` is the experimental local reviewer; see [local models](local-models.md). |
+| `defaultDraftEngine` | `deepl` | The draft engine for `translate`: `deepl`, `openai` or `local`, or `none` for translation memory only; see [without AI](getting-started.md#using-polyglots-without-ai). |
+| `reviewProvider` | `claude` | Which agent reviews: `claude` or `antigravity`. `local` is the experimental local reviewer; see [local models](local-models.md). `none` reviews with the rules alone; see [without AI](getting-started.md#using-polyglots-without-ai). |
 | `wporgUsername` | empty | Your translate.wordpress.org login. Used only to link the requester message to the contributor's strings. |
 | `batchSize` | `25` | Entries per batch sent to the reviewer or draft engine. `--batch-size` overrides it for one run. |
 | `consistencyTtlDays` | `30` | How long a translate.wordpress.org consistency lookup is cached before it is asked again. |
@@ -29,6 +29,8 @@ polyglots config set batchSize 50
 | `openaiCompatible.model` | empty | The model id, exactly as `polyglots models` shows it. |
 | `openaiCompatible.contextLength` | unset | The context the server was started with. |
 | `localModelServers` | none | Extra servers for `polyglots models` to list, comma-separated. Replaces the whole list. |
+| `localIdleTimeout` | `180` | Seconds a local server may send nothing before polyglots gives up on the reply. Raise it on slow hardware: `polyglots config set localIdleTimeout 600`. |
+| `usageStats` | off | Whether to share anonymous weekly totals for the website: `on` or `off`. See [usage statistics](usage-statistics.md). |
 
 The two context lengths are cleared with an empty value:
 `polyglots config set ollama.contextLength ""`.
